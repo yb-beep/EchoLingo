@@ -74,7 +74,28 @@ CET_MOCK_SCENARIO=error .venv/bin/python tests/mock_cet_api.py
 
 标完 C 就能补键盘事件测试，你也不用陪我反复改选择器。
 
-### 4. 几个已经替你验过的点
+### 4. 错误响应有两种形状 —— 必须都处理（A 最容易踩）
+
+C 实测所有 CET 端点，错误响应会出现**两种不同结构**：
+
+| 来源 | 形状 | 例子 |
+| --- | --- | --- |
+| 业务校验失败 | `{"error": "...", "error_info": {code, title, action, ...}}` | `{"error":"materialId 必填","error_info":{"code":"URL_REQUIRED",...}}` |
+| 请求体解析失败 | `{"detail": [...]}` | `{"detail":[{"type":"dict_type","msg":"Input should be a valid dictionary"}]}` |
+
+**只处理一种，另一种就会白屏。** 底座既有前端用的是：
+
+```js
+const detail = payload && (payload.detail || payload.error_info || payload);
+```
+
+建议照这个来。`error_info.code` 是给前端分支用的（如 `MARK_NOT_CONFIRMED` 提示去确认句子），
+`error_info.action` 是可以直接展示给用户的一句话。
+
+C 已加契约测试 `test_error_response_is_parseable_by_one_rule` 保证：
+**所有错误响应都能被这一条规则解析出可显示信息**，不会出现三种字段都没有的裸错误体。
+
+### 5. 几个已经替你验过的点
 
 - **交卷前绝不返回答案**：`GET /materials/{id}/questions` 的样例里没有 `answer`/`evidenceRef`/`explanation`，契约测试双向断言。你按这个写就不会泄题。
 - **未知答案要保留 unknown**：有道题 `answerSource=unknown`，判题返回 `correct: null`。**不要在页面上推断或填充。**
@@ -93,7 +114,7 @@ CET_API_BASE=http://127.0.0.1:5173 .venv/bin/python -m pytest tests/test_cet_con
 
 **这是最重要的一条**：同一套断言既能打 Mock 也能打真实服务，你不需要另写测试。
 
-当前真实服务是 `41 failed / 4 passed / 8 skipped` —— 全部因为 `/api/cet/*` 还没实现。
+当前真实服务是 `41 failed / 7 passed / 8 skipped` —— 全部因为 `/api/cet/*` 还没实现。
 每实现一批，对应用例就会转绿。
 
 ### 2. 先看「还差哪些接口」，照着实现

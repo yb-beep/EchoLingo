@@ -1250,6 +1250,83 @@ def test_material_ref_press_time_confirmed_sentence_all_kept():
     assert after["confirmedSentenceId"] == mark["suggestedSentenceId"]
 
 
+# ────────────────────────── robustness：错误形状与畸形输入 ──────────────────────────
+# A 写错误处理时最容易踩的坑：错误响应有两种形状。
+#   业务校验 -> {"error": "...", "error_info": {code,title,action,...}}
+#   请求体解析失败 -> {"detail": [...]}   （FastAPI 默认）
+# 底座既有前端用的是 payload.detail || payload.error_info || payload，
+# 说明两种都得处理。这里把它固化成契约，避免 A 只处理一种而在另一种上白屏。
+
+
+@pytest.mark.contract
+def test_error_response_is_parseable_by_one_rule():
+    """所有错误响应都应能被同一条规则解析出「能显示给用户的信息」。
+
+    规则：detail || error_info || error，任取其一都必须能拿到字符串或可读结构，
+    不允许出现「三种都没有」的裸错误体。
+    """
+    cases = [
+        ("POST", "/api/cet/attempts", {}),                     # 业务校验失败
+        ("POST", "/api/cet/attempts", None),                   # 请求体类型错误
+        ("GET", "/api/cet/materials/does-not-exist", None),    # 资源不存在
+        ("PATCH", "/api/cet/marks/does-not-exist", {"confirmedSentenceId": "s01"}),
+    ]
+    for method, path, body in cases:
+        kwargs = {"json": body} if body is not None else {}
+        if body is None and method in ("POST", "PATCH"):
+            kwargs = {"data": "null", "headers": {"Content-Type": "application/json"}}
+        r = requests.request(method, f"{BASE}{path}", timeout=TIMEOUT, **kwargs)
+        if r.status_code < 400:
+            continue  # 该环境行为不同，不在此断言
+        try:
+            payload = r.json()
+        except ValueError:
+            pytest.fail(f"{method} {path} 错误响应不是 JSON：{r.text[:120]}")
+
+        detail = payload.get("detail")
+        info = payload.get("error_info")
+        err = payload.get("error")
+        has_something = bool(detail) or bool(info) or bool(err)
+        assert has_something, (
+            f"{method} {path} 返回 {r.status_code} 但响应体没有 "
+            f"detail/error_info/error 任一字段，页面无法显示错误：{payload}"
+        )
+        # error_info 若存在，必须带可判定的 code（前端据此分支）
+        if info:
+            assert info.get("code"), f"{path} 的 error_info 缺少 code，前端无法分支"
+
+
+@pytest.mark.contract
+def test_malformed_json_does_not_crash():
+    """畸形请求体不能 5xx —— 5xx 意味着页面只能显示「服务器错误」。"""
+    bad_bodies = ["", "null", "[]", "garbage", '{"unclosed": ']
+    endpoints = [
+        ("POST", "/api/cet/attempts"),
+        ("POST", "/api/cet/marks"),
+        ("POST", "/api/cet/practices"),
+        ("POST", "/api/cet/reviews"),
+    ]
+    for method, path in endpoints:
+        for body in bad_bodies:
+            r = requests.request(
+                method, f"{BASE}{path}", data=body,
+                headers={"Content-Type": "application/json"}, timeout=TIMEOUT,
+            )
+            assert r.status_code < 500, (
+                f"{method} {path} 对请求体 {body!r} 返回 {r.status_code}，"
+                f"应返回 4xx 让页面能提示：{r.text[:160]}"
+            )
+
+
+@pytest.mark.contract
+def test_not_found_does_not_leak_internal_paths():
+    """错误信息不能泄露服务器绝对路径 —— 交付物与演示截图会暴露机器信息。"""
+    r = requests.get(f"{BASE}/api/cet/materials/../../../etc/passwd", timeout=TIMEOUT)
+    text = r.text
+    for leak in ("/Users/", "/home/", "C:\\", "/private/"):
+        assert leak not in text, f"错误响应泄露了本机路径 {leak}：{text[:200]}"
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

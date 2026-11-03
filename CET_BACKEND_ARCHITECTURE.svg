@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">四六级听力黑匣子后端技术结构图</title>
+  <desc id="desc">浏览器通过17个CET接口连接FastAPI，业务服务复用EchoLingo材料、SQLite与模型配置，并保证幂等、版本、有效计时和重启恢复。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3973ac"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#16324a" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .bg { fill: #f5f8fc; }
+      .title { font: 700 34px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #132b40; }
+      .subtitle { font: 400 17px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #5c7082; }
+      .section { font: 700 21px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #17324a; }
+      .box-title { font: 700 19px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #17324a; }
+      .body { font: 400 16px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #355065; }
+      .small { font: 400 14px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #60778a; }
+      .white-title { font: 700 21px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #ffffff; }
+      .white-body { font: 400 15px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #dcecff; }
+      .card { fill: #ffffff; stroke: #d5e0eb; stroke-width: 1.5; }
+      .module { fill: #f8fbff; stroke: #cbdce9; stroke-width: 1.2; }
+      .arrow { fill: none; stroke: #3973ac; stroke-width: 2.5; marker-end: url(#arrow); }
+      .dash { stroke-dasharray: 7 6; }
+      .label { font: 600 14px 'Microsoft YaHei', 'PingFang SC', sans-serif; fill: #3973ac; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="900"/>
+  <rect x="0" y="0" width="1600" height="10" fill="#1f8a83"/>
+  <text x="52" y="62" class="title">四六级听力黑匣子 · 后端技术结构</text>
+  <text x="52" y="96" class="subtitle">B 责任域：FastAPI 接口、数据与 AI ｜ EchoLingo 1ea5b35 ｜ 首版 17 个实际接口</text>
+  <rect x="1320" y="42" width="228" height="42" rx="21" fill="#e2f3f0"/>
+  <text x="1434" y="69" text-anchor="middle" class="box-title" fill="#16736d">本地优先 · 原声驱动</text>
+
+  <!-- Browser / A -->
+  <rect x="50" y="156" width="300" height="506" rx="20" class="card" filter="url(#shadow)"/>
+  <rect x="50" y="156" width="300" height="64" rx="20" fill="#e8f1fb"/>
+  <rect x="50" y="200" width="300" height="20" fill="#e8f1fb"/>
+  <text x="76" y="196" class="section">浏览器前端（A）</text>
+  <rect x="76" y="246" width="248" height="82" rx="12" class="module"/>
+  <text x="94" y="277" class="box-title">材料 · 做题 · 空格标记</text>
+  <text x="94" y="305" class="body">稳定 ID、材料版本、原音频秒数</text>
+  <rect x="76" y="350" width="248" height="96" rx="12" class="module"/>
+  <text x="94" y="381" class="box-title">带练与换句</text>
+  <text x="94" y="409" class="body">播放开始 / 结束 / 中断</text>
+  <text x="94" y="433" class="body">反馈、步骤 ID、候选作答</text>
+  <rect x="76" y="468" width="248" height="96" rx="12" class="module"/>
+  <text x="94" y="499" class="box-title">十分钟复习</text>
+  <text x="94" y="527" class="body">暂停 / 继续 / 跳过 / 替换</text>
+  <text x="94" y="551" class="body">前台心跳、可见性、有效活动</text>
+  <text x="76" y="608" class="small">只负责交互与事件采集</text>
+  <text x="76" y="632" class="small">页面切换时停止旧播放</text>
+
+  <!-- FastAPI / B -->
+  <rect x="430" y="132" width="680" height="636" rx="22" class="card" filter="url(#shadow)"/>
+  <rect x="430" y="132" width="680" height="110" rx="22" fill="#23659b"/>
+  <rect x="430" y="212" width="680" height="30" fill="#23659b"/>
+  <text x="462" y="174" class="white-title">FastAPI · /api/cet</text>
+  <text x="462" y="207" class="white-body">cet.py ｜ 材料、题目、标记、带练、换句、卡点、复习</text>
+  <text x="462" y="276" class="section">cet_service.py · 事务化业务服务</text>
+
+  <rect x="460" y="304" width="292" height="88" rx="12" class="module"/>
+  <text x="480" y="335" class="box-title">材料 / 题目 / 标记</text>
+  <text x="480" y="363" class="body">答案隐藏、证据、合法句界</text>
+  <rect x="788" y="304" width="292" height="88" rx="12" class="module"/>
+  <text x="808" y="335" class="box-title">练习 / 步骤 / 事件</text>
+  <text x="808" y="363" class="body">反馈驱动、播放门槛、有效计时</text>
+
+  <rect x="460" y="416" width="292" height="88" rx="12" class="module"/>
+  <text x="480" y="447" class="box-title">候选检索 / 换句检查</text>
+  <text x="480" y="475" class="body">未见过原声、答案与来源保存</text>
+  <rect x="788" y="416" width="292" height="88" rx="12" class="module"/>
+  <text x="808" y="447" class="box-title">卡点 / 复习会话</text>
+  <text x="808" y="475" class="body">三处排序、预算、暂停与恢复</text>
+
+  <rect x="460" y="528" width="292" height="88" rx="12" class="module"/>
+  <text x="480" y="559" class="box-title">cet_ai.py · 模型网关</text>
+  <text x="480" y="587" class="body">提示词、超时、JSON 严格校验</text>
+  <rect x="788" y="528" width="292" height="88" rx="12" class="module"/>
+  <text x="808" y="559" class="box-title">本地降级</text>
+  <text x="808" y="587" class="body">回听、慢放、短语、原文、保存</text>
+
+  <rect x="460" y="646" width="620" height="88" rx="14" fill="#edf7f5" stroke="#b9ddd7"/>
+  <text x="482" y="679" class="box-title">一致性核心</text>
+  <text x="482" y="708" class="body">唯一约束 + 幂等键 + 条件 revision + 过期 AI 结果丢弃</text>
+
+  <!-- SQLite -->
+  <rect x="1190" y="132" width="360" height="330" rx="20" class="card" filter="url(#shadow)"/>
+  <rect x="1190" y="132" width="360" height="62" rx="20" fill="#e8f1fb"/>
+  <rect x="1190" y="176" width="360" height="18" fill="#e8f1fb"/>
+  <text x="1216" y="172" class="section">SQLite · WAL</text>
+  <text x="1216" y="225" class="box-title">复用 EchoLingo</text>
+  <text x="1216" y="253" class="body">v2_lessons / v2_subtitle_segments</text>
+  <text x="1216" y="281" class="body">media_url / 原始句子时间轴</text>
+  <line x1="1216" y1="306" x2="1524" y2="306" stroke="#d5e0eb"/>
+  <text x="1216" y="338" class="box-title">新增 cet_* 数据表</text>
+  <text x="1216" y="366" class="body">作答、标记、练习、步骤、事件</text>
+  <text x="1216" y="394" class="body">AI 请求、候选、卡点、复习</text>
+  <text x="1216" y="430" class="small">ELT_USER_DB 隔离开发数据</text>
+
+  <!-- AI -->
+  <rect x="1190" y="500" width="360" height="202" rx="20" class="card" filter="url(#shadow)"/>
+  <rect x="1190" y="500" width="360" height="60" rx="20" fill="#fff1df"/>
+  <rect x="1190" y="542" width="360" height="18" fill="#fff1df"/>
+  <text x="1216" y="539" class="section">模型配置与上游</text>
+  <text x="1216" y="590" class="box-title">webapp/runtime/ai_config.py</text>
+  <text x="1216" y="618" class="body">AI_API_KEY · AI_BASE_URL · AI_MODEL</text>
+  <rect x="1216" y="638" width="308" height="42" rx="10" fill="#fff8ef" stroke="#f0d3a8" stroke-dasharray="6 4"/>
+  <text x="1370" y="665" text-anchor="middle" class="body">OpenAI 兼容模型服务（外部）</text>
+
+  <!-- Arrows -->
+  <path d="M 350 218 H 422" class="arrow"/>
+  <text x="386" y="199" text-anchor="middle" class="label">HTTP JSON</text>
+  <path d="M 1110 360 H 1182" class="arrow"/>
+  <text x="1146" y="340" text-anchor="middle" class="label">SQL 事务</text>
+  <path d="M 1110 575 H 1182" class="arrow"/>
+  <text x="1146" y="555" text-anchor="middle" class="label">模型请求</text>
+  <path d="M 1210 462 V 720 H 202 V 670" class="arrow dash"/>
+  <rect x="584" y="700" width="352" height="34" rx="17" fill="#f5f8fc"/>
+  <text x="760" y="723" text-anchor="middle" class="label">media_url · 原声范围 · 绝对秒数 · 播放速度</text>
+
+  <!-- Reliability footer -->
+  <rect x="50" y="790" width="1500" height="66" rx="18" fill="#173b59"/>
+  <text x="82" y="831" class="white-title">交付边界</text>
+  <text x="230" y="830" class="white-body">稳定 ID / 材料版本</text>
+  <text x="490" y="830" class="white-body">事件与保存幂等</text>
+  <text x="728" y="830" class="white-body">AI 步骤 revision</text>
+  <text x="966" y="830" class="white-body">排除等待 / 后台 / 暂停</text>
+  <text x="1284" y="830" class="white-body">重启恢复同一练习</text>
+  <text x="52" y="884" class="small">默认仅监听 127.0.0.1 ｜ Python 3.11 + FFmpeg（既有导入）｜ 真实模型与真实原声须在集成验收时单独确认</text>
+</svg>

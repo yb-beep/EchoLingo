@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+import urllib.request
 import json
 import os
 import time
@@ -37,7 +38,27 @@ import pytest
 import requests
 
 BASE = os.environ.get("CET_API_BASE", "http://127.0.0.1:5199").rstrip("/")
-IS_MOCK = "5199" in BASE or "mock" in BASE.lower()
+
+
+def _detect_mock(base: str) -> bool:
+    """判断目标是 Mock 还是真实服务。
+
+    不能靠端口号硬编码 —— 队友可能换端口（PORT=5189 / CET_MOCK_PORT=5209），
+    一旦识别失败，reset_mock() 会静默跳过，导致测试间状态污染、
+    出现 2 个稳定失败却看不出原因。
+    改为向 Mock 的控制面探活：有 /api/cet/_mock/info 就是 Mock。
+    """
+    if "mock" in base.lower():
+        return True
+    try:
+        with urllib.request.urlopen(f"{base}/api/cet/_mock/info", timeout=2) as resp:
+            return resp.status == 200
+    except Exception:  # noqa: BLE001
+        # 兜底：老默认端口
+        return "5199" in base
+
+
+IS_MOCK = _detect_mock(BASE)
 TIMEOUT = float(os.environ.get("CET_HTTP_TIMEOUT", "15"))
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "cet"

@@ -1504,6 +1504,52 @@ def test_review_items_are_deterministically_ordered():
     )
 
 
+@pytest.mark.flow
+def test_mark_snaps_to_correct_sentence_for_all_sentences(sentences):
+    """按键落在某句中间时，必须吸附到**那一句**，不能吸偏。
+
+    C 之前只断言「有 suggestedSentenceId」，从没验证它吸得对。
+    这是 T02/T04 的核心：吸偏了用户回听的就是错句子。
+    逐句验证全部 32 句，不抽样。
+    """
+    reset_mock()
+    wrong = []
+    for s in sentences:
+        mid = round((s["startSec"] + s["endSec"]) / 2, 3)
+        r = api("POST", "/api/cet/marks", json={
+            "materialId": MATERIAL_ID,
+            "materialVersion": MATERIAL_VERSION,
+            "listeningSessionId": _unique(f"snap-{s['sentenceId']}"),
+            "pressedAtSec": mid,
+        })
+        assert r.status_code in (200, 201), r.text
+        got = r.json().get("suggestedSentenceId")
+        if got != s["sentenceId"]:
+            wrong.append((s["sentenceId"], mid, got))
+    assert not wrong, (
+        f"{len(wrong)} 处吸附错误（期望句, 按键秒, 实际句）：{wrong[:6]}"
+    )
+
+
+@pytest.mark.flow
+def test_mark_snaps_to_boundary_belonging_sentence(sentences):
+    """按键正好落在句子起点/终点时，应归到该句（边界不能漏或重）。"""
+    reset_mock()
+    probe = sentences[2]
+    for label, t in (("起点", probe["startSec"]), ("终点", probe["endSec"])):
+        r = api("POST", "/api/cet/marks", json={
+            "materialId": MATERIAL_ID,
+            "materialVersion": MATERIAL_VERSION,
+            "listeningSessionId": _unique(f"edge-{label}"),
+            "pressedAtSec": t,
+        })
+        assert r.status_code in (200, 201), r.text
+        got = r.json().get("suggestedSentenceId")
+        assert got == probe["sentenceId"], (
+            f"{probe['sentenceId']} 的{label} {t}s 应吸到本句，实际吸到 {got}"
+        )
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

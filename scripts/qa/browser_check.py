@@ -137,9 +137,27 @@ def check_seeded_content(browser, js_errors: list[str]) -> None:
         if ok:
             body = page.evaluate("() => document.body.innerText")
             check(len(body) > 100, "工作台有实质正文", f"{len(body)} 字符")
-            # 库里第一节是预置的 reading 课；有正文即说明渲染链路通
-            check("library" in body.lower() or "university" in body.lower(),
-                  "预置正文已渲染到页面")
+            # 不能用「某几个固定单词」判断渲染成功 —— 库里第一节会变
+            # （预置的 reading 课、导入的音频课都可能排第一）。
+            # 改成：页面正文里应出现该课自己的标题或第一句，说明渲染的是对的内容。
+            title = str(lessons[0].get("title") or "").strip()
+            first_line = ""
+            try:
+                import urllib.request as _ur
+                with _ur.urlopen(f"{BASE}/api/v2/lessons/{lesson_id}/subtitles", timeout=8) as r2:
+                    subs = json.loads(r2.read().decode("utf-8"))
+                units = subs.get("sentence_units") or []
+                if units:
+                    first_line = str(units[0].get("text") or "").strip()
+                elif (subs.get("segments") or []):
+                    first_line = str(subs["segments"][0].get("text") or "").strip()
+            except Exception:  # noqa: BLE001
+                pass
+            candidates = [x for x in (title, first_line[:24]) if x]
+            matched = any(c in body for c in candidates)
+            check(matched or not candidates,
+                  "工作台渲染的是该课自身内容",
+                  f"标题/首句命中={matched}" if candidates else "无标题与句子可比对")
     except Exception as exc:  # noqa: BLE001
         check(False, f"工作台 /workspace/{lesson_id} 可打开", str(exc)[:90])
     finally:

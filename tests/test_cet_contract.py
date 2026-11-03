@@ -43,6 +43,17 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "cet"
 MATERIAL_ID = "cet6-202512-conv2"
 MATERIAL_VERSION = "v1"
 
+# 任务书 7.3 逐条规定的枚举值。断言用「必须落在集合内」而不是「包含某子串」——
+# 后者太松：C 曾自造 skipped_pending 并通过了 "skip" in status 的断言，
+# 而契约要求的是 skipped。松断言会把契约违规放过去。
+CONTRACT_ENUMS = {
+    "feedback": {"sound", "meaning", "heard"},
+    "stepAction": {"replay", "slow", "chunk", "explain", "transfer", "finish"},
+    "practiceStatus": {"active", "complete"},
+    "reviewItemStatus": {"pending", "current", "done", "skipped"},
+    "reviewStatus": {"ready", "active", "paused", "complete"},
+}
+
 
 # ────────────────────────── 基础设施 ──────────────────────────
 
@@ -765,9 +776,14 @@ def test_review_skip_keeps_item_pending():
     assert r.status_code == 200, r.text
     body = r.json()
     skipped = next(i for i in body["items"] if i["itemId"] == first_item)
-    assert skipped["status"] != "done", "跳过的条目不能标记为完成"
-    assert "skip" in skipped["status"] or skipped["status"] == "pending", \
-        f"跳过条目应保持待练，实际 {skipped['status']}"
+    assert skipped["status"] == "skipped", (
+        f"任务书 7.3 规定条目状态只有 pending/current/done/skipped，"
+        f"跳过应落 skipped，实际 {skipped['status']!r}"
+    )
+    # 「跳过 ≠ 听懂」的语义要单独表达，不能靠状态值承载两层含义
+    assert skipped.get("needsPractice") is True, (
+        "跳过只表示这次不听，条目仍需练习，应带 needsPractice=true"
+    )
 
 
 @pytest.mark.flow
@@ -1043,6 +1059,97 @@ def test_mock_questions_hide_same_fields_as_fixture():
                 assert banned not in mq, (
                     f"契约样例刻意不含 {banned}，但 Mock 返回了它（题 {fq['questionId']}）"
                 )
+
+
+# ────────────────────────── contract：状态枚举合规 ──────────────────────────
+# 任务书 7.3 逐条规定了状态值。C 曾自造 skipped_pending，因为断言写成
+# "skip" in status 而漏过 —— 松断言会让契约违规悄悄通过。
+# 这里把「枚举必须落在集合内」变成系统检查，覆盖所有相关字段，不只一条路径。
+
+
+@pytest.mark.contract
+def test_practice_status_enum():
+    reset_mock()
+    mark = _create_confirmed_mark()
+    created = api("POST", "/api/cet/practices", json={"markId": mark["markId"]})
+    assert created.status_code in (200, 201), created.text
+    status = created.json()["status"]
+    assert status in CONTRACT_ENUMS["practiceStatus"], (
+        f"练习状态 {status!r} 不在契约枚举 {sorted(CONTRACT_ENUMS['practiceStatus'])} 内"
+    )
+    finished = api("POST", f"/api/cet/practices/{created.json()['practiceId']}/finish",
+                   json={"feedback": "sound"})
+    assert finished.status_code == 200, finished.text
+    assert finished.json()["status"] in CONTRACT_ENUMS["practiceStatus"]
+
+
+@pytest.mark.contract
+def test_step_action_enum():
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+    seen = set()
+    for feedback in ("sound", "meaning", "heard"):
+        r = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": feedback})
+        assert r.status_code == 200, r.text
+        action = r.json()["step"]["action"]
+        assert action in CONTRACT_ENUMS["stepAction"], (
+            f"带练动作 {action!r} 不在契约枚举内"
+        )
+        seen.add(action)
+    assert len(seen) >= 2, f"三类反馈应产生不同动作，实际只有 {seen}"
+
+    for action in ("replay", "slow", "chunk", "explain"):
+        r = api("POST", f"/api/cet/practices/{pid}/local", json={"action": action})
+        assert r.status_code == 200, r.text
+        got = r.json()["step"]["action"]
+        assert got in CONTRACT_ENUMS["stepAction"], f"本地动作 {got!r} 不在契约枚举内"
+
+
+@pytest.mark.contract
+def test_review_status_enum_through_lifecycle():
+    """复习会话走完 ready→active→paused→active→complete，每步都要合枚举。"""
+    reset_mock()
+    m1 = _make_mark_at(36.9)
+    _finish_practice(m1, "sound")
+    review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
+    rid = review["reviewId"]
+
+    assert review["status"] in CONTRACT_ENUMS["reviewStatus"], review["status"]
+    for action, expected in (("start", "active"), ("pause", "paused"), ("resume", "active")):
+        r = api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": action})
+        assert r.status_code == 200, f"{action}: {r.text}"
+        got = r.json()["status"]
+        assert got in CONTRACT_ENUMS["reviewStatus"], f"{action} 后状态 {got!r} 不合枚举"
+        assert got == expected, f"{action} 后应为 {expected}，实际 {got}"
+
+
+@pytest.mark.contract
+def test_review_item_status_always_in_enum():
+    """任何操作后，所有条目状态都必须落在契约枚举内。"""
+    reset_mock()
+    m1 = _make_mark_at(36.9)
+    m2 = _make_mark_at(86.0)
+    _finish_practice(m1, "sound")
+    _finish_practice(m2, "meaning")
+    review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
+    rid = review["reviewId"]
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+
+    def check_all(payload, stage):
+        for item in payload["items"]:
+            st = item["status"]
+            assert st in CONTRACT_ENUMS["reviewItemStatus"], (
+                f"{stage} 后条目 {item['itemId']} 状态 {st!r} 不在契约枚举内"
+            )
+
+    check_all(review, "创建")
+    first = review["items"][0]["itemId"]
+    second = review["items"][1]["itemId"]
+    check_all(api("POST", f"/api/cet/reviews/{rid}/actions",
+                  json={"action": "skip", "itemId": first}).json(), "跳过")
+    check_all(api("POST", f"/api/cet/reviews/{rid}/actions",
+                  json={"action": "done", "itemId": second}).json(), "完成")
 
 
 def test_report_target_environment():

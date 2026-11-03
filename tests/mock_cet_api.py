@@ -1052,10 +1052,15 @@ def review_action(review_id: str, payload: dict = Body(...)):
         target = next((i for i in review["items"] if i["itemId"] == item_id), None)
         if target is None:
             raise ScenarioFailure("ITEM_NOT_FOUND", 404, f"复习条目不存在：{item_id}")
-        # 跳过的语义是「这次不听」，条目必须保留为待练，不能算听懂
-        target["status"] = "skipped_pending"
+        # 任务书 7.3 规定条目状态枚举是 pending / current / done / skipped。
+        # 「跳过」必须落在 skipped 上，不能自造 skipped_pending —— 那会破坏契约。
+        # 但「跳过 ≠ 听懂」的语义要保住：用独立字段标它仍需练习，
+        # 不能靠状态值本身承载两层含义。
+        target["status"] = "skipped"
+        target["needsPractice"] = True
         nxt = next(
-            (i for i in review["items"] if i["status"] == "pending" and i["itemId"] != target["itemId"]),
+            (i for i in review["items"]
+             if i["status"] == "pending" and i["itemId"] != target["itemId"]),
             None,
         )
         review["currentItemId"] = nxt["itemId"] if nxt else None

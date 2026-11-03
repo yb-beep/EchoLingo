@@ -319,6 +319,42 @@ def build_practice(sentences: list[dict], marks: list[dict]) -> tuple[dict, list
 
 
 
+# 任务书 7.3 逐条规定的枚举值。
+# C 曾在 Mock 里自造 skipped_pending，因为断言写成子串匹配而漏过 ——
+# 把枚举合规放进生成器，让样例本身也不许出现契约外的值。
+CONTRACT_ENUMS = {
+    "feedback": {"sound", "meaning", "heard"},
+    "stepAction": {"replay", "slow", "chunk", "explain", "transfer", "finish"},
+    "practiceStatus": {"active", "complete"},
+    "reviewItemStatus": {"pending", "current", "done", "skipped"},
+    "reviewStatus": {"ready", "active", "paused", "complete"},
+}
+
+
+def validate_enums(practice: dict, steps: list[dict], review: dict) -> None:
+    """样例里出现的每个状态值都必须落在契约枚举内。"""
+    problems = []
+    if practice["status"] not in CONTRACT_ENUMS["practiceStatus"]:
+        problems.append(f"练习状态 {practice['status']!r} 不合枚举")
+    for f in practice.get("feedbackHistory", []):
+        if f not in CONTRACT_ENUMS["feedback"]:
+            problems.append(f"练习反馈 {f!r} 不合枚举")
+    for st in steps:
+        if st["action"] not in CONTRACT_ENUMS["stepAction"]:
+            problems.append(f"步骤动作 {st['action']!r} 不合枚举（步骤 {st['stepId']}）")
+        if st.get("feedback") and st["feedback"] not in CONTRACT_ENUMS["feedback"]:
+            problems.append(f"步骤反馈 {st['feedback']!r} 不合枚举（步骤 {st['stepId']}）")
+    if review["status"] not in CONTRACT_ENUMS["reviewStatus"]:
+        problems.append(f"复习会话状态 {review['status']!r} 不合枚举")
+    for it in review["items"]:
+        if it["status"] not in CONTRACT_ENUMS["reviewItemStatus"]:
+            problems.append(f"复习条目状态 {it['status']!r} 不合枚举（条目 {it['itemId']}）")
+        if it.get("latestFeedback") and it["latestFeedback"] not in CONTRACT_ENUMS["feedback"]:
+            problems.append(f"条目最新反馈 {it['latestFeedback']!r} 不合枚举（条目 {it['itemId']}）")
+    if problems:
+        raise SystemExit("[enum] 状态枚举违反契约 7.3：\n  - " + "\n  - ".join(problems))
+
+
 def build_transfer_candidates(sentences: list[dict]) -> dict:
     """换句检查候选（T10）。
 
@@ -411,6 +447,7 @@ def main() -> int:
     marks = build_marks(sentences)
     practice, steps = build_practice(sentences, marks)
     review = build_review(sentences, marks)
+    validate_enums(practice, steps, review)
     transfer = build_transfer_candidates(sentences)
 
     written: list[str] = []
@@ -512,6 +549,7 @@ def main() -> int:
     print(f"[ok] 生成 {len(written)} 个样例文件，共 {total} 字节")
     print(f"[ok] 句子 {len(sentences)} 条，题目 {len(before)} 道，卡点 {len(marks)} 处")
     print(f"[ok] 句时间轴自检通过；题目自检通过（含 1 道 unknown 答案题）")
+    print(f"[ok] 状态枚举自检通过（对照任务书 7.3：feedback/动作/练习/复习条目/复习会话）")
     return 0
 
 

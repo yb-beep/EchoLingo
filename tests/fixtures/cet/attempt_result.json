@@ -14,6 +14,8 @@
       "answerSource": "user_provided_pdf",
       "materialId": "cet6-202512-conv2",
       "materialVersion": "v1",
+      "choice": 2,
+      "correct": false,
       "answer": 1,
       "answerVisible": true,
       "evidenceRef": {
@@ -37,6 +39,8 @@
       "answerSource": "user_provided_pdf",
       "materialId": "cet6-202512-conv2",
       "materialVersion": "v1",
+      "choice": 1,
+      "correct": true,
       "answer": 1,
       "answerVisible": true,
       "evidenceRef": {
@@ -60,6 +64,8 @@
       "answerSource": "user_provided_pdf",
       "materialId": "cet6-202512-conv2",
       "materialVersion": "v1",
+      "choice": 0,
+      "correct": false,
       "answer": 3,
       "answerVisible": true,
       "evidenceRef": {
@@ -83,6 +89,8 @@
       "answerSource": "user_provided_pdf",
       "materialId": "cet6-202512-conv2",
       "materialVersion": "v1",
+      "choice": 2,
+      "correct": true,
       "answer": 2,
       "answerVisible": true,
       "evidenceRef": {
@@ -106,6 +114,8 @@
       "materialVersion": "v1",
       "developmentFixture": true,
       "fixtureNote": "故意保留 answer=null / answerSource=unknown：验证接口与页面不推断、不填充、判题返回 null。",
+      "choice": 0,
+      "correct": null,
       "answer": null,
       "answerVisible": true,
       "evidenceRef": null,

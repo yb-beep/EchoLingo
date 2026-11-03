@@ -1088,6 +1088,52 @@ def test_mock_matches_fixture_material_list():
 
 @pytest.mark.contract
 @pytest.mark.skipif(not IS_MOCK, reason="只校验 Mock 是否忠实实现契约样例")
+def test_mock_attempt_result_matches_fixture_fields():
+    """交卷返回的每条结果必须含契约样例里的字段。
+
+    C 曾漏掉 choice 与 correct —— Mock 有、样例没有，等于告诉 A
+    「交卷后看不到自己选了什么、也看不到对错」，而那正是交卷页最核心的两项。
+    这条锁定「Mock 结果字段 ⊇ 契约样例字段」。
+    """
+    reset_mock()
+    fix_items = fixture("attempt_result.json")["items"]
+    answers = []
+    for q in fix_items:
+        answers.append({"questionId": q["questionId"], "choice": q.get("choice")})
+    r = api("POST", "/api/cet/attempts", json={
+        "materialId": MATERIAL_ID,
+        "materialVersion": MATERIAL_VERSION,
+        "listeningSessionId": _unique("fixture-cmp"),
+        "answers": answers,
+    })
+    assert r.status_code in (200, 201), r.text
+    mock_by_id = {x["questionId"]: x for x in r.json()["results"]}
+
+    for fq in fix_items:
+        mq = mock_by_id.get(fq["questionId"])
+        assert mq is not None, f"Mock 缺少题目 {fq['questionId']}"
+        missing = [k for k in fq if k not in mq]
+        assert not missing, (
+            f"第 {fq['number']} 题 Mock 缺少契约样例里的字段 {missing}；"
+            f"Mock 实际字段 {sorted(mq)}"
+        )
+        # 只查字段存在不够 —— 值也要与样例一致。
+        # 「字段在但值错」同样会误导 A：比如 correct 恒为 None，页面就永远显示未判。
+        for key in ("choice", "answer", "correct", "answerSource"):
+            if key in fq:
+                assert mq.get(key) == fq[key], (
+                    f"第 {fq['number']} 题 {key} 与样例不一致："
+                    f"Mock {mq.get(key)!r} vs 样例 {fq[key]!r}"
+                )
+        # 未知答案必须判 null，不能编造对错
+        if fq.get("answerSource") == "unknown":
+            assert mq.get("correct") is None, (
+                f"第 {fq['number']} 题来源 unknown，correct 必须是 null，实际 {mq.get('correct')!r}"
+            )
+
+
+@pytest.mark.contract
+@pytest.mark.skipif(not IS_MOCK, reason="只校验 Mock 是否忠实实现契约样例")
 def test_mock_questions_hide_same_fields_as_fixture():
     """交卷前字段集合必须与样例完全一致 —— 多返回 answer 就是泄题。"""
     mock = api("GET", f"/api/cet/materials/{MATERIAL_ID}/questions").json()

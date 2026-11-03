@@ -130,6 +130,31 @@ def validate_sentences(sentences: list[dict], duration: float) -> None:
         raise SystemExit("[sentence] 句子校验失败：\n  - " + "\n  - ".join(problems))
 
 
+def _sample_choice(q: dict) -> int | None:
+    """样例里模拟用户的作答。
+
+    故意让部分题答错、部分答对，这样样例本身就能演示「对/错/未作答」三种展示；
+    未知答案题给一个 choice，用来验证 correct 必须是 null 而不是 False。
+    """
+    if q.get("answerSource") == "unknown":
+        return 0                      # 用户选了，但没可靠答案可判
+    if q["number"] % 2 == 0:
+        return q["answer"]            # 偶数题：答对
+    opts = q["options"]
+    return (q["answer"] + 1) % len(opts)   # 奇数题：答错
+
+
+def _sample_correct(q: dict) -> bool | None:
+    """判题结果。
+
+    未知答案（answer=null 或 answerSource=unknown）时**必须**是 None：
+    没有可靠答案就不能判对错，否则等于给用户看编造的成绩。
+    """
+    if q.get("answer") is None or q.get("answerSource") == "unknown":
+        return None
+    return _sample_choice(q) == q["answer"]
+
+
 def build_questions(sentences: list[dict]) -> tuple[list[dict], list[dict]]:
     """返回（交卷前、交卷后）两份题目视图。
 
@@ -159,8 +184,18 @@ def build_questions(sentences: list[dict]) -> tuple[list[dict], list[dict]]:
             raise SystemExit(f"[question] 第 {q['number']} 题引用了不存在的句子：{evidence_id}")
         resolved = {
             **base,
+            # 交卷后每条结果要能回答三件事（A 的页面直接依赖）：
+            #   1. 用户选了什么      → choice
+            #   2. 正确答案是什么    → answer（未知答案时 null）
+            #   3. 这道题判对了吗    → correct（未知答案时必须 null，不能凭空判定）
+            # C 最初漏了 choice 与 correct —— A 照样例写页面会发现「看不到自己选了什么、
+            # 也看不到对错」，而这正是交卷页最核心的两项信息。
+            "choice": _sample_choice(q),
+            "correct": _sample_correct(q),
             "answer": q["answer"],
             "answerVisible": True,
+            "materialId": MATERIAL_ID,
+            "materialVersion": MATERIAL_VERSION,
             "evidenceRef": (
                 {
                     "sentenceId": evidence_id,
@@ -208,6 +243,24 @@ def validate_questions(before: list[dict], after: list[dict], sentences: list[di
         ev = q.get("evidenceRef")
         if ev and ev["sentenceId"] not in valid_ids:
             problems.append(f"第 {q['number']} 题证据句子不存在：{ev['sentenceId']}")
+
+        # 交卷后的结果必须能回答「选了什么 / 答案是什么 / 判对了吗」
+        # C 最初漏了 choice 与 correct，A 照样例写页面就看不到这两项。
+        for field in ("choice", "correct", "materialId", "materialVersion"):
+            if field not in q:
+                problems.append(f"第 {q['number']} 题交卷后结果缺少 {field}")
+        if q.get("answerSource") == "unknown":
+            if q.get("correct") is not None:
+                problems.append(
+                    f"第 {q['number']} 题来源 unknown，correct 必须是 null，实际 {q.get('correct')!r}"
+                )
+        elif isinstance(q.get("answer"), int):
+            expect = (q.get("choice") == q["answer"])
+            if q.get("correct") is not expect:
+                problems.append(
+                    f"第 {q['number']} 题 correct 与 choice/answer 不一致："
+                    f"choice={q.get('choice')} answer={q['answer']} correct={q.get('correct')}"
+                )
     if problems:
         raise SystemExit("[question] 题目校验失败：\n  - " + "\n  - ".join(problems))
 

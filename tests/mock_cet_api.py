@@ -433,6 +433,11 @@ def submit_attempt(payload: dict = Body(...)):
                 "number": q["number"],
                 "stem": q["stem"],
                 "options": q["options"],
+                # 交卷后每条结果都带材料身份与「答案可见」标志：
+                # A 可能用单条结果独立渲染，缺了 materialId/版本就无从核对一致性。
+                "materialId": material_id,
+                "materialVersion": q.get("materialVersion") or material_version,
+                "answerVisible": True,
                 "choice": choice,
                 "answer": answer,
                 "answerSource": q.get("answerSource"),
@@ -441,6 +446,11 @@ def submit_attempt(payload: dict = Body(...)):
                 "explanation": q.get("explanation", ""),
             }
         )
+        # 样例上的标注字段（developmentFixture / fixtureNote）要透传，
+        # 否则 A 无法在界面上区分「这是开发样例数据」还是真实内容。
+        for meta in ("developmentFixture", "fixtureNote"):
+            if meta in q:
+                results[-1][meta] = q[meta]
 
     # 检查与写入必须在同一把锁内，否则并发下两个请求都能通过上面的存在性检查。
     with _STATE_LOCK:

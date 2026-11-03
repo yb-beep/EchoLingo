@@ -235,10 +235,34 @@ def collect() -> dict:
         add("POST", f"/api/cet/reviews/{rid}/actions", {"action": act},
             f"复习动作 {act}")
 
-    # skip 单独取样：它带 needsPractice=true，是「跳过 ≠ 听懂」的落点，
-    # 只跑 start/pause/resume 会把这条语义漏掉。
+    # replace 需要「尚未纳入复习的其他卡点」才有东西可换。
+    # 先补造两处已完成练习，否则只会拿到 NO_REPLACEMENT 错误示例。
+    for extra_sec in (60.0, 86.0):
+        _mk = call("POST", "/api/cet/marks",
+                   {"materialId": MID, "materialVersion": "v1",
+                    "listeningSessionId": f"spec-rep-{extra_sec}",
+                    "pressedAtSec": extra_sec})[1] or {}
+        if _mk.get("markId"):
+            call("PATCH", f"/api/cet/marks/{_mk['markId']}",
+                 {"confirmedSentenceId": _mk.get("suggestedSentenceId")})
+            _pr = call("POST", "/api/cet/practices", {"markId": _mk["markId"]})[1] or {}
+            if _pr.get("practiceId"):
+                call("POST", f"/api/cet/practices/{_pr['practiceId']}/finish",
+                     {"feedback": "sound"})
+
     rv_detail = call("GET", f"/api/cet/reviews/{rid}")[1] or {}
     items = rv_detail.get("items") or []
+
+    # replace 必须在 skip/done 之前取样：那两个动作会改条目状态，
+    # 之后 replace 会因状态不符返回 409，规格里就成了错误示例。
+    if items:
+        tgt = rv_detail.get("currentItemId") or items[0].get("itemId")
+        add("POST", f"/api/cet/reviews/{rid}/actions",
+            {"action": "replace", "itemId": tgt},
+            "复习动作 replace（把当前条目换成另一个未纳入复习的卡点）")
+
+    # skip 单独取样：它带 needsPractice=true，是「跳过 ≠ 听懂」的落点，
+    # 只跑 start/pause/resume 会把这条语义漏掉。
     if items:
         add("POST", f"/api/cet/reviews/{rid}/actions",
             {"action": "skip", "itemId": items[0].get("itemId")},

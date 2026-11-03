@@ -2033,6 +2033,113 @@
     {
       "method": "POST",
       "path": "/api/cet/reviews/review-<id>/actions",
+      "note": "复习动作 replace（把当前条目换成另一个未纳入复习的卡点）",
+      "status": 200,
+      "body": {
+        "action": "replace",
+        "itemId": "item-001"
+      },
+      "response": {
+        "reviewId": {
+          "type": "string",
+          "sample": "review-<id>"
+        },
+        "status": {
+          "type": "string",
+          "sample": "active"
+        },
+        "budgetMs": {
+          "type": "integer",
+          "sample": 600000
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "sample": 3
+        },
+        "currentItemId": {
+          "type": "string",
+          "sample": "item-001"
+        },
+        "replacedFrom": {
+          "type": "array",
+          "items": {
+            "itemId": {
+              "type": "string",
+              "sample": "item-001"
+            },
+            "order": {
+              "type": "integer",
+              "sample": 1
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "markId": {
+              "type": "string",
+              "sample": "mark-<id>"
+            },
+            "sentenceId": {
+              "type": "string",
+              "sample": "s19"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "startSec": {
+              "type": "number",
+              "sample": 56.78
+            },
+            "endSec": {
+              "type": "number",
+              "sample": 62.28
+            },
+            "latestFeedback": {
+              "type": "string",
+              "sample": "sound"
+            },
+            "status": {
+              "type": "string",
+              "sample": "current"
+            },
+            "replacedFrom": {
+              "type": "object",
+              "fields": {
+                "practiceId": {
+                  "type": "string",
+                  "sample": "practice-<id>"
+                },
+                "sentenceId": {
+                  "type": "string",
+                  "sample": "s13"
+                }
+              }
+            }
+          },
+          "length": 1
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "<timestamp>"
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/reviews/review-<id>/actions",
       "note": "复习动作 skip（条目状态转 skipped，并带 needsPractice=true：跳过≠听懂）",
       "status": 200,
       "body": {
@@ -2086,7 +2193,7 @@
             },
             "sentenceId": {
               "type": "string",
-              "sample": "s13"
+              "sample": "s19"
             },
             "materialId": {
               "type": "string",
@@ -2098,11 +2205,11 @@
             },
             "startSec": {
               "type": "number",
-              "sample": 36.77
+              "sample": 56.78
             },
             "endSec": {
               "type": "number",
-              "sample": 41.41
+              "sample": 62.28
             },
             "latestFeedback": {
               "type": "string",
@@ -2111,6 +2218,19 @@
             "status": {
               "type": "string",
               "sample": "skipped"
+            },
+            "replacedFrom": {
+              "type": "object",
+              "fields": {
+                "practiceId": {
+                  "type": "string",
+                  "sample": "practice-<id>"
+                },
+                "sentenceId": {
+                  "type": "string",
+                  "sample": "s13"
+                }
+              }
             },
             "needsPractice": {
               "type": "boolean",

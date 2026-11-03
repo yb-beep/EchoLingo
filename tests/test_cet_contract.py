@@ -1803,6 +1803,78 @@ def test_ai_invalid_output_is_rejected_not_written():
     assert after["stepCount"] == before["stepCount"], "无效输出不得新增步骤"
 
 
+@pytest.mark.flow
+def test_review_replace_swaps_in_an_unlisted_item():
+    """任务书 7.2 明确要求「替换」：把当前条目换成一个尚未纳入的卡点。
+
+    典型场景：用户看到前三处，觉得某处已经会了，想换成另一处没练过的。
+    缺少这个能力，用户只能接受系统安排的三处。
+    """
+    reset_mock()
+    for pressed in (36.9, 60.0, 86.0, 98.5):
+        m = _make_mark_at(pressed)
+        _finish_practice(m, "sound")
+
+    review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
+    rid = review["reviewId"]
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    before = [i["practiceId"] for i in review["items"]]
+    target_item = review["items"][0]["itemId"]
+
+    r = api("POST", f"/api/cet/reviews/{rid}/actions",
+            json={"action": "replace", "itemId": target_item})
+    assert r.status_code == 200, (
+        f"「替换」应被支持（任务书 7.2），实际 {r.status_code}：{r.text[:200]}"
+    )
+    body = r.json()
+    after = [i["practiceId"] for i in body["items"]]
+
+    assert len(after) == 3, f"替换后条目数应仍为 3，实际 {len(after)}"
+    assert after[0] != before[0], "被替换的条目应换成新的练习"
+    assert after[0] not in before, "换入的必须是原本不在复习里的卡点"
+    # 其余条目不应被动到
+    assert after[1:] == before[1:], "替换只应影响目标条目，其他条目不能被改"
+
+
+@pytest.mark.flow
+def test_review_replace_keeps_provenance():
+    """替换后要能追溯原来那一处是什么（replacedFrom），否则用户无从回顾。"""
+    reset_mock()
+    for pressed in (36.9, 60.0, 86.0, 98.5):
+        m = _make_mark_at(pressed)
+        _finish_practice(m, "sound")
+    review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
+    rid = review["reviewId"]
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    original = review["items"][0]
+
+    body = api("POST", f"/api/cet/reviews/{rid}/actions",
+               json={"action": "replace", "itemId": original["itemId"]}).json()
+    row = body["items"][0]
+    prov = row.get("replacedFrom")
+    assert prov, "替换后应记录 replacedFrom，保留被换下的那一处"
+    assert prov.get("practiceId") == original["practiceId"], (
+        f"replacedFrom 应指向原练习 {original['practiceId']}，实际 {prov}"
+    )
+
+
+@pytest.mark.flow
+def test_review_replace_without_candidates_is_rejected():
+    """没有可替换的卡点时必须明确报错，不能静默什么都不做。"""
+    reset_mock()
+    m = _make_mark_at(36.9)
+    _finish_practice(m, "sound")   # 只有一处卡点
+    review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
+    rid = review["reviewId"]
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+
+    r = api("POST", f"/api/cet/reviews/{rid}/actions",
+            json={"action": "replace", "itemId": review["items"][0]["itemId"]})
+    assert r.status_code in (400, 409, 422), (
+        f"没有其他卡点可换时应明确报错，实际 {r.status_code}：{r.text[:150]}"
+    )
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

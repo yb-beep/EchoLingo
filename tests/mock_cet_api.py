@@ -1231,6 +1231,50 @@ def review_action(review_id: str, payload: dict = Body(...)):
             nxt["status"] = "current"
         return {**review, "developmentFixture": True}
 
+    if action == "replace":
+        # 任务书 7.2 明确要求「替换」：把当前条目换成一个尚未纳入的卡点。
+        # 场景：用户看到前三处，觉得某处已经会了，想换成另一处没练过的。
+        # 语义要点：
+        #   - 只能换「当前条目」（currentItemId），换别的条目意义不明
+        #   - 新条目必须来自尚未纳入复习的待练卡点；没有可换的就报错，不静默
+        #   - 被换下的条目不是「完成」，回到 pending（仍需练），保留在会话里
+        target_id = item_id or review.get("currentItemId")
+        target = next((i for i in review["items"] if i["itemId"] == target_id), None)
+        if target is None:
+            raise ScenarioFailure("ITEM_NOT_FOUND", 404, f"复习条目不存在：{target_id}")
+
+        in_review = {i["practiceId"] for i in review["items"]}
+        candidates = [
+            p for p in STATE["practices"].values()
+            if p["status"] == "complete"
+            and p.get("latestFeedback") in ("sound", "meaning")
+            and p["practiceId"] not in in_review
+        ]
+        if not candidates:
+            raise ScenarioFailure(
+                "NO_REPLACEMENT",
+                409,
+                "没有可替换的其他卡点",
+                "当前所有待练卡点都已在复习里；可以跳过该条目而不是替换。",
+            )
+        candidates.sort(key=lambda p: p.get("completedAt") or "")
+        pick = candidates[0]
+        sentence = find_sentence(pick["materialId"], pick["sentenceId"])
+
+        with _STATE_LOCK:
+            target.update({
+                "practiceId": pick["practiceId"],
+                "markId": pick["markId"],
+                "sentenceId": pick["sentenceId"],
+                "startSec": sentence["startSec"],
+                "endSec": sentence["endSec"],
+                "latestFeedback": pick.get("latestFeedback"),
+                "replacedFrom": target.get("replacedFrom") or {
+                    "practiceId": target["practiceId"], "sentenceId": target["sentenceId"],
+                },
+            })
+        return {**review, "developmentFixture": True}
+
     if action == "pause":
         review["status"] = "paused"
         return {**review, "developmentFixture": True}
@@ -1260,7 +1304,7 @@ def review_action(review_id: str, payload: dict = Body(...)):
     raise ScenarioFailure(
         "INVALID_ACTION",
         422,
-        f"复习动作无效：{action}（应为 start / switch / done / skip / pause / resume / tick）",
+        f"复习动作无效：{action}（应为 start / switch / done / skip / replace / pause / resume / tick）",
     )
 
 

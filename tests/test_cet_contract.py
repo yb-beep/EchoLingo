@@ -1366,6 +1366,95 @@ def test_not_found_does_not_leak_internal_paths():
         assert leak not in text, f"错误响应泄露了本机路径 {leak}：{text[:200]}"
 
 
+# ────────────────────────── flow：十分钟复习的时间预算 ──────────────────────────
+# 任务书 7.1 要求「预算和用时用毫秒」，10 分钟 = 600000ms。
+# C 实现了 budgetMs 与 budgetExhausted，但此前**没有任何测试验证预算耗尽后的行为**——
+# 这是真缺口：预算逻辑若写错，用户会遇到「时间到了但还能一直练」或「卡死」。
+# 以下三条锁定时长上限、耗尽后可正常结束、耗尽后不再计时。
+
+
+@pytest.mark.flow
+def test_review_budget_caps_effective_time():
+    """单次 tick 超过剩余预算时，有效用时必须被截断在预算内，不能超。"""
+    reset_mock()
+    m = _make_mark_at(36.9)
+    _finish_practice(m, "sound")
+    review = api("POST", "/api/cet/reviews",
+                 json={"maxItems": 3, "budgetMs": 10_000}).json()
+    rid = review["reviewId"]
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+
+    r = api("POST", f"/api/cet/reviews/{rid}/actions",
+            json={"action": "tick", "elapsedMs": 15_000, "visible": True})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["effectiveMs"] == 10_000, (
+        f"预算 10000ms，tick 15000ms 后有效用时应截断为 10000，实际 {body['effectiveMs']}"
+    )
+    assert body["countedMs"] == 10_000, "计入量应等于被截断后的量"
+    assert body["budgetExhausted"] is True, "用尽预算后应标记 budgetExhausted"
+
+
+@pytest.mark.flow
+def test_review_can_finish_after_budget_exhausted():
+    """预算耗尽不能把会话卡死 —— 仍必须能标记条目完成并结束。"""
+    reset_mock()
+    m = _make_mark_at(36.9)
+    _finish_practice(m, "sound")
+    review = api("POST", "/api/cet/reviews",
+                 json={"maxItems": 3, "budgetMs": 5_000}).json()
+    rid = review["reviewId"]
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions",
+        json={"action": "tick", "elapsedMs": 6_000, "visible": True})
+
+    item_id = review["items"][0]["itemId"]
+    done = api("POST", f"/api/cet/reviews/{rid}/actions",
+               json={"action": "done", "itemId": item_id})
+    assert done.status_code == 200, (
+        f"预算耗尽后仍应能结束条目，实际 {done.status_code}：{done.text[:200]}"
+    )
+    body = done.json()
+    assert body["status"] in CONTRACT_ENUMS["reviewStatus"], body["status"]
+    target = next(i for i in body["items"] if i["itemId"] == item_id)
+    assert target["status"] == "done"
+    assert body["effectiveMs"] == 5_000, "结束后有效用时不应变化"
+
+
+@pytest.mark.flow
+def test_review_no_more_time_counted_after_budget_exhausted():
+    """预算用尽后继续 tick，不应再累加有效用时（否则「十分钟」形同虚设）。"""
+    reset_mock()
+    m = _make_mark_at(36.9)
+    _finish_practice(m, "sound")
+    review = api("POST", "/api/cet/reviews",
+                 json={"maxItems": 3, "budgetMs": 5_000}).json()
+    rid = review["reviewId"]
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions",
+        json={"action": "tick", "elapsedMs": 6_000, "visible": True})
+
+    again = api("POST", f"/api/cet/reviews/{rid}/actions",
+                json={"action": "tick", "elapsedMs": 3_000, "visible": True})
+    assert again.status_code == 200, again.text
+    body = again.json()
+    assert body["effectiveMs"] == 5_000, (
+        f"预算已用尽，再 tick 不应累加，实际 {body['effectiveMs']}"
+    )
+    assert body["countedMs"] == 0, "预算外的时间不应计入"
+
+
+@pytest.mark.flow
+def test_review_budget_rejects_non_positive():
+    """预算是毫秒正整数；0 或负数必须被拒，否则「十分钟」无从约束。"""
+    reset_mock()
+    for bad in (0, -1000):
+        r = api("POST", "/api/cet/reviews", json={"maxItems": 3, "budgetMs": bad})
+        assert r.status_code in (400, 422), (
+            f"budgetMs={bad} 应被拒绝，实际 {r.status_code}：{r.text[:150]}"
+        )
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

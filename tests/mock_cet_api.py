@@ -682,10 +682,33 @@ def practice_event(practice_id: str, payload: dict = Body(...)):
 
     # 只有「前台 + 可见 + 有播放量」才计入有效学习时长；
     # AI 等待、后台、暂停由前端不打 end 事件或 visible=false 表示。
+    # 播完门槛（任务书 7.2 明确要求）：
+    # 只有「实际播放时长」达到该步骤音频时长的这个比例，才算一次有效播放。
+    # 否则用户快速点一下跳过也会被计成学习时间，时长统计就失去意义。
+    PLAY_THROUGH_RATIO = 0.8
+
+    def _step_audio_ms(step_id: Optional[str]) -> Optional[int]:
+        """取该步骤应播音频的时长（毫秒）。取不到就返回 None（不做门槛判定）。"""
+        for st in practice["steps"]:
+            if st["stepId"] != step_id:
+                continue
+            pb = st.get("playback") or {}
+            start, end = pb.get("startSec"), pb.get("endSec")
+            if isinstance(start, (int, float)) and isinstance(end, (int, float)):
+                return int(max(0.0, float(end) - float(start)) * 1000)
+        return None
+
     with _STATE_LOCK:
         counted = 0
-        if etype in ("end", "interrupt") and visible and played_ms:
-            counted = int(played_ms)
+        played = float(played_ms or 0)
+        expected_ms = _step_audio_ms(step_id) or _step_audio_ms(practice["currentStepId"])
+        played_through = (
+            expected_ms is None
+            or expected_ms <= 0
+            or played >= expected_ms * PLAY_THROUGH_RATIO
+        )
+        if etype in ("end", "interrupt") and visible and played > 0 and played_through:
+            counted = int(played)
             practice["effectiveMs"] += counted
 
             STATE["practiceEvents"][event_id] = {
@@ -708,6 +731,12 @@ def practice_event(practice_id: str, payload: dict = Body(...)):
             "eventId": event_id,
             "countedMs": counted,
             "effectiveMs": practice["effectiveMs"],
+            "playThrough": {
+                "playedMs": int(played),
+                "expectedMs": expected_ms,
+                "ratio": PLAY_THROUGH_RATIO,
+                "passed": played_through,
+            },
             "developmentFixture": True,
         }
 

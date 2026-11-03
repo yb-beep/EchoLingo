@@ -673,17 +673,19 @@ def test_playback_events_dedupe_and_count_time():
     mark = _create_confirmed_mark()
     pid = api("POST", f"/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
     event_id = _unique("pev")
+    # playedMs 必须达到「播完门槛」（句子 s13 约 4.6s，80% ≈ 3.7s），
+    # 否则会被正确地判为未播完、不计时 —— 见 test_playback_under_threshold_not_counted。
     payload = {
         "eventId": event_id,
         "type": "end",
         "stepId": "step-x",
-        "playedMs": 3000,
+        "playedMs": 4200,
         "visible": True,
     }
     first = api("POST", f"/api/cet/practices/{pid}/events", json=payload)
     assert first.status_code == 200, first.text
     after_first = first.json()["effectiveMs"]
-    assert after_first >= 3000, f"前台播放应计时，实际 {after_first}"
+    assert after_first >= 4200, f"前台播放应计时，实际 {after_first}"
 
     second = api("POST", f"/api/cet/practices/{pid}/events", json=payload)
     assert second.status_code == 200, second.text
@@ -1548,6 +1550,64 @@ def test_mark_snaps_to_boundary_belonging_sentence(sentences):
         assert got == probe["sentenceId"], (
             f"{probe['sentenceId']} 的{label} {t}s 应吸到本句，实际吸到 {got}"
         )
+
+
+@pytest.mark.flow
+def test_playback_under_threshold_not_counted():
+    """任务书 7.2 要求「播完门槛」：没播完的播放不能计入有效学习时长。
+
+    C 此前把所有 playedMs 直接累加 —— 用户点一下跳过也被算成学习时间，
+    时长统计就失去意义。这条锁定「未达门槛不计时」。
+    """
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+
+    # 只播 500ms，远低于句子时长（~4.6s）的 80%
+    r = api("POST", f"/api/cet/practices/{pid}/events", json={
+        "eventId": _unique("thr-low"), "type": "end", "playedMs": 500, "visible": True,
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["countedMs"] == 0, (
+        f"只播 500ms（未达播完门槛）不应计时，实际计了 {body['countedMs']}ms"
+    )
+    assert body["effectiveMs"] == 0, f"有效用时应仍为 0，实际 {body['effectiveMs']}"
+
+
+@pytest.mark.flow
+def test_playback_above_threshold_is_counted():
+    """播到足够比例后必须正常计时，否则用户真的练了却不被记录。"""
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+
+    r = api("POST", f"/api/cet/practices/{pid}/events", json={
+        "eventId": _unique("thr-high"), "type": "end", "playedMs": 4000, "visible": True,
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["countedMs"] == 4000, (
+        f"播 4000ms（超过门槛）应计时，实际 {body['countedMs']}ms"
+    )
+    assert body["effectiveMs"] == 4000
+
+
+@pytest.mark.flow
+def test_playback_threshold_reports_expected_duration():
+    """门槛判定要可核对：响应里应给出期望时长与实际比例。"""
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+    body = api("POST", f"/api/cet/practices/{pid}/events", json={
+        "eventId": _unique("thr-info"), "type": "end", "playedMs": 1000, "visible": True,
+    }).json()
+
+    pt = body.get("playThrough")
+    assert pt, "响应应带 playThrough 说明门槛判定过程（便于前端与测试核对）"
+    assert pt.get("expectedMs"), "应给出该步骤音频期望时长"
+    assert 0 < pt.get("ratio", 0) <= 1, f"门槛比例应在 (0,1]，实际 {pt.get('ratio')}"
+    assert pt.get("passed") is False, "播 1000ms 不应通过门槛"
 
 
 def test_report_target_environment():

@@ -285,6 +285,34 @@ def check_bind_scope() -> None:
 # ────────────────────────── 5. 模拟/真实标注 ──────────────────────────
 
 
+def check_answer_provenance() -> None:
+    """任务书 11 节：参考答案来源与原文来源由 C 核对。
+
+    作为一个独立脚本跑，避免审计脚本自己解析答案文档（职责太杂）。
+    这里只调用它并汇报结果。
+    """
+    script = ROOT / "scripts" / "qa" / "verify_answer_provenance.py"
+    if not script.exists():
+        record("warn", "答案来源核对", "未找到 verify_answer_provenance.py")
+        return
+    try:
+        import subprocess as _sp
+        r = _sp.run([sys.executable, str(script)], cwd=ROOT,
+                    capture_output=True, text=True, timeout=120)
+        ok = r.returncode == 0
+        # 取「结论：」那一行，而不是最后一行（最后一行是说明文字）
+        lines = [l.strip() for l in (r.stdout or "").strip().splitlines() if l.strip()]
+        summary = next((l for l in lines if l.startswith("结论：")),
+                       lines[-1] if lines else "")
+        record("ok" if ok else "block", "答案来源核对", summary)
+        if not ok:
+            for line in (r.stdout or "").splitlines():
+                if line.strip().startswith("·"):
+                    record("block", "  不一致", line.strip()[1:].strip())
+    except Exception as exc:  # noqa: BLE001
+        record("warn", "答案来源核对", f"执行失败：{exc}")
+
+
 def check_fixture_labeling() -> None:
     fx = ROOT / "tests" / "fixtures" / "cet"
     if not fx.exists():
@@ -328,6 +356,7 @@ def main() -> int:
     check_media_scope()
     check_bind_scope()
     check_fixture_labeling()
+    check_answer_provenance()
 
     blocks = [r for r in results if r["level"] == "block"]
     warns = [r for r in results if r["level"] == "warn"]

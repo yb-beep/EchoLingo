@@ -1610,6 +1610,69 @@ def test_playback_threshold_reports_expected_duration():
     assert pt.get("passed") is False, "播 1000ms 不应通过门槛"
 
 
+@pytest.mark.flow
+def test_marks_survive_relist_stable_ids():
+    """任务书 7.2 要求验证标记的「刷新恢复」：重新查询列表时，
+    标记必须还在、ID 不变、原始按键秒数与确认句子都不丢。
+
+    这条模拟用户刷新回听页：页面重新 GET /marks，数据要能完整还原，
+    否则用户刚标的卡点一刷新就没了。
+    """
+    reset_mock()
+    session = _unique("listen-refresh")
+    created = api("POST", "/api/cet/marks", json={
+        "materialId": MATERIAL_ID,
+        "materialVersion": MATERIAL_VERSION,
+        "listeningSessionId": session,
+        "pressedAtSec": 36.9,
+    })
+    assert created.status_code in (200, 201), created.text
+    mark = created.json()
+    mid = mark["markId"]
+
+    # 用户确认句子
+    api("PATCH", f"/api/cet/marks/{mid}",
+        json={"confirmedSentenceId": mark["suggestedSentenceId"]})
+
+    # 「刷新」= 重新查询列表
+    first = api("GET", "/api/cet/marks", params={"materialId": MATERIAL_ID})
+    assert first.status_code == 200, first.text
+    again = api("GET", "/api/cet/marks", params={"materialId": MATERIAL_ID})
+    assert again.status_code == 200, again.text
+
+    def locate(payload):
+        return next((m for m in payload["items"] if m["markId"] == mid), None)
+
+    a, b = locate(first.json()), locate(again.json())
+    assert a is not None, "刷新后标记消失了"
+    assert b is not None, "第二次刷新后标记消失"
+    assert a["markId"] == b["markId"] == mid, "标记 ID 在多次查询间必须稳定"
+    assert a["pressedAtSec"] == pytest.approx(36.9, abs=0.01), "原始按键秒数不能丢"
+    assert a["confirmedSentenceId"] == mark["suggestedSentenceId"], "确认句子不能丢"
+    assert a["confirmedAtSec"], "确认时间应保留，供事后追查"
+
+
+@pytest.mark.flow
+def test_marks_from_multiple_sessions_are_all_listed():
+    """同一材料下的多次听音会话，标记都要能查回（不能只留最后一次）。"""
+    reset_mock()
+    mids = []
+    for i in range(3):
+        r = api("POST", "/api/cet/marks", json={
+            "materialId": MATERIAL_ID,
+            "materialVersion": MATERIAL_VERSION,
+            "listeningSessionId": _unique(f"listen-multi-{i}"),
+            "pressedAtSec": 20.0 + i * 15,
+        })
+        assert r.status_code in (200, 201), r.text
+        mids.append(r.json()["markId"])
+
+    listing = api("GET", "/api/cet/marks", params={"materialId": MATERIAL_ID}).json()
+    listed_ids = {m["markId"] for m in listing["items"]}
+    missing = [m for m in mids if m not in listed_ids]
+    assert not missing, f"这些标记没被列出：{missing}"
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

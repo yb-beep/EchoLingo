@@ -81,6 +81,55 @@ def service_alive() -> bool:
         return False
 
 
+def delete_lesson(lesson_id) -> bool:
+    try:
+        status, _ = req("DELETE", f"/api/v2/lessons/library/{lesson_id}")
+        return status in (200, 204)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def clean_lessons(all_: bool) -> None:
+    """把课程库收敛到已知状态。
+
+    为什么需要：C 调试时会反复导入同一段音频（验证导入链路、验证 Whisper），
+    库里会积累多节同名课，导致「第一节是哪门课」不确定，
+    依赖排序的检查就会飘。
+
+    --clean     保留最早一节预置课，删掉重复的
+    --clean-all 全删（会失去做有内容 E2E 的数据，需重新导入）
+    """
+    lessons = list_lessons()
+    if not lessons:
+        print("OK  课程库已为空")
+        return
+    seeded = [l for l in lessons if SEED_MARK_FILENAME_HINT in str(l.get("title") or "")]
+    if all_:
+        targets = lessons
+        print(f"清理：删除全部 {len(targets)} 节课")
+    else:
+        # 只处理预置课 + 重复的同名导入课，保留最早一节预置课
+        seeded.sort(key=lambda l: l.get("id") or 0)
+        targets = seeded[1:] if len(seeded) > 1 else []
+        dup_media = {}
+        for l in lessons:
+            t = str(l.get("title") or "")
+            key = (t, l.get("source_type"))
+            dup_media.setdefault(key, []).append(l)
+        for key, group in dup_media.items():
+            group.sort(key=lambda l: l.get("id") or 0)
+            targets.extend(group[1:])
+        if not targets:
+            print("OK  无重复课程需要清理")
+            return
+        print(f"清理：删除 {len(targets)} 节重复课（保留最早各一节）")
+    for l in targets:
+        lid = l.get("id")
+        ok = delete_lesson(lid)
+        print(f"  {'OK ' if ok else 'X  '} 删除 id={lid} {str(l.get('title'))[:28]} ({l.get('source_type')})")
+    print(f"OK  清理完成，剩余 {len(list_lessons())} 节")
+
+
 def list_lessons() -> list[dict]:
     status, body = req("GET", "/api/v2/lessons/library")
     if status != 200 or not isinstance(body, dict):
@@ -92,6 +141,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="底座数据预置")
     parser.add_argument("--check", action="store_true", help="只检查，不导入")
     parser.add_argument("--force", action="store_true", help="已有同名课也再导一份")
+    parser.add_argument("--clean", action="store_true",
+                        help="先删除重复的预置课（保留最早一节），把库收敛到已知状态")
+    parser.add_argument("--clean-all", action="store_true",
+                        help="删除全部预置课与测试导入课，回到空库")
     parser.add_argument("--timeout", type=int, default=90, help="等待导入完成的秒数")
     args = parser.parse_args()
 
@@ -103,6 +156,12 @@ def main() -> int:
         print(f"X  底座未运行或不可达：{BASE}\n   先启动：scripts/qa/start_cet.sh")
         return 1
     print("OK  底座可达")
+
+    if args.clean or args.clean_all:
+        clean_lessons(args.clean_all)
+        if args.clean_all:
+            print("（库已清空；不带 --check 再跑一次可重新导入预置课）")
+            return 0
 
     lessons = list_lessons()
     print(f"OK  当前课程数：{len(lessons)}")

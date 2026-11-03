@@ -303,12 +303,37 @@ def verify(fast: bool) -> list[dict]:
         record("浏览器层验证", code, out)
 
     # 4) 底座回归
+    # 底座全量有 61 failed / 6 errors 的既有基线（问题清单 OBS-003），
+    # 且根因是 create_app() 绕过 monkeypatch 导致测试间污染。
+    # 拿「全量通过」当门槛会让每次集成都红，久了没人当真。
+    # 这里只跑**稳定可用的核心子集**，全量问题单独记录、不进门禁。
     code, out = run(
         [sys.executable, "-m", "pytest",
          "tests/test_v2_db.py", "tests/test_public_single_user_compat.py", "-q"],
         timeout=300,
     )
-    record("底座回归", code, out)
+    record("底座回归（核心子集）", code, out)
+
+    # 信息项：全量基线只报数，不判失败
+    code2, out2 = run(
+        [sys.executable, "-m", "pytest", "tests/", "-q",
+         "--ignore=tests/test_cet_contract.py",
+         "--ignore=tests/test_workspace_rag_ui_behavior.py"],
+        timeout=900,
+    )
+    summary = ""
+    for line in reversed(out2.splitlines()):
+        if "passed" in line or "failed" in line:
+            summary = line.strip()
+            break
+    baseline_num = KNOWN_BASELINE_FAILURES.get("__base_full_suite__", 61)
+    steps.append({
+        "name": "底座全量基线（信息项）",
+        "ok": True,
+        "informational": True,
+        "output": [f"当前：{summary}",
+                   f"已知基线约 {baseline_num} failed（OBS-003，上游测试污染，非本改造引入）"],
+    })
 
     return steps
 

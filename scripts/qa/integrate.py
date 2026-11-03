@@ -354,11 +354,16 @@ def main() -> int:
             code, out = git_proxyless("fetch", remote, "--prune")
             print(f"  {remote}: {'OK' if code == 0 else '失败 ' + out.splitlines()[0][:60]}")
 
-    ok, msg = ensure_integration_branch(args.base)
-    print(f"\n== 集成分支 ==\n  {msg}")
-    if not ok:
-        return 2
-    print(f"  HEAD: {head_sha()[:12]}")
+    # --verify-only 只验证当前分支，不应顺手建/切集成分支 ——
+    # 一个「只读」开关产生副作用，会让人不敢用它。
+    if args.verify_only:
+        print(f"\n== 验证当前分支 ==\n  {current_branch()} @ {head_sha()[:12]}")
+    else:
+        ok, msg = ensure_integration_branch(args.base)
+        print(f"\n== 集成分支 ==\n  {msg}")
+        if not ok:
+            return 2
+        print(f"  HEAD: {head_sha()[:12]}")
 
     merges: list[dict] = []
     if args.merge:

@@ -1276,11 +1276,32 @@
         },
         "countedMs": {
           "type": "integer",
-          "sample": 2000
+          "sample": 0
         },
         "effectiveMs": {
           "type": "integer",
-          "sample": 2000
+          "sample": 0
+        },
+        "playThrough": {
+          "type": "object",
+          "fields": {
+            "playedMs": {
+              "type": "integer",
+              "sample": 2000
+            },
+            "expectedMs": {
+              "type": "integer",
+              "sample": 4639
+            },
+            "ratio": {
+              "type": "number",
+              "sample": 0.8
+            },
+            "passed": {
+              "type": "boolean",
+              "sample": false
+            }
+          }
         },
         "developmentFixture": {
           "type": "boolean",
@@ -1315,7 +1336,7 @@
         },
         "effectiveMs": {
           "type": "integer",
-          "sample": 2000
+          "sample": 0
         },
         "reviewItem": {
           "type": "object",
@@ -1404,7 +1425,7 @@
             },
             "effectiveMs": {
               "type": "integer",
-              "sample": 2000
+              "sample": 0
             }
           },
           "length": 1

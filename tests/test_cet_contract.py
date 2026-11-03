@@ -1875,6 +1875,98 @@ def test_review_replace_without_candidates_is_rejected():
     )
 
 
+# ────────────────────────── flow：T08 的通过标准 ──────────────────────────
+# T08「AI 超时或不可用」的通过标准是：
+#   本地帮助、重试和保存可用，**等待不计练习时长**。
+# 前两项已有测试；后两项（等待不计时、失败后仍能保存）此前**没有任何断言**。
+# 行为当时是对的，但没有测试保护的正确行为，下次改动就可能被破坏。
+
+
+@pytest.mark.flow
+def test_ai_waiting_does_not_count_toward_practice_time():
+    """T08：等待模型期间不能计入练习时长。
+
+    否则用户等待越久「练习时长」越长，与真实学习量脱节；
+    也让「十分钟复习」的预算被空等消耗掉。
+    """
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+    before = api("GET", f"/api/cet/practices/{pid}").json()["effectiveMs"]
+
+    t = threading.Thread(target=lambda: api(
+        "POST", f"/api/cet/practices/{pid}/next",
+        json={"feedback": "meaning", "aiMode": "slow", "aiPendingSec": 1.5}), daemon=True)
+    t.start()
+    time.sleep(0.3)
+    during = api("GET", f"/api/cet/practices/{pid}").json()["effectiveMs"]
+    t.join(timeout=12)
+    after = api("GET", f"/api/cet/practices/{pid}").json()["effectiveMs"]
+
+    assert during == before, (
+        f"等待期间不应计时：等待中 {during}，等待前 {before}"
+    )
+    assert after == before, (
+        f"模型返回后也不应把等待时间补进来：{after} vs {before}"
+    )
+
+
+@pytest.mark.flow
+def test_save_works_after_ai_failure():
+    """T08：模型不可用或超时后，保存卡点必须仍然可用。
+
+    用户练到一半模型挂了，不能因此丢掉这次练习 ——
+    否则「AI 不可用」会连带毁掉本地数据。
+    """
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+
+    fail = api("POST", f"/api/cet/practices/{pid}/next",
+               json={"feedback": "sound", "aiMode": "fail"})
+    assert fail.status_code >= 400, f"模拟失败应返回错误，实际 {fail.status_code}"
+
+    # 模型失败后：本地动作仍可用
+    local = api("POST", f"/api/cet/practices/{pid}/local", json={"action": "slow"})
+    assert local.status_code == 200, (
+        f"模型失败后本地动作应仍可用，实际 {local.status_code}：{local.text[:150]}"
+    )
+
+    # 模型失败后：保存卡点仍可用
+    fin = api("POST", f"/api/cet/practices/{pid}/finish", json={"feedback": "sound"})
+    assert fin.status_code == 200, (
+        f"模型失败后应仍能保存卡点，实际 {fin.status_code}：{fin.text[:200]}"
+    )
+    assert fin.json()["status"] == "complete"
+
+
+@pytest.mark.flow
+def test_retry_after_ai_failure_works():
+    """T08：失败后允许重试，且重试成功后应能正常推进。
+
+    若失败把练习锁死在错误态，用户就没法继续了。
+    """
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+
+    api("POST", f"/api/cet/practices/{pid}/next",
+        json={"feedback": "meaning", "aiMode": "fail"})
+
+    # 重试（这次不注入异常）
+    retry = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "meaning"})
+    assert retry.status_code == 200, (
+        f"失败后重试应成功，实际 {retry.status_code}：{retry.text[:200]}"
+    )
+    step = retry.json()["step"]
+    assert step.get("action"), "重试成功后应返回有效步骤"
+
+    st = api("GET", f"/api/cet/practices/{pid}/ai-status").json()
+    assert st["aiRequest"]["status"] == "complete", (
+        f"重试成功后请求状态应为 complete，实际 {st['aiRequest']['status']}"
+    )
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

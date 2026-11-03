@@ -263,6 +263,17 @@ def verify(fast: bool) -> list[dict]:
     )
     record("契约样例自校验", code, out)
 
+    # 前端可测性约定：缺失不算失败（A 未交付时必然缺失），但要报出来
+    code, out = run(
+        [sys.executable, "scripts/qa/check_frontend_contract.py"], timeout=120
+    )
+    steps.append({
+        "name": "前端可测性约定",
+        "ok": True,               # 信息项，不作为门禁
+        "informational": True,
+        "output": out.strip().splitlines()[-6:] if out.strip() else [],
+    })
+
     if not fast:
         code, out = run(
             [sys.executable, "scripts/qa/browser_check.py"], timeout=300
@@ -306,7 +317,8 @@ def write_report(payload: dict) -> Path:
 def print_verification(steps: list[dict]) -> None:
     print("\n== 验证结果 ==")
     for s in steps:
-        mark = "OK" if s["ok"] else "X "
+        mark = "信息" if s.get("informational") else ("OK" if s["ok"] else "X ")
+        mark = f"{mark:>2}" if s.get("informational") else mark
         print(f"  [{mark}] {s['name']}")
         for kf in s.get("knownFailures", []):
             print(f"        [已知基线] {kf['case']}  → {kf['bug']}（不阻塞集成）")

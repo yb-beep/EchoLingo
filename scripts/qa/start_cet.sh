@@ -48,7 +48,26 @@ echo "== 四六级听力黑匣子 · 启动 =="
 
 # ── 1. 解释器 ──
 if [ ! -x "$PY" ]; then
-  fail "未找到虚拟环境解释器 ${PY}。先按 docs/qa/启动与测试说明.md 建 .venv（需 Python 3.11）。"
+  cat >&2 <<'VENVHELP'
+X  未找到虚拟环境解释器 .venv/bin/python
+
+这是新克隆的仓库第一次启动时的正常状态（.venv 不入库）。按顺序执行：
+
+  # 1) 建 Python 3.11 虚拟环境（系统自带 python3 是 3.9，不能用）
+  python3.11 -m venv .venv
+  .venv/bin/pip install -U pip
+  .venv/bin/pip install -r requirements.txt -r requirements-dev.txt   # 首次约 10-15 分钟
+
+  # 2) 复制配置
+  cp .env.example .env
+
+  # 3) 再跑本脚本
+  scripts/qa/start_cet.sh --mock
+
+若本机没有 python3.11：brew install python@3.11，或用 uv python install 3.11。
+详见 docs/qa/启动与测试说明.md 第 2 节。
+VENVHELP
+  exit 1
 fi
 info "解释器：$PY ($("$PY" -V 2>&1))"
 

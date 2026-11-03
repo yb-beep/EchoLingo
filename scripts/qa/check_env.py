@@ -183,7 +183,8 @@ def check_audio() -> None:
             "block",
             "共同联调音频",
             f"未找到 {AUDIO_NAME}",
-            f"把样例音频放到 {MEDIA_DIR / AUDIO_NAME}，或设置 CET_QA_MEDIA 指向它。"
+            "跑 .venv/bin/python scripts/qa/prepare_audio.py 查找并核对；"
+            f"或把音频放到 {MEDIA_DIR / AUDIO_NAME}，或设置 CET_QA_MEDIA 指向它。"
             "音频按仓库 .gitignore 不入库，靠本地路径映射 + SHA-256 核对。",
         )
         return
@@ -273,6 +274,25 @@ def check_service(skip: bool) -> None:
         return
     record(True, "info", "底座服务探测", f"{base}/health -> {status}")
     env = health.get("environment", {})
+
+    # 关键：报告的是「这个端口上跑的那个服务」，不一定是本目录的服务。
+    # 一台机器同时有多份副本时（比如验收另一个目录），不核对归属会得出
+    # 「我的环境没问题」的错误结论 —— 实际查的是别人的库。
+    svc_py = str((env.get("python") or {}).get("executable") or "")
+    svc_db = str((env.get("sqlite") or {}).get("path") or "")
+    belongs = svc_py.startswith(str(ROOT)) or svc_db.startswith(str(ROOT))
+    if not belongs and (svc_py or svc_db):
+        record(
+            False,
+            "warn",
+            "  服务归属",
+            f"端口 {DEFAULT_PORT} 上运行的不是本目录的服务",
+            f"本目录 {ROOT}；该服务来自 {svc_db or svc_py}。"
+            "下面的服务侧数据属于另一个副本，不能代表本目录环境。"
+            "换目录验收时先停掉旧服务，或换端口：PORT=5174 scripts/qa/start_cet.sh --mock",
+        )
+    else:
+        record(True, "info", "  服务归属", "该服务来自本目录")
     py = env.get("python", {})
     record(True, "info", "  服务侧 Python", py.get("version", "?").split(" ")[0])
     record(bool(env.get("ffmpeg", {}).get("available")), "block", "  服务侧 FFmpeg",

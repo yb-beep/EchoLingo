@@ -997,6 +997,54 @@ def test_concurrent_stale_and_fresh_next_do_not_corrupt_state():
     assert cur.get("action") in ("replay", "slow", "chunk", "explain", "transfer"),         f"当前步骤动作非法：{cur.get('action')}"
 
 
+# ────────────────────────── fixture：Mock 与契约样例一致性 ──────────────────────────
+# 任务书明确警告：「自己编写接口实现和断言时，还需按团队契约核对，
+# 两者一致本身不足以证明真实后端正确。」
+# 这条测试防的是更隐蔽的一种情况：Mock 悄悄偏离了契约样例，
+# 于是 Mock 测试全绿，但 A 照着样例写前端反而对不上。
+# 只在 Mock 上跑 —— 真实服务本就不该与开发样例逐字相同。
+
+
+@pytest.mark.contract
+@pytest.mark.skipif(not IS_MOCK, reason="只校验 Mock 是否忠实实现契约样例")
+def test_mock_matches_fixture_material_list():
+    mock = api("GET", "/api/cet/materials").json()
+    fixture_doc = fixture("materials.json")
+
+    mock_item = next((m for m in mock["items"] if m["materialId"] == MATERIAL_ID), None)
+    fix_item = next((m for m in fixture_doc["items"] if m["materialId"] == MATERIAL_ID), None)
+    assert mock_item and fix_item, "两边都应包含样例材料"
+
+    # 契约里定义的字段必须逐一相同；Mock 可多返回字段，但不能少或改值
+    missing = [k for k in fix_item if k not in mock_item]
+    assert not missing, f"Mock 缺少契约字段：{missing}"
+    mismatched = {
+        k: (fix_item[k], mock_item[k])
+        for k in fix_item
+        if k != "developmentFixture" and fix_item[k] != mock_item[k]
+    }
+    assert not mismatched, f"Mock 与契约样例取值不一致：{mismatched}"
+
+
+@pytest.mark.contract
+@pytest.mark.skipif(not IS_MOCK, reason="只校验 Mock 是否忠实实现契约样例")
+def test_mock_questions_hide_same_fields_as_fixture():
+    """交卷前字段集合必须与样例完全一致 —— 多返回 answer 就是泄题。"""
+    mock = api("GET", f"/api/cet/materials/{MATERIAL_ID}/questions").json()
+    fix_doc = fixture("questions_before_attempt.json")
+
+    mock_by_id = {q["questionId"]: q for q in mock["items"]}
+    for fq in fix_doc["items"]:
+        mq = mock_by_id.get(fq["questionId"])
+        assert mq is not None, f"Mock 缺少题目 {fq['questionId']}"
+        # 样例里没有的敏感字段，Mock 也不能有
+        for banned in ("answer", "evidenceRef", "explanation"):
+            if banned not in fq:
+                assert banned not in mq, (
+                    f"契约样例刻意不含 {banned}，但 Mock 返回了它（题 {fq['questionId']}）"
+                )
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

@@ -243,7 +243,7 @@
           "type": "boolean",
           "sample": true
         },
-        "explanation": {
+        "fixtureNote": {
           "type": "array",
           "items": {
             "questionId": {
@@ -265,6 +265,18 @@
                 "_sample": "They have got their work done."
               },
               "length": 4
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "answerVisible": {
+              "type": "boolean",
+              "sample": true
             },
             "choice": {
               "type": "integer",
@@ -309,6 +321,14 @@
             "explanation": {
               "type": "string",
               "sample": "we're both displaying signs of weariness 直接给出收工理由，对应 They both look tired。"
+            },
+            "developmentFixture": {
+              "type": "boolean",
+              "sample": true
+            },
+            "fixtureNote": {
+              "type": "string",
+              "sample": "故意保留 answer=null / answerSource=unknown：验证接口与页面不推断、不填充、判题返回 null。"
             }
           },
           "length": 2

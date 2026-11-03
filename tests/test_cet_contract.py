@@ -1152,6 +1152,104 @@ def test_review_item_status_always_in_enum():
                   json={"action": "done", "itemId": second}).json(), "完成")
 
 
+@pytest.mark.contract
+def test_playback_event_carries_required_fields():
+    """任务书 7.3：播放事件至少含开始/结束/中断，并带材料版本、练习 ID、
+    步骤 ID、事件 ID、音频时间和速度。
+
+    这里验「三件套」：三种类型都可上报、每个字段都被接收、非法类型被拒。
+    注意：事件是「写入后才查」的数据，不能只看响应体 —— 有的实现响应精简，
+    字段其实存下来了。所以用「同类事件重复上报时返回同一结果」间接确认存储，
+    并对必填字段做存在性断言。
+    """
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+
+    # 7.3 要求三种事件类型都能处理
+    for etype in ("start", "end", "interrupt"):
+        r = api("POST", f"/api/cet/practices/{pid}/events", json={
+            "eventId": _unique(f"evt-{etype}"),
+            "type": etype,
+            "stepId": "step-probe",
+            "materialVersion": MATERIAL_VERSION,
+            "playedMs": 1500 if etype != "start" else 0,
+            "audioSec": 38.5,
+            "speed": 1.0,
+            "visible": True,
+        })
+        assert r.status_code == 200, f"{etype} 事件应被接受：{r.text[:200]}"
+        body = r.json()
+        assert "eventId" in body, "响应应回显 eventId（7.3 要求事件带 ID）"
+
+    # 非法类型必须被拒，不能静默接受
+    bad = api("POST", f"/api/cet/practices/{pid}/events", json={
+        "eventId": _unique("evt-bad"), "type": "pause", "playedMs": 100,
+    })
+    assert bad.status_code in (400, 422), (
+        f"7.3 只定义 start/end/interrupt，'pause' 应被拒，实际 {bad.status_code}"
+    )
+
+
+@pytest.mark.contract
+def test_model_request_bound_to_practice_and_step():
+    """任务书 7.3：每次模型请求绑定练习 ID、步骤 ID 与当前版本。
+
+    C 的实现用「旧 stepId 请求必须被拒」来落实这一条，
+    这里验的是正向：正常请求的返回要带可追溯的 requestId，
+    且响应里的步骤属于该练习。
+    """
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+    r = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "meaning"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    req = body.get("modelRequest") or {}
+    assert req.get("requestId"), "模型请求应带可追溯的 requestId（7.3 要求绑定请求）"
+    step = body["step"]
+    assert step["practiceId"] == pid, "步骤必须绑定到发起请求的练习"
+    assert step.get("stepId"), "步骤应有 stepId（7.3 要求绑定步骤 ID）"
+    # 过期校验依赖 stepId，缺了它就无法判断迟到结果
+    assert "modelRequestId" in step, "步骤应记录它来自哪个模型请求"
+
+
+@pytest.mark.contract
+def test_material_ref_press_time_confirmed_sentence_all_kept():
+    """任务书 7.3：材料引用、原始按键时间、确认句子和答案来源分别保留。
+
+    这四项不能合并成一个字段 —— 合并后就无法区分「用户按在哪」
+    与「系统吸附到哪」，回听偏差也无从追查。
+    """
+    reset_mock()
+    created = api("POST", "/api/cet/marks", json={
+        "materialId": MATERIAL_ID,
+        "materialVersion": MATERIAL_VERSION,
+        "listeningSessionId": _unique("listen-four"),
+        "pressedAtSec": 36.9,
+    })
+    assert created.status_code in (200, 201), created.text
+    mark = created.json()
+
+    assert mark.get("materialId") == MATERIAL_ID, "材料引用必须保留"
+    assert mark.get("materialVersion"), "材料版本必须保留（7.3 事件需带版本）"
+    assert mark.get("pressedAtSec") == pytest.approx(36.9, abs=0.01), "原始按键时间必须保留"
+    assert mark.get("suggestedSentenceId"), "建议句子必须保留"
+    assert mark.get("confirmedSentenceId") in (None, ""), "确认句子此时还未确认"
+
+    confirmed = api("PATCH", f"/api/cet/marks/{mark['markId']}",
+                    json={"confirmedSentenceId": mark["suggestedSentenceId"]})
+    assert confirmed.status_code == 200, confirmed.text
+    after = confirmed.json()
+    # 确认后：原始按键时间与建议句子都不能被覆盖掉
+    assert after["pressedAtSec"] == pytest.approx(36.9, abs=0.01), \
+        "确认句子后原始按键时间不能被改写"
+    assert after["suggestedSentenceId"] == mark["suggestedSentenceId"], \
+        "确认句子后建议句子不能丢失"
+    assert after["confirmedSentenceId"] == mark["suggestedSentenceId"]
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

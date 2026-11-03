@@ -93,7 +93,7 @@ CET_API_BASE=http://127.0.0.1:5173 .venv/bin/python -m pytest tests/test_cet_con
 
 **这是最重要的一条**：同一套断言既能打 Mock 也能打真实服务，你不需要另写测试。
 
-当前真实服务是 `38 failed / 4 passed / 8 skipped` —— 全部因为 `/api/cet/*` 还没实现。
+当前真实服务是 `41 failed / 4 passed / 8 skipped` —— 全部因为 `/api/cet/*` 还没实现。
 每实现一批，对应用例就会转绿。
 
 ### 2. 先看「还差哪些接口」，照着实现

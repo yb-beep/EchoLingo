@@ -1455,6 +1455,55 @@ def test_review_budget_rejects_non_positive():
         )
 
 
+@pytest.mark.flow
+def test_review_caps_items_at_three():
+    """任务书要求「最多三处」。有 4 处卡点时，必须只取 3 处。
+
+    C 之前只把 maxItems=3 当参数传，从未验证上限真的生效 ——
+    若实现忽略上限，用户会遇到「说好十分钟复习三处，结果列了十处」。
+    """
+    reset_mock()
+    # 造 4 处已完成的卡点
+    for pressed in (36.9, 60.0, 86.0, 98.5):
+        m = _make_mark_at(pressed)
+        _finish_practice(m, "sound")
+
+    pending = api("GET", "/api/cet/review-items",
+                  params={"materialId": MATERIAL_ID}).json()["items"]
+    assert len(pending) >= 4, f"应至少有 4 处待复习，实际 {len(pending)}"
+
+    review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
+    assert len(review["items"]) == 3, (
+        f"最多的三处：4 处卡点应只取 3 条，实际 {len(review['items'])}"
+    )
+    # order 应为 1,2,3 且不重复
+    orders = [i["order"] for i in review["items"]]
+    assert orders == [1, 2, 3], f"条目顺序应为 1,2,3，实际 {orders}"
+    # 每条都要绑定真实练习 ID
+    for item in review["items"]:
+        assert item.get("practiceId"), f"条目 {item['itemId']} 未绑定练习 ID"
+
+
+@pytest.mark.flow
+def test_review_items_are_deterministically_ordered():
+    """同样的数据重复创建复习，条目顺序必须一致（不能随机挑三处）。
+
+    否则用户每次进复习看到的都是不同的一组，无法形成复习节奏。
+    """
+    reset_mock()
+    for pressed in (36.9, 60.0, 86.0, 98.5):
+        m = _make_mark_at(pressed)
+        _finish_practice(m, "sound")
+
+    first = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
+    second = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
+    first_ids = [i["practiceId"] for i in first["items"]]
+    second_ids = [i["practiceId"] for i in second["items"]]
+    assert first_ids == second_ids, (
+        f"同样数据两次创建复习，条目应一致；实际 {first_ids} vs {second_ids}"
+    )
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

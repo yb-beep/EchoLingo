@@ -98,7 +98,19 @@ const detail = payload && (payload.detail || payload.error_info || payload);
 C 已加契约测试 `test_error_response_is_parseable_by_one_rule` 保证：
 **所有错误响应都能被这一条规则解析出可显示信息**，不会出现三种字段都没有的裸错误体。
 
-### 5. 几个已经替你验过的点
+### 5. ⚠️ 句子数量基准要与 B 对齐（已发现差异）
+
+C 实测底座 Whisper 对同一段音频切出 **37 句**，而 C 的契约样例是 **32 句** ——
+文字一致、覆盖同一音频，**只是句边界粒度不同**（底座把 "Oh, come on, Jeff."
+也单独成句）。
+
+**契约测试按 32 句断言。** 所以：
+- 若 B 的后端直接用底座 Whisper 产物（37 句），你按契约写页面就会错位；
+- 请与 B 确认后端最终返回多少句，再决定页面按哪套基准。
+
+详见问题清单 **OBS-002**。
+
+### 6. 几个已经替你验过的点
 
 - **交卷前绝不返回答案**：`GET /materials/{id}/questions` 的样例里没有 `answer`/`evidenceRef`/`explanation`，契约测试双向断言。你按这个写就不会泄题。
 - **未知答案要保留 unknown**：有道题 `answerSource=unknown`，判题返回 `correct: null`。**不要在页面上推断或填充。**

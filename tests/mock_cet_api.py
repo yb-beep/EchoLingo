@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import json
 import os
 import secrets
@@ -47,6 +48,13 @@ HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures" / "cet"
 
 SCENARIOS = ("normal", "empty", "slow", "error")
+
+# AI 请求状态机（任务书 7.2 末句：「异步模型操作需要可查询状态或可取消的实现」）
+#   idle → pending → complete
+#                  → failed     （超时/上游错误；errorCode 说明原因）
+#                  → cancelled  （用户主动取消）
+#                  → invalid    （模型输出不符合契约，B 需处理「模型输出无效」）
+AI_STATES = ("idle", "pending", "complete", "failed", "cancelled", "invalid")
 SLOW_DELAY_SEC = float(os.environ.get("CET_MOCK_SLOW_SEC", "2.5"))
 
 # 本地音频路径：音频不入库，通过环境变量或默认本地目录映射。
@@ -786,6 +794,61 @@ def practice_next(practice_id: str, payload: dict = Body(...)):
     STATE["requestSeq"] += 1
     request_id = f"req-{STATE['requestSeq']:04d}"
 
+    # 模型异常场景注入：通过请求体或服务级变量触发，
+    # 让 A 能在不接真实模型的情况下验「等待/失败/输出无效/取消」四种状态。
+    ai_mode = str(payload.get("aiMode") or "").strip().lower()
+
+    # 先进入 pending —— 前端据此显示「正在处理」，并可调用取消接口
+    with _STATE_LOCK:
+        practice["aiRequest"] = {
+            "status": "pending",
+            "requestId": request_id,
+            "errorCode": None,
+            "startedAt": now_iso(),
+        }
+
+    if ai_mode == "slow":
+        # 模拟模型慢响应：保持 pending 一段时间，期间可查询状态、可取消。
+        # 这是「可查询状态 / 可取消」能被真实验证的前提 ——
+        # 若 pending 瞬间结束，两个功能都无从演示。
+        await_s = float(payload.get("aiPendingSec") or 3.0)
+        await_s = min(max(await_s, 0.5), 30.0)
+        time.sleep(await_s)
+        # 睡醒后若已被取消，直接返回当前状态，不要覆盖成 complete
+        if (practice.get("aiRequest") or {}).get("status") == "cancelled":
+            raise ScenarioFailure(
+                "REQUEST_CANCELLED",
+                409,
+                "该请求已被用户取消",
+                "取消后不再返回结果；如需继续请重新发起。",
+            )
+
+    if ai_mode == "fail":
+        with _STATE_LOCK:
+            practice["aiRequest"].update({
+                "status": "failed", "errorCode": "MODEL_TIMEOUT",
+                "message": "（开发样例）模拟模型超时", "finishedAt": now_iso(),
+            })
+        raise ScenarioFailure(
+            "MODEL_TIMEOUT",
+            504,
+            "模型请求超时（模拟）",
+            "可用本地动作（慢放/短语回听/看原文）继续，或稍后重试。",
+        )
+
+    if ai_mode == "invalid":
+        with _STATE_LOCK:
+            practice["aiRequest"].update({
+                "status": "invalid", "errorCode": "MODEL_OUTPUT_INVALID",
+                "message": "（开发样例）模型输出不符合契约", "finishedAt": now_iso(),
+            })
+        raise ScenarioFailure(
+            "MODEL_OUTPUT_INVALID",
+            502,
+            "模型输出无效（模拟）",
+            "后端应拒绝该输出并回退到本地动作，不得把无效内容写进步骤。",
+        )
+
     playback, text_visible, payload_extra, candidate_ref = None, False, {}, None
     if action == "slow":
         playback = {"startSec": sentence["startSec"], "endSec": sentence["endSec"], "speed": 0.75}
@@ -832,7 +895,10 @@ def practice_next(practice_id: str, payload: dict = Body(...)):
     practice["steps"].append(step)
     practice["currentStepId"] = step["stepId"]
     practice["feedbackHistory"].append(feedback)
-    practice["aiRequest"] = {"status": "complete", "requestId": request_id, "errorCode": None}
+    practice["aiRequest"] = {
+        "status": "complete", "requestId": request_id, "errorCode": None,
+        "finishedAt": now_iso(),
+    }
     practice["updatedAt"] = now_iso()
     return {
         "practiceId": practice_id,
@@ -840,6 +906,74 @@ def practice_next(practice_id: str, payload: dict = Body(...)):
         "modelRequest": {"requestId": request_id, "status": "complete"},
         "developmentFixture": True,
         "modelOutputIsFixture": True,
+    }
+
+
+@app.post("/api/cet/practices/{practice_id}/ai-cancel", tags=["practices"])
+def cancel_ai_request(practice_id: str, payload: dict = Body(default={})):
+    """取消进行中的模型请求（任务书 7.2 末句要求「可查询状态或可取消」）。
+
+    语义：
+    - 只有 pending 状态可取消；已 complete/failed 的请求返回 409（太晚，结果已定）
+    - 取消后旧 requestId 的结果不得再覆盖界面（前端应忽略迟到结果）
+    - 取消是幂等的：重复取消同一请求返回同一结果，不报错
+    """
+    practice = STATE["practices"].get(practice_id)
+    if practice is None:
+        raise ScenarioFailure("PRACTICE_NOT_FOUND", 404, f"练习不存在：{practice_id}")
+
+    req_id = payload.get("requestId")
+    ai = practice.get("aiRequest") or {}
+    if req_id and ai.get("requestId") and req_id != ai["requestId"]:
+        # 取消的是过期请求 —— 不能动当前请求
+        raise ScenarioFailure(
+            "STALE_REQUEST",
+            409,
+            f"要取消的请求 {req_id} 不是当前请求 {ai.get('requestId')}",
+            "只应取消当前进行中的请求。",
+        )
+
+    status = ai.get("status")
+    if status == "cancelled":
+        return {"practiceId": practice_id, "aiRequest": ai,
+                "idempotent": True, "developmentFixture": True}
+    if status != "pending":
+        raise ScenarioFailure(
+            "INVALID_STATE",
+            409,
+            f"当前请求状态为 {status}，只有 pending 可取消",
+            "结果已产生，不能再取消；如不满意请重新发起请求。",
+        )
+
+    with _STATE_LOCK:
+        ai.update({
+            "status": "cancelled",
+            "errorCode": "USER_CANCELLED",
+            "message": "用户取消",
+            "finishedAt": now_iso(),
+        })
+        practice["aiRequest"] = ai
+        practice["updatedAt"] = now_iso()
+    return {
+        "practiceId": practice_id,
+        "aiRequest": ai,
+        "idempotent": False,
+        "developmentFixture": True,
+    }
+
+
+@app.get("/api/cet/practices/{practice_id}/ai-status", tags=["practices"])
+def get_ai_status(practice_id: str):
+    """查询模型请求状态（可查询状态的实现）。前端据此显示等待/失败/已取消。"""
+    practice = STATE["practices"].get(practice_id)
+    if practice is None:
+        raise ScenarioFailure("PRACTICE_NOT_FOUND", 404, f"练习不存在：{practice_id}")
+    ai = practice.get("aiRequest") or {"status": "idle", "requestId": None}
+    return {
+        "practiceId": practice_id,
+        "aiRequest": ai,
+        "allowedStates": list(AI_STATES),
+        "developmentFixture": True,
     }
 
 

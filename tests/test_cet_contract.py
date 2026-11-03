@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 import json
 import os
 import time
@@ -52,6 +53,8 @@ CONTRACT_ENUMS = {
     "practiceStatus": {"active", "complete"},
     "reviewItemStatus": {"pending", "current", "done", "skipped"},
     "reviewStatus": {"ready", "active", "paused", "complete"},
+    # 任务书 7.2 末句：「异步模型操作需要可查询状态或可取消的实现」
+    "aiRequestStatus": {"idle", "pending", "complete", "failed", "cancelled", "invalid"},
 }
 
 
@@ -1671,6 +1674,133 @@ def test_marks_from_multiple_sessions_are_all_listed():
     listed_ids = {m["markId"] for m in listing["items"]}
     missing = [m for m in mids if m not in listed_ids]
     assert not missing, f"这些标记没被列出：{missing}"
+
+
+# ────────────────────────── flow：模型请求状态与取消 ──────────────────────────
+# 任务书 7.2 末句明确：「异步模型操作需要可查询状态或可取消的实现」。
+# C 原先只有 idle/complete 两态，既无法告诉用户「正在处理」，也无法取消。
+# 以下覆盖 pending 可查、可取消、取消后迟到结果被拒、失败/输出无效两种异常。
+
+
+@pytest.mark.flow
+def test_ai_request_starts_pending_and_is_queryable():
+    """发起后应能被查询到 pending —— 前端据此显示「正在处理」。"""
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+
+    def fire():
+        api("POST", f"/api/cet/practices/{pid}/next",
+            json={"feedback": "meaning", "aiMode": "slow", "aiPendingSec": 1.2})
+
+    t = threading.Thread(target=fire, daemon=True)
+    t.start()
+    time.sleep(0.5)
+
+    st = api("GET", f"/api/cet/practices/{pid}/ai-status")
+    assert st.status_code == 200, st.text
+    body = st.json()
+    status = body["aiRequest"]["status"]
+    assert status in CONTRACT_ENUMS["aiRequestStatus"], f"状态 {status!r} 不合契约枚举"
+    assert status == "pending", f"请求进行中应为 pending，实际 {status}"
+    assert body["aiRequest"].get("requestId"), "pending 时应能拿到 requestId 以便取消"
+    t.join(timeout=10)
+
+
+@pytest.mark.flow
+def test_ai_request_can_be_cancelled():
+    """pending 时必须可取消；取消后状态转 cancelled 且带原因。"""
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+
+    t = threading.Thread(target=lambda: api(
+        "POST", f"/api/cet/practices/{pid}/next",
+        json={"feedback": "meaning", "aiMode": "slow", "aiPendingSec": 1.5}), daemon=True)
+    t.start()
+    time.sleep(0.5)
+
+    r = api("POST", f"/api/cet/practices/{pid}/ai-cancel", json={})
+    assert r.status_code == 200, f"pending 应可取消：{r.text[:200]}"
+    ai = r.json()["aiRequest"]
+    assert ai["status"] == "cancelled", f"取消后应为 cancelled，实际 {ai['status']}"
+    assert ai.get("errorCode") == "USER_CANCELLED", "取消应带原因码，便于前端区分"
+
+    # 重复取消幂等，不报错
+    again = api("POST", f"/api/cet/practices/{pid}/ai-cancel", json={})
+    assert again.status_code == 200, f"重复取消应幂等：{again.text[:150]}"
+    t.join(timeout=10)
+
+
+@pytest.mark.flow
+def test_cancelled_request_late_result_is_rejected():
+    """取消后迟到的模型结果不得覆盖当前状态（任务书 T09）。"""
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+
+    holder: dict = {}
+
+    def fire():
+        holder["resp"] = api(
+            "POST", f"/api/cet/practices/{pid}/next",
+            json={"feedback": "meaning", "aiMode": "slow", "aiPendingSec": 1.5})
+
+    t = threading.Thread(target=fire, daemon=True)
+    t.start()
+    time.sleep(0.4)
+    api("POST", f"/api/cet/practices/{pid}/ai-cancel", json={})
+    t.join(timeout=15)
+
+    resp = holder.get("resp")
+    assert resp is not None, "请求线程未返回"
+    assert resp.status_code in (409, 422), (
+        f"取消后迟到的结果应被拒绝，实际 {resp.status_code}：{resp.text[:200]}"
+    )
+    # 状态必须仍是 cancelled，不能被覆盖成 complete
+    st = api("GET", f"/api/cet/practices/{pid}/ai-status").json()
+    assert st["aiRequest"]["status"] == "cancelled", (
+        f"迟到结果不得覆盖状态，实际 {st['aiRequest']['status']}"
+    )
+
+
+@pytest.mark.flow
+def test_ai_failure_is_reported_with_code():
+    """模型超时必须返回可判定错误码，且状态转 failed（供前端显示重试）。"""
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+
+    r = api("POST", f"/api/cet/practices/{pid}/next",
+            json={"feedback": "sound", "aiMode": "fail"})
+    assert r.status_code >= 400, f"模拟失败应返回错误，实际 {r.status_code}"
+    body = r.json()
+    info = body.get("error_info") or {}
+    assert info.get("code"), f"错误应带 code 供前端分支：{body}"
+
+    st = api("GET", f"/api/cet/practices/{pid}/ai-status").json()
+    assert st["aiRequest"]["status"] == "failed", (
+        f"失败后状态应为 failed，实际 {st['aiRequest']['status']}"
+    )
+
+
+@pytest.mark.flow
+def test_ai_invalid_output_is_rejected_not_written():
+    """模型输出无效时必须拒绝，不能把无效内容写进步骤（任务书 D2 要求）。"""
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", f"/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+    before = api("GET", f"/api/cet/practices/{pid}").json()
+
+    r = api("POST", f"/api/cet/practices/{pid}/next",
+            json={"feedback": "meaning", "aiMode": "invalid"})
+    assert r.status_code >= 400, f"输出无效应报错，实际 {r.status_code}"
+
+    after = api("GET", f"/api/cet/practices/{pid}").json()
+    assert after["currentStepId"] == before["currentStepId"], (
+        "输出无效时不得推进步骤，否则用户会看到半成品内容"
+    )
+    assert after["stepCount"] == before["stepCount"], "无效输出不得新增步骤"
 
 
 def test_report_target_environment():

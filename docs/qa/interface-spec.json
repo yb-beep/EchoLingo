@@ -1156,6 +1156,150 @@
       }
     },
     {
+      "method": "GET",
+      "path": "/api/cet/practices/practice-<id>/ai-status",
+      "note": "查询模型请求状态（idle/pending/complete/failed/cancelled/invalid）",
+      "status": 200,
+      "body": null,
+      "response": {
+        "practiceId": {
+          "type": "string",
+          "sample": "practice-<id>"
+        },
+        "aiRequest": {
+          "type": "object",
+          "fields": {
+            "status": {
+              "type": "string",
+              "sample": "complete"
+            },
+            "requestId": {
+              "type": "string",
+              "sample": "req-0003"
+            },
+            "errorCode": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "finishedAt": {
+              "type": "string",
+              "sample": "<timestamp>"
+            }
+          }
+        },
+        "allowedStates": {
+          "type": "array",
+          "items": {
+            "_type": "string",
+            "_sample": "idle"
+          },
+          "length": 6
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/cet/practices/practice-<id>/ai-status",
+      "note": "查询 pending 状态（请求进行中）",
+      "status": 200,
+      "body": null,
+      "response": {
+        "practiceId": {
+          "type": "string",
+          "sample": "practice-<id>"
+        },
+        "aiRequest": {
+          "type": "object",
+          "fields": {
+            "status": {
+              "type": "string",
+              "sample": "pending"
+            },
+            "requestId": {
+              "type": "string",
+              "sample": "req-0004"
+            },
+            "errorCode": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "startedAt": {
+              "type": "string",
+              "sample": "<timestamp>"
+            }
+          }
+        },
+        "allowedStates": {
+          "type": "array",
+          "items": {
+            "_type": "string",
+            "_sample": "idle"
+          },
+          "length": 6
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/practices/practice-<id>/ai-cancel",
+      "note": "取消进行中的模型请求（仅 pending 可取消；取消后迟到结果被拒）",
+      "status": 200,
+      "body": {},
+      "response": {
+        "practiceId": {
+          "type": "string",
+          "sample": "practice-<id>"
+        },
+        "aiRequest": {
+          "type": "object",
+          "fields": {
+            "status": {
+              "type": "string",
+              "sample": "cancelled"
+            },
+            "requestId": {
+              "type": "string",
+              "sample": "req-0004"
+            },
+            "errorCode": {
+              "type": "string",
+              "sample": "USER_CANCELLED"
+            },
+            "startedAt": {
+              "type": "string",
+              "sample": "<timestamp>"
+            },
+            "message": {
+              "type": "string",
+              "sample": "用户取消"
+            },
+            "finishedAt": {
+              "type": "string",
+              "sample": "<timestamp>"
+            }
+          }
+        },
+        "idempotent": {
+          "type": "boolean",
+          "sample": false
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
       "method": "POST",
       "path": "/api/cet/practices/practice-<id>/local",
       "note": "本地动作（模型不可用时的兜底）",

@@ -196,6 +196,26 @@ def collect() -> dict:
         "AI 下一步（feedback=meaning → 解释）")
     add("POST", f"/api/cet/practices/{pid}/next", {"feedback": "heard"},
         "AI 下一步（feedback=heard → 换句检查）")
+    # 模型请求状态与取消（任务书 7.2 末句要求「可查询状态或可取消」）
+    # 先正常查一次（此时是 complete，展示成功态结构）
+    add("GET", f"/api/cet/practices/{pid}/ai-status", None,
+        "查询模型请求状态（idle/pending/complete/failed/cancelled/invalid）")
+
+    # 取消要真正走通：先在后台发起一个慢请求制造 pending，再取消它。
+    # 否则采样时请求早已完成，ai-cancel 只会返回 409，规格里就是错误示例。
+    import threading as _th
+    def _fire_slow():
+        call("POST", f"/api/cet/practices/{pid}/next",
+             {"feedback": "meaning", "aiMode": "slow", "aiPendingSec": 1.5})
+    _t = _th.Thread(target=_fire_slow, daemon=True)
+    _t.start()
+    import time as _tm
+    _tm.sleep(0.5)
+    add("GET", f"/api/cet/practices/{pid}/ai-status", None,
+        "查询 pending 状态（请求进行中）")
+    add("POST", f"/api/cet/practices/{pid}/ai-cancel", {},
+        "取消进行中的模型请求（仅 pending 可取消；取消后迟到结果被拒）")
+    _t.join(timeout=6)
     add("POST", f"/api/cet/practices/{pid}/local", {"action": "chunk"},
         "本地动作（模型不可用时的兜底）")
     add("POST", f"/api/cet/practices/{pid}/events",

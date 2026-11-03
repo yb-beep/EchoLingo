@@ -1,0 +1,239 @@
+{
+  "materialId": "cet6-202512-conv2",
+  "materialVersion": "v1",
+  "title": "2025年12月六级第一套 · Conversation Two",
+  "level": "cet6",
+  "section": "Conversation Two",
+  "provenance": {
+    "audioOrigin": "用户提供的 2025年12月六级听力第一套 Conversation Two 切分单文件（full.mp3）",
+    "sentenceOrigin": "旧项目 EchoLingo 迁移前的对齐产物 sentences.json（ASR+人工校对 sentence 边界），来源标注 src=official",
+    "notVerified": "句边界未经 C 人耳逐句复核；仅程序覆盖检查 meanExactCoverage=0.945"
+  },
+  "durationSec": 105.486,
+  "sentences": [
+    {
+      "sentenceId": "s01",
+      "index": 1,
+      "startSec": 0.01,
+      "endSec": 3.49,
+      "text": "It's getting late and we're both displaying signs of weariness."
+    },
+    {
+      "sentenceId": "s02",
+      "index": 2,
+      "startSec": 3.55,
+      "endSec": 7.01,
+      "text": "I think we should call it a day and meet again tomorrow morning."
+    },
+    {
+      "sentenceId": "s03",
+      "index": 3,
+      "startSec": 7.28,
+      "endSec": 9.6,
+      "text": "We are so close."
+    },
+    {
+      "sentenceId": "s04",
+      "index": 4,
+      "startSec": 9.78,
+      "endSec": 11.46,
+      "text": "Don't you think we're almost done?"
+    },
+    {
+      "sentenceId": "s05",
+      "index": 5,
+      "startSec": 11.7,
+      "endSec": 13.68,
+      "text": "Let's do two more hours, please."
+    },
+    {
+      "sentenceId": "s06",
+      "index": 6,
+      "startSec": 14.72,
+      "endSec": 16.5,
+      "text": "One hour, then I'm going home."
+    },
+    {
+      "sentenceId": "s07",
+      "index": 7,
+      "startSec": 16.76,
+      "endSec": 17.5,
+      "text": "OK, fine."
+    },
+    {
+      "sentenceId": "s08",
+      "index": 8,
+      "startSec": 17.5,
+      "endSec": 23.96,
+      "text": "I think we are making good progress and that with a few more amendments we will be all done."
+    },
+    {
+      "sentenceId": "s09",
+      "index": 9,
+      "startSec": 24.48,
+      "endSec": 26.12,
+      "text": "I'm sure looking forward to it."
+    },
+    {
+      "sentenceId": "s10",
+      "index": 10,
+      "startSec": 26.28,
+      "endSec": 28.14,
+      "text": "I'm so tired of this project."
+    },
+    {
+      "sentenceId": "s11",
+      "index": 11,
+      "startSec": 28.64,
+      "endSec": 29.34,
+      "text": "Don't get me wrong."
+    },
+    {
+      "sentenceId": "s12",
+      "index": 12,
+      "startSec": 30.09,
+      "endSec": 36.22,
+      "text": "Don't get me wrong—it's a great professional opportunity for me and a milestone for the company, but it's just been so long."
+    },
+    {
+      "sentenceId": "s13",
+      "index": 13,
+      "startSec": 36.77,
+      "endSec": 41.41,
+      "text": "Yeah, two months working on nothing but the same contract is a little tough."
+    },
+    {
+      "sentenceId": "s14",
+      "index": 14,
+      "startSec": 41.59,
+      "endSec": 46.07,
+      "text": "Nevertheless, I think that with a bit of luck we'll be done by next week."
+    },
+    {
+      "sentenceId": "s15",
+      "index": 15,
+      "startSec": 47.24,
+      "endSec": 48.86,
+      "text": "You must be delusional."
+    },
+    {
+      "sentenceId": "s16",
+      "index": 16,
+      "startSec": 49.06,
+      "endSec": 50.0,
+      "text": "You don't think so?"
+    },
+    {
+      "sentenceId": "s17",
+      "index": 17,
+      "startSec": 50.32,
+      "endSec": 51.28,
+      "text": "No chance."
+    },
+    {
+      "sentenceId": "s18",
+      "index": 18,
+      "startSec": 51.68,
+      "endSec": 56.62,
+      "text": "Sections four, five, eight and nine still have to be aligned in the new framework."
+    },
+    {
+      "sentenceId": "s19",
+      "index": 19,
+      "startSec": 57.28,
+      "endSec": 62.28,
+      "text": "Then we need to proofread the whole thing and make sure all selling points are watertight."
+    },
+    {
+      "sentenceId": "s20",
+      "index": 20,
+      "startSec": 62.54,
+      "endSec": 65.51,
+      "text": "But that will all take no more than a couple of days."
+    },
+    {
+      "sentenceId": "s21",
+      "index": 21,
+      "startSec": 65.84,
+      "endSec": 67.01,
+      "text": "I wasn't finished."
+    },
+    {
+      "sentenceId": "s22",
+      "index": 22,
+      "startSec": 67.22,
+      "endSec": 71.23,
+      "text": "When we are done with it and send it upstairs, what do you think will happen? / W: What?"
+    },
+    {
+      "sentenceId": "s23",
+      "index": 23,
+      "startSec": 71.6,
+      "endSec": 72.08,
+      "text": "What?"
+    },
+    {
+      "sentenceId": "s24",
+      "index": 24,
+      "startSec": 72.34,
+      "endSec": 74.64,
+      "text": "They'll argue about it for like a month."
+    },
+    {
+      "sentenceId": "s25",
+      "index": 25,
+      "startSec": 75.11,
+      "endSec": 79.84,
+      "text": "There's always going to be the odd board member who intervenes and demands rectifications be made."
+    },
+    {
+      "sentenceId": "s26",
+      "index": 26,
+      "startSec": 80.39,
+      "endSec": 85.25,
+      "text": "They might think they're being helpful but in reality they're being obstructive and hampering progress."
+    },
+    {
+      "sentenceId": "s27",
+      "index": 27,
+      "startSec": 85.69,
+      "endSec": 88.61,
+      "text": "Oh Jeff, you're too preoccupied and cynical."
+    },
+    {
+      "sentenceId": "s28",
+      "index": 28,
+      "startSec": 89.17,
+      "endSec": 90.99,
+      "text": "It won't be anywhere as bad as that."
+    },
+    {
+      "sentenceId": "s29",
+      "index": 29,
+      "startSec": 90.99,
+      "endSec": 91.57,
+      "text": "You'll see."
+    },
+    {
+      "sentenceId": "s30",
+      "index": 30,
+      "startSec": 92.06,
+      "endSec": 97.66,
+      "text": "The entire managerial hierarchy wants to see this project implemented as soon as possible and the board too is virtually unanimous in its support."
+    },
+    {
+      "sentenceId": "s31",
+      "index": 31,
+      "startSec": 98.05,
+      "endSec": 101.23,
+      "text": "And the board, too, is virtually unanimous in its support."
+    },
+    {
+      "sentenceId": "s32",
+      "index": 32,
+      "startSec": 101.8,
+      "endSec": 105.28,
+      "text": "Go on then, let's stop there and meet up again, same time tomorrow."
+    }
+  ]
+}

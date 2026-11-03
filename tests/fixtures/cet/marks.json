@@ -1,0 +1,27 @@
+{
+  "developmentFixture": true,
+  "items": [
+    {
+      "markId": "mark-001",
+      "listeningSessionId": "listen-20261103-c1",
+      "materialId": "cet6-202512-conv2",
+      "materialVersion": "v1",
+      "pressedAtSec": 36.9,
+      "suggestedSentenceId": "s13",
+      "confirmedSentenceId": "s13",
+      "confirmedAtSec": null,
+      "createdAt": "2026-11-03T12:00:00Z"
+    },
+    {
+      "markId": "mark-002",
+      "listeningSessionId": "listen-20261103-c1",
+      "materialId": "cet6-202512-conv2",
+      "materialVersion": "v1",
+      "pressedAtSec": 86.0,
+      "suggestedSentenceId": "s27",
+      "confirmedSentenceId": "s28",
+      "confirmedAtSec": null,
+      "createdAt": "2026-11-03T12:00:00Z"
+    }
+  ]
+}

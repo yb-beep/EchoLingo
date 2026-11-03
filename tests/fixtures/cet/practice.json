@@ -1,0 +1,23 @@
+{
+  "developmentFixture": true,
+  "practice": {
+    "practiceId": "practice-001",
+    "markId": "mark-001",
+    "materialId": "cet6-202512-conv2",
+    "materialVersion": "v1",
+    "sentenceId": "s13",
+    "status": "active",
+    "currentStepId": "step-003",
+    "feedbackHistory": [
+      "sound"
+    ],
+    "effectiveMs": 42000,
+    "aiRequest": {
+      "status": "idle",
+      "requestId": null,
+      "errorCode": null
+    },
+    "createdAt": "2026-11-03T12:01:00Z",
+    "updatedAt": "2026-11-03T12:04:00Z"
+  }
+}

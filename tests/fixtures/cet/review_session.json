@@ -1,0 +1,40 @@
+{
+  "developmentFixture": true,
+  "session": {
+    "reviewId": "review-001",
+    "status": "active",
+    "budgetMs": 600000,
+    "effectiveMs": 95000,
+    "currentItemId": "item-001",
+    "maxItems": 3,
+    "items": [
+      {
+        "itemId": "item-001",
+        "order": 1,
+        "practiceId": "practice-001",
+        "markId": "mark-001",
+        "sentenceId": "s13",
+        "materialId": "cet6-202512-conv2",
+        "materialVersion": "v1",
+        "startSec": 36.77,
+        "endSec": 41.41,
+        "latestFeedback": "sound",
+        "status": "current"
+      },
+      {
+        "itemId": "item-002",
+        "order": 2,
+        "practiceId": "practice-002",
+        "markId": "mark-002",
+        "sentenceId": "s28",
+        "materialId": "cet6-202512-conv2",
+        "materialVersion": "v1",
+        "startSec": 89.17,
+        "endSec": 90.99,
+        "latestFeedback": "meaning",
+        "status": "pending"
+      }
+    ],
+    "startedAt": "2026-11-03T12:10:00Z"
+  }
+}

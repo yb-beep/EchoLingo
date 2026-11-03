@@ -1,0 +1,86 @@
+{
+  "materialId": "cet6-202512-conv2",
+  "materialVersion": "v1",
+  "questions": [
+    {
+      "questionId": "q-05",
+      "number": 5,
+      "stem": "Why does the man suggest they call it a day?",
+      "options": [
+        "They have got their work done.",
+        "They both look tired",
+        "They can meet again tomorrow anyway.",
+        "They are both anxious to go home."
+      ],
+      "answer": 1,
+      "answerSource": "user_provided_pdf",
+      "evidenceSentenceId": "s01",
+      "explanation": "we're both displaying signs of weariness 直接给出收工理由，对应 They both look tired。",
+      "note": "用户提供的整卷 PDF 及答案解析 PDF，第24页；未经官方认证"
+    },
+    {
+      "questionId": "q-06",
+      "number": 6,
+      "stem": "What does the woman say is a little tough?",
+      "options": [
+        "The board members' insufficient support.",
+        "Two months devoted to the same contract.",
+        "Working two months without any progress.",
+        "The man's long concentration on the project."
+      ],
+      "answer": 1,
+      "answerSource": "user_provided_pdf",
+      "evidenceSentenceId": "s13",
+      "explanation": "two months working on nothing but the same contract is a little tough 对应 B。",
+      "note": "用户提供的整卷 PDF 及答案解析 PDF，第25页；未经官方认证"
+    },
+    {
+      "questionId": "q-07",
+      "number": 7,
+      "stem": "What does the man say the woman must be in thinking they’ll finish by next week?",
+      "options": [
+        "Unprofessional.",
+        "Inspirational.",
+        "Exceptional.",
+        "Delusional."
+      ],
+      "answer": 3,
+      "answerSource": "user_provided_pdf",
+      "evidenceSentenceId": "s15",
+      "explanation": "男方直接回 You must be delusional，对应 D。",
+      "note": "用户提供的整卷 PDF 及答案解析 PDF，第26页；未经官方认证"
+    },
+    {
+      "questionId": "q-08",
+      "number": 8,
+      "stem": "What does the entire managerial hierarchy want to see according to the woman?",
+      "options": [
+        "Fewer rectifications of the contract.",
+        "More support from the board members.",
+        "The early implementation of the project.",
+        "The alignment of all sections of the contract."
+      ],
+      "answer": 2,
+      "answerSource": "user_provided_pdf",
+      "evidenceSentenceId": "s30",
+      "explanation": "the entire managerial hierarchy wants to see this project implemented as soon as possible 对应 C。",
+      "note": "用户提供的整卷 PDF 及答案解析 PDF，第27页；未经官方认证"
+    },
+    {
+      "questionId": "q-09",
+      "number": 9,
+      "stem": "(样例占位) 用于验证未知答案路径的题目，答案与来源均未确认。",
+      "options": [
+        "选项 A（占位）",
+        "选项 B（占位）"
+      ],
+      "answer": null,
+      "answerSource": "unknown",
+      "evidenceSentenceId": null,
+      "explanation": "",
+      "developmentFixture": true,
+      "fixtureNote": "故意保留 answer=null / answerSource=unknown：验证接口与页面不推断、不填充、判题返回 null。",
+      "note": "C 自建的未知答案样例，非真题"
+    }
+  ]
+}

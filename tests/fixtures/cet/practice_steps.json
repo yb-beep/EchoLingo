@@ -1,0 +1,51 @@
+{
+  "developmentFixture": true,
+  "practiceId": "practice-001",
+  "items": [
+    {
+      "stepId": "step-001",
+      "practiceId": "practice-001",
+      "action": "replay",
+      "source": "confirmed_sentence",
+      "playback": {
+        "startSec": 36.77,
+        "endSec": 41.41,
+        "speed": 1.0
+      },
+      "textVisible": false,
+      "feedback": "sound",
+      "candidateRef": null,
+      "createdAt": "2026-11-03T12:01:10Z"
+    },
+    {
+      "stepId": "step-002",
+      "practiceId": "practice-001",
+      "action": "slow",
+      "source": "confirmed_sentence",
+      "playback": {
+        "startSec": 36.77,
+        "endSec": 41.41,
+        "speed": 0.75
+      },
+      "textVisible": false,
+      "feedback": "sound",
+      "candidateRef": null,
+      "createdAt": "2026-11-03T12:02:20Z"
+    },
+    {
+      "stepId": "step-003",
+      "practiceId": "practice-001",
+      "action": "explain",
+      "source": "model",
+      "playback": null,
+      "textVisible": true,
+      "feedback": "meaning",
+      "candidateRef": null,
+      "payload": {
+        "explanation": "说话人用 weariness（疲态）解释了为什么要收工：“we're both displaying signs of weariness” 直接给出了收工理由。",
+        "developmentFixture": true
+      },
+      "createdAt": "2026-11-03T12:03:00Z"
+    }
+  ]
+}

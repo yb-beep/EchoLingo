@@ -34,10 +34,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 BASE = "http://127.0.0.1:5173"
-MOCK = "http://127.0.0.1:5199"
+# 同 gen_api_spec：换端口时必须能跟上，否则会连错目标。
+MOCK = os.environ.get("CET_MOCK_BASE",
+                      f"http://127.0.0.1:{os.environ.get('CET_MOCK_PORT', '5199')}").rstrip("/")
 
 # 在浏览器里跑的完整链条。返回逐步结果，由 Python 侧判定。
 FLOW_JS = """

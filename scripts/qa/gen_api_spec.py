@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -37,7 +38,10 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MOCK = "http://127.0.0.1:5199"
+# Mock 地址必须可配置：队友可能换端口（CET_MOCK_PORT=5210），
+# 写死 5199 会连到「别人的 Mock」并给出虚假的通过结果。
+MOCK = os.environ.get("CET_MOCK_BASE",
+                      f"http://127.0.0.1:{os.environ.get('CET_MOCK_PORT', '5199')}").rstrip("/")
 MD_OUT = ROOT / "docs" / "qa" / "接口规格.md"
 JSON_OUT = ROOT / "docs" / "qa" / "interface-spec.json"
 MID = "cet6-202512-conv2"

@@ -263,6 +263,17 @@ def verify(fast: bool) -> list[dict]:
     )
     record("契约样例自校验", code, out)
 
+    # 接口规格：确认已入库的规格与 Mock 实际行为一致（防止改动后忘了重生成）
+    code, out = run(
+        [sys.executable, "scripts/qa/gen_api_spec.py", "--check"], timeout=120
+    )
+    steps.append({
+        "name": "接口规格一致性",
+        "ok": True,               # 信息项：规格过期不阻塞集成，但要提醒
+        "informational": True,
+        "output": out.strip().splitlines()[-4:] if out.strip() else [],
+    })
+
     # 后端接口缺口：把「一堆红字」翻译成「哪些接口还没做」，便于分派
     code, out = run(
         [sys.executable, "scripts/qa/check_backend_gap.py"], timeout=180

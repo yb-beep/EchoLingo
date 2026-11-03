@@ -1,0 +1,2064 @@
+{
+  "materialId": "cet6-202512-conv2",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/cet/materials",
+      "note": "材料列表",
+      "status": 200,
+      "body": null,
+      "response": {
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        },
+        "count": {
+          "type": "integer",
+          "sample": 1
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/cet/materials/cet6-202512-conv2?version=v1",
+      "note": "材料详情（含句子时间轴）",
+      "status": 200,
+      "body": null,
+      "response": {
+        "material": {
+          "type": "object",
+          "fields": {
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "title": {
+              "type": "string",
+              "sample": "2025年12月六级第一套 · Conversation Two"
+            },
+            "level": {
+              "type": "string",
+              "sample": "cet6"
+            },
+            "section": {
+              "type": "string",
+              "sample": "Conversation Two"
+            },
+            "audioUrl": {
+              "type": "string",
+              "sample": "/api/cet/materials/cet6-202512-conv2/audio"
+            },
+            "audioSha256": {
+              "type": "string",
+              "sample": "de98e7de987d400cb05fe957f21b5a4fa57112df9676bdb4c3f6214ff8a34259"
+            },
+            "durationSec": {
+              "type": "number",
+              "sample": 105.486
+            },
+            "sentenceCount": {
+              "type": "integer",
+              "sample": 32
+            },
+            "questionCount": {
+              "type": "integer",
+              "sample": 5
+            },
+            "developmentFixture": {
+              "type": "boolean",
+              "sample": true
+            }
+          }
+        },
+        "text": {
+          "type": "array",
+          "items": {
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "sentenceId": {
+              "type": "string",
+              "sample": "s01"
+            },
+            "index": {
+              "type": "integer",
+              "sample": 1
+            },
+            "startSec": {
+              "type": "number",
+              "sample": 0.01
+            },
+            "endSec": {
+              "type": "number",
+              "sample": 3.49
+            },
+            "text": {
+              "type": "string",
+              "sample": "It's getting late and we're both displaying signs of weariness."
+            }
+          },
+          "length": 32
+        },
+        "provenance": {
+          "type": "object",
+          "fields": {
+            "audioOrigin": {
+              "type": "string",
+              "sample": "用户提供的 2025年12月六级听力第一套 Conversation Two 切分单文件（full.mp3）"
+            },
+            "sentenceOrigin": {
+              "type": "string",
+              "sample": "旧项目 EchoLingo 迁移前的对齐产物 sentences.json（ASR+人工校对 sentence 边界），来源标注 src=official"
+            },
+            "notVerified": {
+              "type": "string",
+              "sample": "句边界未经 C 人耳逐句复核；仅程序覆盖检查 meanExactCoverage=0.945"
+            }
+          }
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/cet/materials/cet6-202512-conv2/questions?version=v1",
+      "note": "题目（交卷前：不含 answer/evidenceRef/explanation）",
+      "status": 200,
+      "body": null,
+      "response": {
+        "fixtureNote": {
+          "type": "array",
+          "items": {
+            "questionId": {
+              "type": "string",
+              "sample": "q-05"
+            },
+            "number": {
+              "type": "integer",
+              "sample": 5
+            },
+            "stem": {
+              "type": "string",
+              "sample": "Why does the man suggest they call it a day?"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "_type": "string",
+                "_sample": "They have got their work done."
+              },
+              "length": 4
+            },
+            "answerSource": {
+              "type": "string",
+              "sample": "user_provided_pdf"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "developmentFixture": {
+              "type": "boolean",
+              "sample": true
+            },
+            "fixtureNote": {
+              "type": "string",
+              "sample": "故意保留 answer=null / answerSource=unknown：验证接口与页面不推断、不填充、判题返回 null。"
+            }
+          },
+          "length": 5
+        },
+        "count": {
+          "type": "integer",
+          "sample": 5
+        },
+        "answersVisible": {
+          "type": "boolean",
+          "sample": false
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/attempts",
+      "note": "交卷（交卷后才返回答案与证据）",
+      "status": 200,
+      "body": {
+        "materialId": "cet6-202512-conv2",
+        "materialVersion": "v1",
+        "listeningSessionId": "spec-attempt",
+        "answers": [
+          {
+            "questionId": "q-05",
+            "choice": 1
+          },
+          {
+            "questionId": "q-09",
+            "choice": 0
+          }
+        ]
+      },
+      "response": {
+        "attemptId": {
+          "type": "string",
+          "sample": "attempt-<id>"
+        },
+        "materialId": {
+          "type": "string",
+          "sample": "cet6-202512-conv2"
+        },
+        "materialVersion": {
+          "type": "string",
+          "sample": "v1"
+        },
+        "listeningSessionId": {
+          "type": "string",
+          "sample": "spec-attempt"
+        },
+        "submittedAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "answersVisible": {
+          "type": "boolean",
+          "sample": true
+        },
+        "explanation": {
+          "type": "array",
+          "items": {
+            "questionId": {
+              "type": "string",
+              "sample": "q-05"
+            },
+            "number": {
+              "type": "integer",
+              "sample": 5
+            },
+            "stem": {
+              "type": "string",
+              "sample": "Why does the man suggest they call it a day?"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "_type": "string",
+                "_sample": "They have got their work done."
+              },
+              "length": 4
+            },
+            "choice": {
+              "type": "integer",
+              "sample": 1
+            },
+            "answer": {
+              "type": "integer|null",
+              "sample": 1,
+              "nullable": true
+            },
+            "answerSource": {
+              "type": "string",
+              "sample": "user_provided_pdf"
+            },
+            "correct": {
+              "type": "boolean|null",
+              "sample": true,
+              "nullable": true
+            },
+            "evidenceRef": {
+              "type": "object|null",
+              "fields": {
+                "sentenceId": {
+                  "type": "string",
+                  "sample": "s01"
+                },
+                "startSec": {
+                  "type": "number",
+                  "sample": 0.01
+                },
+                "endSec": {
+                  "type": "number",
+                  "sample": 3.49
+                },
+                "quote": {
+                  "type": "string",
+                  "sample": "It's getting late and we're both displaying signs of weariness."
+                }
+              },
+              "nullable": true
+            },
+            "explanation": {
+              "type": "string",
+              "sample": "we're both displaying signs of weariness 直接给出收工理由，对应 They both look tired。"
+            }
+          },
+          "length": 2
+        },
+        "summary": {
+          "type": "object",
+          "fields": {
+            "total": {
+              "type": "integer",
+              "sample": 2
+            },
+            "answered": {
+              "type": "integer",
+              "sample": 2
+            },
+            "correct": {
+              "type": "integer",
+              "sample": 1
+            },
+            "unknownAnswer": {
+              "type": "integer",
+              "sample": 1
+            }
+          }
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/marks",
+      "note": "创建标记（pressedAtSec 为原始按键秒数）",
+      "status": 200,
+      "body": {
+        "materialId": "cet6-202512-conv2",
+        "materialVersion": "v1",
+        "listeningSessionId": "spec-listen",
+        "pressedAtSec": 36.9
+      },
+      "response": {
+        "markId": {
+          "type": "string",
+          "sample": "mark-<id>"
+        },
+        "listeningSessionId": {
+          "type": "string",
+          "sample": "spec-listen"
+        },
+        "materialId": {
+          "type": "string",
+          "sample": "cet6-202512-conv2"
+        },
+        "materialVersion": {
+          "type": "string",
+          "sample": "v1"
+        },
+        "pressedAtSec": {
+          "type": "number",
+          "sample": 36.9
+        },
+        "suggestedSentenceId": {
+          "type": "string",
+          "sample": "s13"
+        },
+        "confirmedSentenceId": {
+          "type": "null",
+          "sample": null,
+          "nullable": true
+        },
+        "confirmedAtSec": {
+          "type": "null",
+          "sample": null,
+          "nullable": true
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/cet/marks/mark-<id>",
+      "note": "确认/调整句子",
+      "status": 200,
+      "body": {
+        "confirmedSentenceId": "s13"
+      },
+      "response": {
+        "markId": {
+          "type": "string",
+          "sample": "mark-<id>"
+        },
+        "listeningSessionId": {
+          "type": "string",
+          "sample": "spec-listen"
+        },
+        "materialId": {
+          "type": "string",
+          "sample": "cet6-202512-conv2"
+        },
+        "materialVersion": {
+          "type": "string",
+          "sample": "v1"
+        },
+        "pressedAtSec": {
+          "type": "number",
+          "sample": 36.9
+        },
+        "suggestedSentenceId": {
+          "type": "string",
+          "sample": "s13"
+        },
+        "confirmedSentenceId": {
+          "type": "string",
+          "sample": "s13"
+        },
+        "confirmedAtSec": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/cet/marks?materialId=cet6-202512-conv2",
+      "note": "按材料隔离查询标记",
+      "status": 200,
+      "body": null,
+      "response": {
+        "createdAt": {
+          "type": "array",
+          "items": {
+            "markId": {
+              "type": "string",
+              "sample": "mark-<id>"
+            },
+            "listeningSessionId": {
+              "type": "string",
+              "sample": "spec-listen"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "pressedAtSec": {
+              "type": "number",
+              "sample": 36.9
+            },
+            "suggestedSentenceId": {
+              "type": "string",
+              "sample": "s13"
+            },
+            "confirmedSentenceId": {
+              "type": "string",
+              "sample": "s13"
+            },
+            "confirmedAtSec": {
+              "type": "string",
+              "sample": "2026-11-03T14:01:20Z"
+            },
+            "createdAt": {
+              "type": "string",
+              "sample": "2026-11-03T14:01:20Z"
+            }
+          },
+          "length": 1
+        },
+        "count": {
+          "type": "integer",
+          "sample": 1
+        },
+        "materialId": {
+          "type": "string",
+          "sample": "cet6-202512-conv2"
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/practices",
+      "note": "创建练习（须先确认句子；同一标记重复创建返回原练习）",
+      "status": 200,
+      "body": {
+        "markId": "mark-<id>"
+      },
+      "response": {
+        "practiceId": {
+          "type": "string",
+          "sample": "practice-<id>"
+        },
+        "markId": {
+          "type": "string",
+          "sample": "mark-<id>"
+        },
+        "transferCase": {
+          "type": "string",
+          "sample": "with_candidates"
+        },
+        "materialId": {
+          "type": "string",
+          "sample": "cet6-202512-conv2"
+        },
+        "materialVersion": {
+          "type": "string",
+          "sample": "v1"
+        },
+        "sentenceId": {
+          "type": "string",
+          "sample": "s13"
+        },
+        "status": {
+          "type": "string",
+          "sample": "active"
+        },
+        "currentStepId": {
+          "type": "string",
+          "sample": "step-<id>"
+        },
+        "feedbackHistory": {
+          "type": "array",
+          "items": {
+            "_type": "unknown"
+          },
+          "length": 0
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 0
+        },
+        "aiRequest": {
+          "type": "object",
+          "fields": {
+            "status": {
+              "type": "string",
+              "sample": "idle"
+            },
+            "requestId": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "errorCode": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            }
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "updatedAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "currentStep": {
+          "type": "object",
+          "fields": {
+            "stepId": {
+              "type": "string",
+              "sample": "step-<id>"
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "action": {
+              "type": "string",
+              "sample": "replay"
+            },
+            "source": {
+              "type": "string",
+              "sample": "confirmed_sentence"
+            },
+            "playback": {
+              "type": "object",
+              "fields": {
+                "startSec": {
+                  "type": "number",
+                  "sample": 36.77
+                },
+                "endSec": {
+                  "type": "number",
+                  "sample": 41.41
+                },
+                "speed": {
+                  "type": "number",
+                  "sample": 1.0
+                }
+              }
+            },
+            "textVisible": {
+              "type": "boolean",
+              "sample": false
+            },
+            "feedback": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "candidateRef": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "createdAt": {
+              "type": "string",
+              "sample": "2026-11-03T14:01:20Z"
+            }
+          }
+        },
+        "stepCount": {
+          "type": "integer",
+          "sample": 1
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/cet/practices/practice-<id>",
+      "note": "按原 ID 恢复练习",
+      "status": 200,
+      "body": null,
+      "response": {
+        "practiceId": {
+          "type": "string",
+          "sample": "practice-<id>"
+        },
+        "markId": {
+          "type": "string",
+          "sample": "mark-<id>"
+        },
+        "transferCase": {
+          "type": "string",
+          "sample": "with_candidates"
+        },
+        "materialId": {
+          "type": "string",
+          "sample": "cet6-202512-conv2"
+        },
+        "materialVersion": {
+          "type": "string",
+          "sample": "v1"
+        },
+        "sentenceId": {
+          "type": "string",
+          "sample": "s13"
+        },
+        "status": {
+          "type": "string",
+          "sample": "active"
+        },
+        "currentStepId": {
+          "type": "string",
+          "sample": "step-<id>"
+        },
+        "feedbackHistory": {
+          "type": "array",
+          "items": {
+            "_type": "unknown"
+          },
+          "length": 0
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 0
+        },
+        "aiRequest": {
+          "type": "object",
+          "fields": {
+            "status": {
+              "type": "string",
+              "sample": "idle"
+            },
+            "requestId": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "errorCode": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            }
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "updatedAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "currentStep": {
+          "type": "object",
+          "fields": {
+            "stepId": {
+              "type": "string",
+              "sample": "step-<id>"
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "action": {
+              "type": "string",
+              "sample": "replay"
+            },
+            "source": {
+              "type": "string",
+              "sample": "confirmed_sentence"
+            },
+            "playback": {
+              "type": "object",
+              "fields": {
+                "startSec": {
+                  "type": "number",
+                  "sample": 36.77
+                },
+                "endSec": {
+                  "type": "number",
+                  "sample": 41.41
+                },
+                "speed": {
+                  "type": "number",
+                  "sample": 1.0
+                }
+              }
+            },
+            "textVisible": {
+              "type": "boolean",
+              "sample": false
+            },
+            "feedback": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "candidateRef": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "createdAt": {
+              "type": "string",
+              "sample": "2026-11-03T14:01:20Z"
+            }
+          }
+        },
+        "stepCount": {
+          "type": "integer",
+          "sample": 1
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/practices/practice-<id>/next",
+      "note": "AI 下一步（feedback=sound → 慢放）",
+      "status": 200,
+      "body": {
+        "feedback": "sound"
+      },
+      "response": {
+        "practiceId": {
+          "type": "string",
+          "sample": "practice-<id>"
+        },
+        "step": {
+          "type": "object",
+          "fields": {
+            "stepId": {
+              "type": "string",
+              "sample": "step-<id>"
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "action": {
+              "type": "string",
+              "sample": "slow"
+            },
+            "source": {
+              "type": "string",
+              "sample": "model"
+            },
+            "modelRequestId": {
+              "type": "string",
+              "sample": "req-0001"
+            },
+            "playback": {
+              "type": "object",
+              "fields": {
+                "startSec": {
+                  "type": "number",
+                  "sample": 36.77
+                },
+                "endSec": {
+                  "type": "number",
+                  "sample": 41.41
+                },
+                "speed": {
+                  "type": "number",
+                  "sample": 0.75
+                }
+              }
+            },
+            "textVisible": {
+              "type": "boolean",
+              "sample": false
+            },
+            "feedback": {
+              "type": "string",
+              "sample": "sound"
+            },
+            "candidateRef": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "payload": {
+              "type": "object",
+              "fields": {}
+            },
+            "createdAt": {
+              "type": "string",
+              "sample": "2026-11-03T14:01:20Z"
+            }
+          }
+        },
+        "modelRequest": {
+          "type": "object",
+          "fields": {
+            "requestId": {
+              "type": "string",
+              "sample": "req-0001"
+            },
+            "status": {
+              "type": "string",
+              "sample": "complete"
+            }
+          }
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        },
+        "modelOutputIsFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/practices/practice-<id>/next",
+      "note": "AI 下一步（feedback=meaning → 解释）",
+      "status": 200,
+      "body": {
+        "feedback": "meaning"
+      },
+      "response": {
+        "practiceId": {
+          "type": "string",
+          "sample": "practice-<id>"
+        },
+        "step": {
+          "type": "object",
+          "fields": {
+            "stepId": {
+              "type": "string",
+              "sample": "step-<id>"
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "action": {
+              "type": "string",
+              "sample": "explain"
+            },
+            "source": {
+              "type": "string",
+              "sample": "model"
+            },
+            "modelRequestId": {
+              "type": "string",
+              "sample": "req-0002"
+            },
+            "playback": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "textVisible": {
+              "type": "boolean",
+              "sample": true
+            },
+            "feedback": {
+              "type": "string",
+              "sample": "meaning"
+            },
+            "candidateRef": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "payload": {
+              "type": "object",
+              "fields": {
+                "explanation": {
+                  "type": "string",
+                  "sample": "（开发样例）原句：Yeah, two months working on nothing but the same contract is a little tough. 这句话的难点在弱读与连读；先看句子结构，再隐藏文字原速回听。"
+                }
+              }
+            },
+            "createdAt": {
+              "type": "string",
+              "sample": "2026-11-03T14:01:20Z"
+            }
+          }
+        },
+        "modelRequest": {
+          "type": "object",
+          "fields": {
+            "requestId": {
+              "type": "string",
+              "sample": "req-0002"
+            },
+            "status": {
+              "type": "string",
+              "sample": "complete"
+            }
+          }
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        },
+        "modelOutputIsFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/practices/practice-<id>/next",
+      "note": "AI 下一步（feedback=heard → 换句检查）",
+      "status": 200,
+      "body": {
+        "feedback": "heard"
+      },
+      "response": {
+        "practiceId": {
+          "type": "string",
+          "sample": "practice-<id>"
+        },
+        "step": {
+          "type": "object",
+          "fields": {
+            "stepId": {
+              "type": "string",
+              "sample": "step-<id>"
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "action": {
+              "type": "string",
+              "sample": "transfer"
+            },
+            "source": {
+              "type": "string",
+              "sample": "model"
+            },
+            "modelRequestId": {
+              "type": "string",
+              "sample": "req-0003"
+            },
+            "playback": {
+              "type": "object",
+              "fields": {
+                "startSec": {
+                  "type": "number",
+                  "sample": 36.77
+                },
+                "endSec": {
+                  "type": "number",
+                  "sample": 41.41
+                },
+                "speed": {
+                  "type": "number",
+                  "sample": 1.0
+                }
+              }
+            },
+            "textVisible": {
+              "type": "boolean",
+              "sample": false
+            },
+            "feedback": {
+              "type": "string",
+              "sample": "heard"
+            },
+            "candidateRef": {
+              "type": "object",
+              "fields": {
+                "caseId": {
+                  "type": "string",
+                  "sample": "with_candidates"
+                },
+                "developmentFixture": {
+                  "type": "array",
+                  "items": {
+                    "candidateId": {
+                      "type": "string",
+                      "sample": "cand-01"
+                    },
+                    "materialId": {
+                      "type": "string",
+                      "sample": "cet6-202512-conv2"
+                    },
+                    "materialVersion": {
+                      "type": "string",
+                      "sample": "v1"
+                    },
+                    "sentenceId": {
+                      "type": "string",
+                      "sample": "s14"
+                    },
+                    "startSec": {
+                      "type": "number",
+                      "sample": 41.59
+                    },
+                    "endSec": {
+                      "type": "number",
+                      "sample": 46.07
+                    },
+                    "text": {
+                      "type": "string",
+                      "sample": "Nevertheless, I think that with a bit of luck we'll be done by next week."
+                    },
+                    "source": {
+                      "type": "string",
+                      "sample": "same_material_real_audio"
+                    },
+                    "relevanceNote": {
+                      "type": "string",
+                      "sample": "开发样例占位：与目标句的表达关联未经人工核对，正式验收需 C 逐条听检"
+                    },
+                    "developmentFixture": {
+                      "type": "boolean",
+                      "sample": true
+                    }
+                  },
+                  "length": 2
+                },
+                "status": {
+                  "type": "string",
+                  "sample": "proposed_by_c"
+                },
+                "needsBackendConfirmation": {
+                  "type": "boolean",
+                  "sample": true
+                }
+              }
+            },
+            "payload": {
+              "type": "object",
+              "fields": {
+                "note": {
+                  "type": "string",
+                  "sample": "（开发样例）隐藏原文、原速回听，并给出换句检查候选"
+                },
+                "noCandidate": {
+                  "type": "boolean",
+                  "sample": false
+                }
+              }
+            },
+            "createdAt": {
+              "type": "string",
+              "sample": "2026-11-03T14:01:20Z"
+            }
+          }
+        },
+        "modelRequest": {
+          "type": "object",
+          "fields": {
+            "requestId": {
+              "type": "string",
+              "sample": "req-0003"
+            },
+            "status": {
+              "type": "string",
+              "sample": "complete"
+            }
+          }
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        },
+        "modelOutputIsFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/practices/practice-<id>/local",
+      "note": "本地动作（模型不可用时的兜底）",
+      "status": 200,
+      "body": {
+        "action": "chunk"
+      },
+      "response": {
+        "practiceId": {
+          "type": "string",
+          "sample": "practice-<id>"
+        },
+        "step": {
+          "type": "object",
+          "fields": {
+            "stepId": {
+              "type": "string",
+              "sample": "step-<id>"
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "action": {
+              "type": "string",
+              "sample": "chunk"
+            },
+            "source": {
+              "type": "string",
+              "sample": "local"
+            },
+            "playback": {
+              "type": "object",
+              "fields": {
+                "startSec": {
+                  "type": "number",
+                  "sample": 36.77
+                },
+                "endSec": {
+                  "type": "number",
+                  "sample": 41.41
+                },
+                "speed": {
+                  "type": "number",
+                  "sample": 0.85
+                },
+                "chunks": {
+                  "type": "array",
+                  "items": {
+                    "_type": "string",
+                    "_sample": "Yeah, two months working on nothing but"
+                  },
+                  "length": 2
+                }
+              }
+            },
+            "textVisible": {
+              "type": "boolean",
+              "sample": false
+            },
+            "feedback": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "candidateRef": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "payload": {
+              "type": "object",
+              "fields": {}
+            },
+            "createdAt": {
+              "type": "string",
+              "sample": "2026-11-03T14:01:20Z"
+            }
+          }
+        },
+        "modelUsed": {
+          "type": "boolean",
+          "sample": false
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/practices/practice-<id>/events",
+      "note": "播放事件（eventId 幂等；仅前台可见播放计入有效时长）",
+      "status": 200,
+      "body": {
+        "eventId": "spec-evt",
+        "type": "end",
+        "stepId": "s1",
+        "materialVersion": "v1",
+        "playedMs": 2000,
+        "audioSec": 38.5,
+        "speed": 1.0,
+        "visible": true
+      },
+      "response": {
+        "ok": {
+          "type": "boolean",
+          "sample": true
+        },
+        "idempotent": {
+          "type": "boolean",
+          "sample": false
+        },
+        "eventId": {
+          "type": "string",
+          "sample": "spec-evt"
+        },
+        "countedMs": {
+          "type": "integer",
+          "sample": 2000
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 2000
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/practices/practice-<id>/finish",
+      "note": "结束练习并保存卡点（重复结束幂等）",
+      "status": 200,
+      "body": {
+        "feedback": "sound"
+      },
+      "response": {
+        "practiceId": {
+          "type": "string",
+          "sample": "practice-<id>"
+        },
+        "status": {
+          "type": "string",
+          "sample": "complete"
+        },
+        "idempotent": {
+          "type": "boolean",
+          "sample": false
+        },
+        "latestFeedback": {
+          "type": "string",
+          "sample": "sound"
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 2000
+        },
+        "reviewItem": {
+          "type": "object",
+          "fields": {
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "markId": {
+              "type": "string",
+              "sample": "mark-<id>"
+            },
+            "sentenceId": {
+              "type": "string",
+              "sample": "s13"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "latestFeedback": {
+              "type": "string",
+              "sample": "sound"
+            },
+            "status": {
+              "type": "string",
+              "sample": "pending"
+            }
+          }
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/cet/review-items?materialId=cet6-202512-conv2",
+      "note": "待复习卡点",
+      "status": 200,
+      "body": null,
+      "response": {
+        "effectiveMs": {
+          "type": "array",
+          "items": {
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "markId": {
+              "type": "string",
+              "sample": "mark-<id>"
+            },
+            "sentenceId": {
+              "type": "string",
+              "sample": "s13"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "startSec": {
+              "type": "number",
+              "sample": 36.77
+            },
+            "endSec": {
+              "type": "number",
+              "sample": 41.41
+            },
+            "latestFeedback": {
+              "type": "string",
+              "sample": "sound"
+            },
+            "status": {
+              "type": "string",
+              "sample": "pending"
+            },
+            "effectiveMs": {
+              "type": "integer",
+              "sample": 2000
+            }
+          },
+          "length": 1
+        },
+        "count": {
+          "type": "integer",
+          "sample": 1
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/reviews",
+      "note": "创建复习会话（最多三处）",
+      "status": 200,
+      "body": {
+        "maxItems": 3,
+        "budgetMs": 600000
+      },
+      "response": {
+        "reviewId": {
+          "type": "string",
+          "sample": "review-<id>"
+        },
+        "status": {
+          "type": "array",
+          "items": {
+            "itemId": {
+              "type": "string",
+              "sample": "item-001"
+            },
+            "order": {
+              "type": "integer",
+              "sample": 1
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "markId": {
+              "type": "string",
+              "sample": "mark-<id>"
+            },
+            "sentenceId": {
+              "type": "string",
+              "sample": "s13"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "startSec": {
+              "type": "number",
+              "sample": 36.77
+            },
+            "endSec": {
+              "type": "number",
+              "sample": 41.41
+            },
+            "latestFeedback": {
+              "type": "string",
+              "sample": "sound"
+            },
+            "status": {
+              "type": "string",
+              "sample": "pending"
+            }
+          },
+          "length": 1
+        },
+        "budgetMs": {
+          "type": "integer",
+          "sample": 600000
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "sample": 3
+        },
+        "currentItemId": {
+          "type": "null",
+          "sample": null,
+          "nullable": true
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/cet/reviews/review-<id>",
+      "note": "按原 ID 恢复复习会话",
+      "status": 200,
+      "body": null,
+      "response": {
+        "reviewId": {
+          "type": "string",
+          "sample": "review-<id>"
+        },
+        "status": {
+          "type": "array",
+          "items": {
+            "itemId": {
+              "type": "string",
+              "sample": "item-001"
+            },
+            "order": {
+              "type": "integer",
+              "sample": 1
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "markId": {
+              "type": "string",
+              "sample": "mark-<id>"
+            },
+            "sentenceId": {
+              "type": "string",
+              "sample": "s13"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "startSec": {
+              "type": "number",
+              "sample": 36.77
+            },
+            "endSec": {
+              "type": "number",
+              "sample": 41.41
+            },
+            "latestFeedback": {
+              "type": "string",
+              "sample": "sound"
+            },
+            "status": {
+              "type": "string",
+              "sample": "pending"
+            }
+          },
+          "length": 1
+        },
+        "budgetMs": {
+          "type": "integer",
+          "sample": 600000
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "sample": 3
+        },
+        "currentItemId": {
+          "type": "null",
+          "sample": null,
+          "nullable": true
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/reviews/review-<id>/actions",
+      "note": "复习动作 start",
+      "status": 200,
+      "body": {
+        "action": "start"
+      },
+      "response": {
+        "reviewId": {
+          "type": "string",
+          "sample": "review-<id>"
+        },
+        "status": {
+          "type": "array",
+          "items": {
+            "itemId": {
+              "type": "string",
+              "sample": "item-001"
+            },
+            "order": {
+              "type": "integer",
+              "sample": 1
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "markId": {
+              "type": "string",
+              "sample": "mark-<id>"
+            },
+            "sentenceId": {
+              "type": "string",
+              "sample": "s13"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "startSec": {
+              "type": "number",
+              "sample": 36.77
+            },
+            "endSec": {
+              "type": "number",
+              "sample": 41.41
+            },
+            "latestFeedback": {
+              "type": "string",
+              "sample": "sound"
+            },
+            "status": {
+              "type": "string",
+              "sample": "current"
+            }
+          },
+          "length": 1
+        },
+        "budgetMs": {
+          "type": "integer",
+          "sample": 600000
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "sample": 3
+        },
+        "currentItemId": {
+          "type": "string",
+          "sample": "item-001"
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/reviews/review-<id>/actions",
+      "note": "复习动作 pause",
+      "status": 200,
+      "body": {
+        "action": "pause"
+      },
+      "response": {
+        "reviewId": {
+          "type": "string",
+          "sample": "review-<id>"
+        },
+        "status": {
+          "type": "array",
+          "items": {
+            "itemId": {
+              "type": "string",
+              "sample": "item-001"
+            },
+            "order": {
+              "type": "integer",
+              "sample": 1
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "markId": {
+              "type": "string",
+              "sample": "mark-<id>"
+            },
+            "sentenceId": {
+              "type": "string",
+              "sample": "s13"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "startSec": {
+              "type": "number",
+              "sample": 36.77
+            },
+            "endSec": {
+              "type": "number",
+              "sample": 41.41
+            },
+            "latestFeedback": {
+              "type": "string",
+              "sample": "sound"
+            },
+            "status": {
+              "type": "string",
+              "sample": "current"
+            }
+          },
+          "length": 1
+        },
+        "budgetMs": {
+          "type": "integer",
+          "sample": 600000
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "sample": 3
+        },
+        "currentItemId": {
+          "type": "string",
+          "sample": "item-001"
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/reviews/review-<id>/actions",
+      "note": "复习动作 resume",
+      "status": 200,
+      "body": {
+        "action": "resume"
+      },
+      "response": {
+        "reviewId": {
+          "type": "string",
+          "sample": "review-<id>"
+        },
+        "status": {
+          "type": "array",
+          "items": {
+            "itemId": {
+              "type": "string",
+              "sample": "item-001"
+            },
+            "order": {
+              "type": "integer",
+              "sample": 1
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "markId": {
+              "type": "string",
+              "sample": "mark-<id>"
+            },
+            "sentenceId": {
+              "type": "string",
+              "sample": "s13"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "startSec": {
+              "type": "number",
+              "sample": 36.77
+            },
+            "endSec": {
+              "type": "number",
+              "sample": 41.41
+            },
+            "latestFeedback": {
+              "type": "string",
+              "sample": "sound"
+            },
+            "status": {
+              "type": "string",
+              "sample": "current"
+            }
+          },
+          "length": 1
+        },
+        "budgetMs": {
+          "type": "integer",
+          "sample": 600000
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "sample": 3
+        },
+        "currentItemId": {
+          "type": "string",
+          "sample": "item-001"
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/reviews/review-<id>/actions",
+      "note": "复习动作 skip（条目状态转 skipped，并带 needsPractice=true：跳过≠听懂）",
+      "status": 200,
+      "body": {
+        "action": "skip",
+        "itemId": "item-001"
+      },
+      "response": {
+        "reviewId": {
+          "type": "string",
+          "sample": "review-<id>"
+        },
+        "status": {
+          "type": "string",
+          "sample": "active"
+        },
+        "budgetMs": {
+          "type": "integer",
+          "sample": 600000
+        },
+        "effectiveMs": {
+          "type": "integer",
+          "sample": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "sample": 3
+        },
+        "currentItemId": {
+          "type": "null",
+          "sample": null,
+          "nullable": true
+        },
+        "needsPractice": {
+          "type": "array",
+          "items": {
+            "itemId": {
+              "type": "string",
+              "sample": "item-001"
+            },
+            "order": {
+              "type": "integer",
+              "sample": 1
+            },
+            "practiceId": {
+              "type": "string",
+              "sample": "practice-<id>"
+            },
+            "markId": {
+              "type": "string",
+              "sample": "mark-<id>"
+            },
+            "sentenceId": {
+              "type": "string",
+              "sample": "s13"
+            },
+            "materialId": {
+              "type": "string",
+              "sample": "cet6-202512-conv2"
+            },
+            "materialVersion": {
+              "type": "string",
+              "sample": "v1"
+            },
+            "startSec": {
+              "type": "number",
+              "sample": 36.77
+            },
+            "endSec": {
+              "type": "number",
+              "sample": 41.41
+            },
+            "latestFeedback": {
+              "type": "string",
+              "sample": "sound"
+            },
+            "status": {
+              "type": "string",
+              "sample": "skipped"
+            },
+            "needsPractice": {
+              "type": "boolean",
+              "sample": true
+            }
+          },
+          "length": 1
+        },
+        "createdAt": {
+          "type": "string",
+          "sample": "2026-11-03T14:01:20Z"
+        },
+        "developmentFixture": {
+          "type": "boolean",
+          "sample": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/cet/attempts",
+      "note": "业务校验失败的错误形状",
+      "status": 400,
+      "body": {},
+      "response": {
+        "error": {
+          "type": "string",
+          "sample": "materialId 必填"
+        },
+        "error_info": {
+          "type": "object",
+          "fields": {
+            "code": {
+              "type": "string",
+              "sample": "URL_REQUIRED"
+            },
+            "title": {
+              "type": "string",
+              "sample": "materialId 必填"
+            },
+            "message": {
+              "type": "string",
+              "sample": "materialId 必填"
+            },
+            "action": {
+              "type": "string",
+              "sample": "materialId 必填"
+            },
+            "step": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "detail": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "developmentFixture": {
+              "type": "boolean",
+              "sample": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/cet/materials/does-not-exist",
+      "note": "资源不存在的错误形状",
+      "status": 404,
+      "body": null,
+      "response": {
+        "error": {
+          "type": "string",
+          "sample": "材料不存在：does-not-exist"
+        },
+        "error_info": {
+          "type": "object",
+          "fields": {
+            "code": {
+              "type": "string",
+              "sample": "MATERIAL_NOT_FOUND"
+            },
+            "title": {
+              "type": "string",
+              "sample": "材料不存在：does-not-exist"
+            },
+            "message": {
+              "type": "string",
+              "sample": "材料不存在：does-not-exist"
+            },
+            "action": {
+              "type": "string",
+              "sample": "材料不存在：does-not-exist"
+            },
+            "step": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "detail": {
+              "type": "null",
+              "sample": null,
+              "nullable": true
+            },
+            "developmentFixture": {
+              "type": "boolean",
+              "sample": true
+            }
+          }
+        }
+      }
+    }
+  ]
+}

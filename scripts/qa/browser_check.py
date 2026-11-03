@@ -245,9 +245,20 @@ def check_mock_ui(browser, js_errors: list[str]) -> None:
     page = browser.new_page()
     page.on("pageerror", lambda e: js_errors.append(f"{page.url}: {e}"))
     try:
-        resp = page.goto(f"{MOCK}/api/cet/_mock/docs", wait_until="domcontentloaded", timeout=30_000)
+        # 用 wait_until="commit" 而不是 domcontentloaded：
+        # Swagger UI 的 CSS/JS 指向 CDN，离线时 domcontentloaded 会被外部资源
+        # 阻塞到超时，于是「页面 200」被误报成「打不开」。
+        # 这里只等响应到达（commit），页面能不能渲染另用一项检查。
+        resp = page.goto(f"{MOCK}/api/cet/_mock/docs", wait_until="commit",
+                         timeout=15_000)
         ok = resp is not None and resp.ok
         check(ok, "Mock 文档页可打开", f"HTTP {resp.status if resp else '无响应'}")
+        if ok:
+            # 给内联脚本一点时间；不等待外部 CDN 资源
+            try:
+                page.wait_for_timeout(1200)
+            except Exception:  # noqa: BLE001
+                pass
         if ok:
             # Swagger UI 依赖 CDN。离线/内网/网络波动时会白屏 ——
             # 那是**环境问题不是代码问题**，不能判失败，否则每次断网都红。

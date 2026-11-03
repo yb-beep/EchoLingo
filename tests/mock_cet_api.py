@@ -124,6 +124,7 @@ def fresh_state() -> dict:
         "sentences": material_doc["sentences"],
         "questionsBefore": before_doc["items"],
         "questionsAfter": after_doc["items"],
+        "transferCandidates": load_fixture("transfer_candidates.json"),
         "attempts": {},          # attemptId -> record
         "attemptBySession": {},  # listeningSessionId -> attemptId
         "marks": {},             # markId -> record
@@ -587,6 +588,7 @@ def create_practice(payload: dict = Body(...)):
     practice = {
         "practiceId": practice_id,
         "markId": mark_id,
+        "transferCase": str(payload.get("transferCase") or "with_candidates"),
         "materialId": mark["materialId"],
         "materialVersion": mark["materialVersion"],
         "sentenceId": sentence["sentenceId"],
@@ -698,6 +700,15 @@ def practice_event(practice_id: str, payload: dict = Body(...)):
     }
 
 
+def _transfer_case(case_id: str) -> dict:
+    """取换句检查的候选样例。C 提议的形状，待 B 确认真实字段。"""
+    cases = STATE["transferCandidates"]["cases"]
+    for c in cases:
+        if c["caseId"] == case_id:
+            return c
+    return cases[0]
+
+
 def _next_action(feedback: str) -> str:
     """反馈 → 帮助动作。sound（没听清）先慢放，meaning（不懂意思）先解释。"""
     return {"sound": "slow", "meaning": "explain", "heard": "transfer"}.get(feedback, "replay")
@@ -734,7 +745,7 @@ def practice_next(practice_id: str, payload: dict = Body(...)):
     STATE["requestSeq"] += 1
     request_id = f"req-{STATE['requestSeq']:04d}"
 
-    playback, text_visible, payload_extra = None, False, {}
+    playback, text_visible, payload_extra, candidate_ref = None, False, {}, None
     if action == "slow":
         playback = {"startSec": sentence["startSec"], "endSec": sentence["endSec"], "speed": 0.75}
     elif action == "explain":
@@ -748,7 +759,19 @@ def practice_next(practice_id: str, payload: dict = Body(...)):
     elif action == "transfer":
         playback = {"startSec": sentence["startSec"], "endSec": sentence["endSec"], "speed": 1.0}
         text_visible = False
-        payload_extra = {"note": "（开发样例）隐藏原文、原速回听"}
+        # 换句检查：候选引用走 candidateRef 字段（契约第 7 节 PracticeStep 有这一项）。
+        # 结构是 C 提议的形状，字段名待 B 确认，见 transfer_candidates.json。
+        case = _transfer_case(practice.get("transferCase", "with_candidates"))
+        candidate_ref = {
+            "caseId": case["caseId"],
+            "items": case["items"],
+            "status": "proposed_by_c",
+            "needsBackendConfirmation": True,
+        }
+        payload_extra = {
+            "note": "（开发样例）隐藏原文、原速回听，并给出换句检查候选",
+            "noCandidate": not case["items"],
+        }
     else:
         playback = {"startSec": sentence["startSec"], "endSec": sentence["endSec"], "speed": 1.0}
 
@@ -761,7 +784,7 @@ def practice_next(practice_id: str, payload: dict = Body(...)):
         "playback": playback,
         "textVisible": text_visible,
         "feedback": feedback,
-        "candidateRef": None,
+        "candidateRef": candidate_ref,
         "payload": payload_extra,
         "createdAt": now_iso(),
     }

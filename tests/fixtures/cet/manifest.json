@@ -18,7 +18,8 @@
     "marks.json",
     "practice.json",
     "practice_steps.json",
-    "review_session.json"
+    "review_session.json",
+    "transfer_candidates.json"
   ],
   "notes": [
     "时间轴为原音频绝对秒数；budgetMs / effectiveMs 为毫秒。",

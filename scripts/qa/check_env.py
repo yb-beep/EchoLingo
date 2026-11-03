@@ -216,7 +216,7 @@ def check_fixtures() -> None:
     required = [
         "materials.json", "attempt_result.json", "marks.json", "practice.json",
         "practice_steps.json", "review_session.json", "questions_before_attempt.json",
-        "manifest.json", "build_fixtures.py",
+        "transfer_candidates.json", "manifest.json", "build_fixtures.py",
     ]
     missing = [n for n in required if not (FIXTURES / n).exists()]
     if missing:

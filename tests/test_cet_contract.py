@@ -832,6 +832,55 @@ def test_empty_scenario_returns_empty_list():
 # ────────────────────────── 运行提示 ──────────────────────────
 
 
+@pytest.mark.flow
+def test_transfer_returns_real_candidates():
+    """换句检查（T10）：有候选时返回可播放的真实原声引用。
+
+    注意：候选结构目前是 C 提议的形状，字段名待 B 确认。
+    这条测试断言的是「有候选时必须给出可定位的音频范围与来源」，
+    不断言具体字段名，避免把 C 的提议锁死成契约。
+    """
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices",
+              json={"markId": mark["markId"], "transferCase": "with_candidates"}).json()["practiceId"]
+    r = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "heard"})
+    assert r.status_code == 200, r.text
+    step = r.json()["step"]
+    assert step["action"] == "transfer", f"heard 后应进入换句检查，实际 {step['action']}"
+
+    ref = step.get("candidateRef")
+    assert ref, "换句检查必须给出候选引用，不能是 null"
+    items = ref.get("items") if isinstance(ref, dict) else ref
+    assert items, "有候选场景 items 不能为空"
+    for c in items:
+        # 候选必须是真实原声：有可播放范围，而不是纯文本
+        assert c.get("startSec") is not None and c.get("endSec") is not None, \
+            f"候选 {c.get('candidateId')} 缺少可播放范围"
+        assert c["startSec"] < c["endSec"], f"候选 {c.get('candidateId')} 时间倒置"
+        assert c.get("source"), f"候选 {c.get('candidateId')} 缺少来源"
+
+
+@pytest.mark.flow
+def test_transfer_no_candidate_still_saves():
+    """换句检查无候选（T10）：页面走空态，但练习仍可保存卡点，不阻断流程。"""
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices",
+              json={"markId": mark["markId"], "transferCase": "no_candidate"}).json()["practiceId"]
+    r = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "heard"})
+    assert r.status_code == 200, r.text
+    step = r.json()["step"]
+    ref = step.get("candidateRef") or {}
+    items = ref.get("items") if isinstance(ref, dict) else ref
+    assert not items, "无候选场景 items 应为空，不能编造候选"
+
+    # 无候选不得阻断保存
+    fin = api("POST", f"/api/cet/practices/{pid}/finish", json={"feedback": "heard"})
+    assert fin.status_code == 200, f"无候选时应仍可保存卡点：{fin.text[:200]}"
+    assert fin.json()["status"] == "complete"
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

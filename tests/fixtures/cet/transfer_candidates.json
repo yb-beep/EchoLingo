@@ -1,0 +1,48 @@
+{
+  "developmentFixture": true,
+  "status": "C 提议的契约形状，待 B 确认",
+  "proposedBy": "C",
+  "needsBackendConfirmation": [
+    "候选检索的真实数据来源（是否只在本材料内检索，还是跨材料）",
+    "候选数量上限与排序依据",
+    "无候选时返回空 items 还是错误码（本样例按空 items 设计，便于页面展示空态）",
+    "换句题目与参考答案是否需要独立生成并要求来源"
+  ],
+  "cases": [
+    {
+      "caseId": "with_candidates",
+      "description": "有候选：可播放真实原声并作答",
+      "items": [
+        {
+          "candidateId": "cand-01",
+          "materialId": "cet6-202512-conv2",
+          "materialVersion": "v1",
+          "sentenceId": "s14",
+          "startSec": 41.59,
+          "endSec": 46.07,
+          "text": "Nevertheless, I think that with a bit of luck we'll be done by next week.",
+          "source": "same_material_real_audio",
+          "relevanceNote": "开发样例占位：与目标句的表达关联未经人工核对，正式验收需 C 逐条听检",
+          "developmentFixture": true
+        },
+        {
+          "candidateId": "cand-02",
+          "materialId": "cet6-202512-conv2",
+          "materialVersion": "v1",
+          "sentenceId": "s19",
+          "startSec": 57.28,
+          "endSec": 62.28,
+          "text": "Then we need to proofread the whole thing and make sure all selling points are watertight.",
+          "source": "same_material_real_audio",
+          "relevanceNote": "开发样例占位：与目标句的表达关联未经人工核对，正式验收需 C 逐条听检",
+          "developmentFixture": true
+        }
+      ]
+    },
+    {
+      "caseId": "no_candidate",
+      "description": "无候选：items 为空数组，页面走空态且仍可保存卡点",
+      "items": []
+    }
+  ]
+}

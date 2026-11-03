@@ -318,6 +318,52 @@ def build_practice(sentences: list[dict], marks: list[dict]) -> tuple[dict, list
     return practice, steps
 
 
+
+def build_transfer_candidates(sentences: list[dict]) -> dict:
+    """换句检查候选（T10）。
+
+    任务书第 7 节把 `transfer` 列为带练动作、`candidateRef` 列为 PracticeStep 的字段，
+    但没有定义候选对象的结构与「无候选」时的返回形态。这里给出 C 提议的可运行形状，
+    并在 needsBackendConfirmation 里列出必须由 B 决定的点 —— C 不替 B 定业务字段。
+    """
+    by_id = {s["sentenceId"]: s for s in sentences}
+    picks = ["s14", "s19"]
+    items = []
+    for i, sid in enumerate(picks, start=1):
+        if sid not in by_id:
+            raise SystemExit(f"[transfer] 候选取句不存在：{sid}")
+        s = by_id[sid]
+        items.append(
+            {
+                "candidateId": f"cand-{i:02d}",
+                "materialId": MATERIAL_ID,
+                "materialVersion": MATERIAL_VERSION,
+                "sentenceId": sid,
+                "startSec": s["startSec"],
+                "endSec": s["endSec"],
+                "text": s["text"],
+                "source": "same_material_real_audio",
+                "relevanceNote": "开发样例占位：与目标句的表达关联未经人工核对，正式验收需 C 逐条听检",
+                "developmentFixture": True,
+            }
+        )
+    return {
+        "developmentFixture": True,
+        "status": "C 提议的契约形状，待 B 确认",
+        "proposedBy": "C",
+        "needsBackendConfirmation": [
+            "候选检索的真实数据来源（是否只在本材料内检索，还是跨材料）",
+            "候选数量上限与排序依据",
+            "无候选时返回空 items 还是错误码（本样例按空 items 设计，便于页面展示空态）",
+            "换句题目与参考答案是否需要独立生成并要求来源",
+        ],
+        "cases": [
+            {"caseId": "with_candidates", "description": "有候选：可播放真实原声并作答", "items": items},
+            {"caseId": "no_candidate", "description": "无候选：items 为空数组，页面走空态且仍可保存卡点", "items": []},
+        ],
+    }
+
+
 def build_review(sentences: list[dict], marks: list[dict]) -> dict:
     by_id = {s["sentenceId"]: s for s in sentences}
     items = []
@@ -365,6 +411,7 @@ def main() -> int:
     marks = build_marks(sentences)
     practice, steps = build_practice(sentences, marks)
     review = build_review(sentences, marks)
+    transfer = build_transfer_candidates(sentences)
 
     written: list[str] = []
     dump_json(
@@ -420,6 +467,7 @@ def main() -> int:
     dump_json("practice.json", {"developmentFixture": True, "practice": practice}, args.check, written)
     dump_json("practice_steps.json", {"developmentFixture": True, "practiceId": "practice-001", "items": steps}, args.check, written)
     dump_json("review_session.json", {"developmentFixture": True, "session": review}, args.check, written)
+    dump_json("transfer_candidates.json", transfer, args.check, written)
     dump_json(
         "manifest.json",
         {
@@ -443,6 +491,7 @@ def main() -> int:
                 "practice.json",
                 "practice_steps.json",
                 "review_session.json",
+                "transfer_candidates.json",
             ],
             "notes": [
                 "时间轴为原音频绝对秒数；budgetMs / effectiveMs 为毫秒。",

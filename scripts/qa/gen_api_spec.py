@@ -164,6 +164,10 @@ def collect() -> dict:
 
     add("GET", "/api/cet/materials", None, "材料列表")
     add("GET", f"/api/cet/materials/{MID}?version=v1", None, "材料详情（含句子时间轴）")
+    # 音频接口：A 的播放器必须知道从哪取音频。
+    # 之前漏采样，规格里完全没有这条 —— A 照规格实现会找不到音频地址。
+    add("GET", f"/api/cet/materials/{MID}/audio", None,
+        "材料音频（支持 Range 请求，播放器 seek 依赖它）")
     add("GET", f"/api/cet/materials/{MID}/questions?version=v1", None,
         "题目（交卷前：不含 answer/evidenceRef/explanation）")
 

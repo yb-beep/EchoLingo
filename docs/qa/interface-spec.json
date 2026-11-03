@@ -133,6 +133,17 @@
     },
     {
       "method": "GET",
+      "path": "/api/cet/materials/cet6-202512-conv2/audio",
+      "note": "材料音频（支持 Range 请求，播放器 seek 依赖它）",
+      "status": 0,
+      "body": null,
+      "response": {
+        "_type": "null",
+        "_sample": null
+      }
+    },
+    {
+      "method": "GET",
       "path": "/api/cet/materials/cet6-202512-conv2/questions?version=v1",
       "note": "题目（交卷前：不含 answer/evidenceRef/explanation）",
       "status": 200,

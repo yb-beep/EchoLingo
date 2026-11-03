@@ -881,6 +881,122 @@ def test_transfer_no_candidate_still_saves():
     assert fin.json()["status"] == "complete"
 
 
+# ────────────────────────── concurrent：并发与一致性 ──────────────────────────
+# 任务书 D3 第 1 条要求「检查重启、并发请求和重复操作后的数据一致性」。
+# 并发问题的特征是「平时都对，压一下就错」，只靠串行测试永远测不出来，
+# 所以单列一层。Mock 内存态与真实数据库都可能在这里暴露问题。
+
+
+@pytest.mark.concurrent
+def test_concurrent_duplicate_events_count_once():
+    """同一 eventId 并发上报多次，有效时长只能算一次（防重复计时）。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+    event_id = _unique("pev-concurrent")
+    payload = {
+        "eventId": event_id,
+        "type": "end",
+        "stepId": "step-c",
+        "playedMs": 4000,
+        "visible": True,
+    }
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: api("POST", f"/api/cet/practices/{pid}/events", json=payload), range(8)))
+
+    codes = [r.status_code for r in results]
+    assert all(c == 200 for c in codes), f"并发重复事件应全部 200（幂等），实际 {codes}"
+
+    final = api("GET", f"/api/cet/practices/{pid}").json()
+    assert final["effectiveMs"] == 4000, (
+        f"8 次并发重复上报只能计一次 4000ms，实际 {final['effectiveMs']}ms"
+    )
+
+
+@pytest.mark.concurrent
+def test_concurrent_attempts_create_one_record():
+    """同一听音会话并发交卷，只能产生一个 attemptId（防重复记录）。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    reset_mock()
+    qs = api("GET", f"/api/cet/materials/{MATERIAL_ID}/questions").json()["items"]
+    session = _unique("listen-concurrent")
+    payload = {
+        "materialId": MATERIAL_ID,
+        "materialVersion": MATERIAL_VERSION,
+        "listeningSessionId": session,
+        "answers": [{"questionId": q["questionId"], "choice": 0} for q in qs],
+    }
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(lambda _: api("POST", "/api/cet/attempts", json=payload), range(6)))
+
+    ok = [r for r in results if r.status_code in (200, 201)]
+    assert ok, f"并发交卷至少应有一个成功，实际状态码 {[r.status_code for r in results]}"
+    ids = {r.json().get("attemptId") for r in ok}
+    assert len(ids) == 1, f"同一会话并发交卷应只有一个 attemptId，实际 {ids}"
+
+
+@pytest.mark.concurrent
+def test_concurrent_marks_from_different_events_all_recorded():
+    """不同 eventId 的并发标记都要落库，且每个都有唯一 markId（防丢失/防串号）。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    reset_mock()
+    session = _unique("listen-multi")
+
+    def one(i: int):
+        return api(
+            "POST",
+            "/api/cet/marks",
+            json={
+                "materialId": MATERIAL_ID,
+                "materialVersion": MATERIAL_VERSION,
+                "listeningSessionId": session,
+                "pressedAtSec": 20.0 + i * 5,
+                "eventId": _unique(f"evt-{i}"),
+            },
+        )
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(one, range(6)))
+
+    assert all(r.status_code in (200, 201) for r in results),         f"并发建不同标记应全部成功，实际 {[r.status_code for r in results]}"
+    ids = {r.json()["markId"] for r in results}
+    assert len(ids) == 6, f"6 个不同标记应有 6 个唯一 markId，实际 {len(ids)}"
+
+    listing = api("GET", "/api/cet/marks", params={"materialId": MATERIAL_ID}).json()["items"]
+    mine = [m for m in listing if m["listeningSessionId"] == session]
+    assert len(mine) == 6, f"列表应有 6 条，实际 {len(mine)}"
+
+
+@pytest.mark.concurrent
+def test_concurrent_stale_and_fresh_next_do_not_corrupt_state():
+    """并发请求 next 时，最终状态必须自洽：currentStepId 指向真实存在的步骤。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    reset_mock()
+    mark = _create_confirmed_mark()
+    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
+
+    def one(feedback: str):
+        return api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": feedback})
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        list(pool.map(one, ["sound", "meaning", "heard", "sound", "meaning", "heard"]))
+
+    final = api("GET", f"/api/cet/practices/{pid}")
+    assert final.status_code == 200, final.text
+    body = final.json()
+    cur = body.get("currentStep")
+    assert cur is not None, "并发后 currentStep 不能为空"
+    assert body["currentStepId"] == cur["stepId"], "currentStepId 必须与当前步骤一致"
+    assert cur.get("action") in ("replay", "slow", "chunk", "explain", "transfer"),         f"当前步骤动作非法：{cur.get('action')}"
+
+
 def test_report_target_environment():
     """把当前测试目标写进输出，避免把 Mock 结果误记为真实验收。"""
     info = requests.get(f"{BASE}/api/cet/_mock/info", timeout=3) if IS_MOCK else None

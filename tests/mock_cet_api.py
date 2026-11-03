@@ -34,6 +34,7 @@ import json
 import os
 import secrets
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -137,6 +138,11 @@ def fresh_state() -> dict:
 
 
 STATE = fresh_state()
+
+# Mock 状态是进程内共享 dict，FastAPI 的同步路由跑在线程池里，
+# 「先检查再写入」的写法在并发下会两个请求同时通过检查（TOCTOU），
+# 于是同一会话被创建出两个 attemptId。所有「读—判断—写」都在这个锁里做。
+_STATE_LOCK = threading.RLock()
 
 
 def get_material(material_id: str) -> Optional[dict]:
@@ -380,18 +386,19 @@ def submit_attempt(payload: dict = Body(...)):
         normalized.append({"questionId": qid, "choice": choice})
     normalized.sort(key=lambda a: a["questionId"])
 
-    existing_id = STATE["attemptBySession"].get(session_id)
-    if existing_id:
-        existing = STATE["attempts"][existing_id]
-        if existing["answers"] == normalized:
-            # 重复提交：返回同一 attemptId，不新增记录
-            return {**existing["response"], "idempotent": True, "developmentFixture": True}
-        raise ScenarioFailure(
-            "ATTEMPT_ALREADY_SUBMITTED",
-            409,
-            "该听音会话已交卷，原始作答保留",
-            "如需重做，请新建听音会话。",
-        )
+    with _STATE_LOCK:
+        existing_id = STATE["attemptBySession"].get(session_id)
+        if existing_id:
+            existing = STATE["attempts"][existing_id]
+            if existing["answers"] == normalized:
+                # 重复提交：返回同一 attemptId，不新增记录
+                return {**existing["response"], "idempotent": True, "developmentFixture": True}
+            raise ScenarioFailure(
+                "ATTEMPT_ALREADY_SUBMITTED",
+                409,
+                "该听音会话已交卷，原始作答保留",
+                "如需重做，请新建听音会话。",
+            )
 
     after_by_id = {q["questionId"]: q for q in STATE["questionsAfter"]}
     results, correct_count, unknown_count, answered = [], 0, 0, 0
@@ -427,30 +434,32 @@ def submit_attempt(payload: dict = Body(...)):
             }
         )
 
-    attempt_id = new_id("attempt")
-    response = {
-        "attemptId": attempt_id,
-        "materialId": material_id,
-        "materialVersion": material_version,
-        "listeningSessionId": session_id,
-        "submittedAt": now_iso(),
-        "answersVisible": True,
-        "results": results,
-        "summary": {
-            "total": len(results),
-            "answered": answered,
-            "correct": correct_count,
-            "unknownAnswer": unknown_count,
-        },
-        "developmentFixture": True,
-    }
-    STATE["attempts"][attempt_id] = {
-        "attemptId": attempt_id,
-        "answers": normalized,
-        "response": response,
-    }
-    STATE["attemptBySession"][session_id] = attempt_id
-    return response
+    # 检查与写入必须在同一把锁内，否则并发下两个请求都能通过上面的存在性检查。
+    with _STATE_LOCK:
+        attempt_id = new_id("attempt")
+        response = {
+            "attemptId": attempt_id,
+            "materialId": material_id,
+            "materialVersion": material_version,
+            "listeningSessionId": session_id,
+            "submittedAt": now_iso(),
+            "answersVisible": True,
+            "results": results,
+            "summary": {
+                "total": len(results),
+                "answered": answered,
+                "correct": correct_count,
+                "unknownAnswer": unknown_count,
+            },
+            "developmentFixture": True,
+        }
+        STATE["attempts"][attempt_id] = {
+            "attemptId": attempt_id,
+            "answers": normalized,
+            "response": response,
+        }
+        STATE["attemptBySession"][session_id] = attempt_id
+        return response
 
 
 # ────────────────────────── 标记与确认 ──────────────────────────
@@ -477,37 +486,38 @@ def create_mark(payload: dict = Body(...)):
             f"按键时间 {pressed}s 超出材料时长 {mat['durationSec']}s",
         )
 
-    # 重复上报（长按连发 / 网络重试）用 eventId 去重，不新增标记
-    if event_id:
-        if event_id in STATE["markEvents"]:
-            mark_id = STATE["markEvents"][event_id]
-            return {**STATE["marks"][mark_id], "idempotent": True, "developmentFixture": True}
-    else:
-        # 未带 eventId 时按「同一会话 + 同一秒内」去重，模拟长按不连发
-        for m in STATE["marks"].values():
-            if (
-                m["listeningSessionId"] == session_id
-                and abs(float(m["pressedAtSec"]) - float(pressed)) < 0.25
-            ):
-                return {**m, "idempotent": True, "developmentFixture": True}
+    with _STATE_LOCK:
+        # 重复上报（长按连发 / 网络重试）用 eventId 去重，不新增标记
+        if event_id:
+            if event_id in STATE["markEvents"]:
+                mark_id = STATE["markEvents"][event_id]
+                return {**STATE["marks"][mark_id], "idempotent": True, "developmentFixture": True}
+        else:
+            # 未带 eventId 时按「同一会话 + 同一秒内」去重，模拟长按不连发
+            for m in STATE["marks"].values():
+                if (
+                    m["listeningSessionId"] == session_id
+                    and abs(float(m["pressedAtSec"]) - float(pressed)) < 0.25
+                ):
+                    return {**m, "idempotent": True, "developmentFixture": True}
 
-    sug = snap_to_sentence(material_id, float(pressed))
-    mark_id = new_id("mark")
-    record = {
-        "markId": mark_id,
-        "listeningSessionId": session_id,
-        "materialId": material_id,
-        "materialVersion": mat["materialVersion"],
-        "pressedAtSec": round(float(pressed), 3),
-        "suggestedSentenceId": sug["sentenceId"] if sug else None,
-        "confirmedSentenceId": None,
-        "confirmedAtSec": None,
-        "createdAt": now_iso(),
-    }
-    STATE["marks"][mark_id] = record
-    if event_id:
-        STATE["markEvents"][event_id] = mark_id
-    return {**record, "developmentFixture": True}
+        sug = snap_to_sentence(material_id, float(pressed))
+        mark_id = new_id("mark")
+        record = {
+            "markId": mark_id,
+            "listeningSessionId": session_id,
+            "materialId": material_id,
+            "materialVersion": mat["materialVersion"],
+            "pressedAtSec": round(float(pressed), 3),
+            "suggestedSentenceId": sug["sentenceId"] if sug else None,
+            "confirmedSentenceId": None,
+            "confirmedAtSec": None,
+            "createdAt": now_iso(),
+        }
+        STATE["marks"][mark_id] = record
+        if event_id:
+            STATE["markEvents"][event_id] = mark_id
+        return {**record, "developmentFixture": True}
 
 
 @app.patch("/api/cet/marks/{mark_id}", tags=["marks"])
@@ -640,14 +650,15 @@ def practice_event(practice_id: str, payload: dict = Body(...)):
     event_id = str(payload.get("eventId") or "")
     if not event_id:
         raise ScenarioFailure("URL_REQUIRED", 400, "eventId 必填")
-    if event_id in STATE["practiceEvents"]:
-        return {
-            "ok": True,
-            "idempotent": True,
-            "eventId": event_id,
-            "effectiveMs": practice["effectiveMs"],
-            "developmentFixture": True,
-        }
+    with _STATE_LOCK:
+        if event_id in STATE["practiceEvents"]:
+            return {
+                "ok": True,
+                "idempotent": True,
+                "eventId": event_id,
+                "effectiveMs": practice["effectiveMs"],
+                "developmentFixture": True,
+            }
 
     etype = str(payload.get("type") or "")
     if etype not in ("start", "end", "interrupt"):
@@ -671,33 +682,34 @@ def practice_event(practice_id: str, payload: dict = Body(...)):
 
     # 只有「前台 + 可见 + 有播放量」才计入有效学习时长；
     # AI 等待、后台、暂停由前端不打 end 事件或 visible=false 表示。
-    counted = 0
-    if etype in ("end", "interrupt") and visible and played_ms:
-        counted = int(played_ms)
-        practice["effectiveMs"] += counted
+    with _STATE_LOCK:
+        counted = 0
+        if etype in ("end", "interrupt") and visible and played_ms:
+            counted = int(played_ms)
+            practice["effectiveMs"] += counted
 
-    STATE["practiceEvents"][event_id] = {
-        "eventId": event_id,
-        "practiceId": practice_id,
-        "stepId": step_id,
-        "type": etype,
-        "playedMs": played_ms,
-        "countedMs": counted,
-        "visible": visible,
-        "audioSec": payload.get("audioSec"),
-        "speed": payload.get("speed"),
-        "materialVersion": material_version,
-        "receivedAt": now_iso(),
-    }
-    practice["updatedAt"] = now_iso()
-    return {
-        "ok": True,
-        "idempotent": False,
-        "eventId": event_id,
-        "countedMs": counted,
-        "effectiveMs": practice["effectiveMs"],
-        "developmentFixture": True,
-    }
+            STATE["practiceEvents"][event_id] = {
+                "eventId": event_id,
+                "practiceId": practice_id,
+                "stepId": step_id,
+                "type": etype,
+                "playedMs": played_ms,
+                "countedMs": counted,
+                "visible": visible,
+                "audioSec": payload.get("audioSec"),
+                "speed": payload.get("speed"),
+                "materialVersion": material_version,
+                "receivedAt": now_iso(),
+            }
+        practice["updatedAt"] = now_iso()
+        return {
+            "ok": True,
+            "idempotent": False,
+            "eventId": event_id,
+            "countedMs": counted,
+            "effectiveMs": practice["effectiveMs"],
+            "developmentFixture": True,
+        }
 
 
 def _transfer_case(case_id: str) -> dict:

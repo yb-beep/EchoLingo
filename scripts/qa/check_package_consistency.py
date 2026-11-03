@@ -264,6 +264,39 @@ def check_leaks() -> None:
         record("ok", "本机路径泄露", "交付文档未泄露本机绝对路径")
 
 
+def check_self_contained() -> None:
+    """交付包必须能独立跑：工具不能把「不在 git 里的本机文件」当作唯一数据来源。
+
+    这条是因为真踩过：verify_answer_provenance.py 原先只读 C 本机一个绝对路径的
+    答案解析文本，而该文件不在 git 里 —— 外部机器上任务书 11 节要求的
+    「答案来源核对」必然失败。
+
+    判定原则：
+    - 允许把本机路径作为**候选之一**（如 prepare_audio 的音频，受版权限制本就不能入库）
+    - 不允许「唯一来源是本机路径」而没有 git 内的替代
+    """
+    offenders: list[str] = []
+    for f in sorted((ROOT / "scripts" / "qa").glob("*.py")):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        if "/Users/" not in text:
+            continue
+        # 是否同时引用了仓库内的 fixtures（说明有自包含替代）
+        has_bundled = ("tests/fixtures" in text or "FIXTURES" in text
+                       or "ROOT /" in text)
+        # 是否明确把本机路径标为「候选/回退」
+        marked_fallback = any(k in text for k in ("候选", "回退", "若存在", "fallback"))
+        if not (has_bundled or marked_fallback):
+            offenders.append(f.name)
+
+    if offenders:
+        record("warn", "交付包自包含",
+               f"{len(offenders)} 个脚本只依赖本机路径且无替代：{offenders}",
+               "把必要数据固化进 tests/fixtures，或把本机路径标为候选或回退")
+    else:
+        record("ok", "交付包自包含",
+               "含本机路径的脚本都有仓库内替代或明确标为回退")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="交付包自洽性检查")
     parser.add_argument("--json", action="store_true")
@@ -277,6 +310,7 @@ def main() -> int:
     check_counts()
     check_endpoints()
     check_leaks()
+    check_self_contained()
 
     blocks = [r for r in results if r["level"] == "block"]
     warns = [r for r in results if r["level"] == "warn"]

@@ -43,24 +43,34 @@ MATERIAL = FIXTURES / "material_cet6-202512-conv2.json"
 QUESTIONS_SRC = FIXTURES / "source" / "cet6-202512-conv2.questions.json"
 ATTEMPT = FIXTURES / "attempt_result.json"
 
-# 原始答案解析文档（用户提供的整卷解析 PDF 的文本层）
-DEFAULT_SOURCE = Path(
+# 答案来源：优先用入库的自包含记录，回退到 C 本机的原始解析文档。
+#
+# 为什么改：原先只依赖 C 本机的一个绝对路径，而该文件**不在 git 里** ——
+# 外部机器上这个工具必然失败，而它检查的正是任务书 11 节要求的「答案来源核对」。
+# 交付包必须能独立验证，不能依赖某台机器的私有文件。
+BUNDLED_KEY = FIXTURES / "source" / "cet6-202512-conv2.answer-key.json"
+LOCAL_SOURCE = Path(
     "/Users/a1111/Documents/ChatGPT/四六级Skill升级/desktop/.acceptance/"
     "cet6-202512/conversation-two-answers.txt"
 )
+DEFAULT_SOURCE = BUNDLED_KEY if BUNDLED_KEY.is_file() else LOCAL_SOURCE
 
 LETTER_TO_INDEX = {"A": 0, "B": 1, "C": 2, "D": 3}
 
 
 def parse_source(path: Path) -> dict[int, str]:
-    """从答案解析文档里抽 {题号: 答案字母}。
+    """从答案来源里抽 {题号: 答案字母}。
 
-    文档格式形如：
-        5. A) They have got their work done.
-        ...
-        【答案】 B （细节题） They both look tired
-    按题号分块后取【答案】后面的字母。
+    支持两种输入：
+    - 入库的自包含 JSON（`source/*.answer-key.json`）—— 交付包用这个
+    - C 本机的原始解析文本（回退）—— 格式形如
+          5. A) They have got their work done.
+          ...
+          【答案】 B （细节题） They both look tired
     """
+    if path.suffix == ".json":
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        return {int(a["number"]): a["answerLetter"] for a in doc.get("answers", [])}
     text = path.read_text(encoding="utf-8", errors="replace")
     blocks = re.split(r"\n(?=\d+\.\s*[A-D]\))", text)
     out: dict[int, str] = {}

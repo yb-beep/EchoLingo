@@ -1,0 +1,34 @@
+{
+  "sourceType": "user_provided_answer_key",
+  "note": "用户提供的 2025年12月六级第一套 答案解析 PDF 的文本层摘录。C 用它核对契约里每道题的 answer 索引是否与来源一致（任务书 11 节要求）。此文件入库是为了让核对不依赖 C 本机的私有路径 —— 外部机器也能跑。",
+  "originalFile": "conversation-two-answers.txt（旧项目 .acceptance/cet6-202512/）",
+  "notOfficial": true,
+  "officialStatement": "未经官方认证；来源为用户提供的整卷 PDF 及答案解析 PDF",
+  "extractedAt": "2026-11-03",
+  "answers": [
+    {
+      "number": 5,
+      "answerLetter": "B",
+      "questionType": "细节题",
+      "answerText": "They both look tired"
+    },
+    {
+      "number": 6,
+      "answerLetter": "B",
+      "questionType": "细节题",
+      "answerText": "Two months devoted to the same contract."
+    },
+    {
+      "number": 7,
+      "answerLetter": "D",
+      "questionType": "态度观点题",
+      "answerText": "Delusional."
+    },
+    {
+      "number": 8,
+      "answerLetter": "C",
+      "questionType": "细节题",
+      "answerText": "The early implementation of the project."
+    }
+  ]
+}

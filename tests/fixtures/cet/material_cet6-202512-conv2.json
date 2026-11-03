@@ -180,7 +180,7 @@
       "materialVersion": "v1",
       "sentenceId": "s19",
       "index": 19,
-      "startSec": 57.28,
+      "startSec": 56.78,
       "endSec": 62.28,
       "text": "Then we need to proofread the whole thing and make sure all selling points are watertight."
     },
@@ -281,16 +281,16 @@
       "index": 30,
       "startSec": 92.06,
       "endSec": 97.66,
-      "text": "The entire managerial hierarchy wants to see this project implemented as soon as possible and the board too is virtually unanimous in its support."
+      "text": "The entire managerial hierarchy wants to see this project implemented as soon as possible"
     },
     {
       "materialId": "cet6-202512-conv2",
       "materialVersion": "v1",
       "sentenceId": "s31",
       "index": 31,
-      "startSec": 98.05,
+      "startSec": 98.28,
       "endSec": 101.23,
-      "text": "And the board, too, is virtually unanimous in its support."
+      "text": "The board, too, is virtually unanimous in its support."
     },
     {
       "materialId": "cet6-202512-conv2",

@@ -263,6 +263,17 @@ def verify(fast: bool) -> list[dict]:
     )
     record("契约样例自校验", code, out)
 
+    # 后端接口缺口：把「一堆红字」翻译成「哪些接口还没做」，便于分派
+    code, out = run(
+        [sys.executable, "scripts/qa/check_backend_gap.py"], timeout=180
+    )
+    steps.append({
+        "name": "后端接口缺口",
+        "ok": True,               # 信息项：缺口本身不是集成的错，是进度
+        "informational": True,
+        "output": out.strip().splitlines()[-8:] if out.strip() else [],
+    })
+
     # 前端可测性约定：缺失不算失败（A 未交付时必然缺失），但要报出来
     code, out = run(
         [sys.executable, "scripts/qa/check_frontend_contract.py"], timeout=120

@@ -96,7 +96,26 @@ CET_API_BASE=http://127.0.0.1:5173 .venv/bin/python -m pytest tests/test_cet_con
 当前真实服务是 `34 failed / 4 passed / 6 skipped` —— 全部因为 `/api/cet/*` 还没实现。
 每实现一批，对应用例就会转绿。
 
-### 2. 分层跑，先攻契约层
+### 2. 先看「还差哪些接口」，照着实现
+
+```bash
+.venv/bin/python scripts/qa/check_backend_gap.py
+```
+
+它把契约测试的失败**倒推成接口清单**，按 5 个批次排好：
+
+| 批次 | 内容 | 转绿用例 |
+| --- | --- | --- |
+| 1 | 材料与句子 | 6 |
+| 2 | 交卷与判题 | 5 |
+| 3 | 标记与确认 | 8 |
+| 4 | 练习与带练 | 13 |
+| 5 | 卡点与复习 | 4 |
+
+现在跑，会明确告诉你批次 1 的 4 个接口还没做，做完了再跑一次就能确认转绿。
+**不用对着一堆红字猜。**
+
+### 3. 分层跑，先攻契约层
 
 ```bash
 # 纯形状断言，不改状态，最快
@@ -111,7 +130,7 @@ CET_API_BASE=http://127.0.0.1:5173 .venv/bin/python -m pytest tests/test_cet_con
 
 建议顺序：`contract` 全绿 → 再攻 `flow`。
 
-### 3. 特别提醒：并发不是可选项
+### 4. 特别提醒：并发不是可选项
 
 C 在 Mock 里就抓到了一个真实并发 bug（BUG-006b）：`submit_attempt` 用「先查再写」，
 并发下两个请求同时通过检查，产生两个 attemptId。修法是加锁。
@@ -126,7 +145,7 @@ C 在 Mock 里就抓到了一个真实并发 bug（BUG-006b）：`submit_attempt
 | `test_concurrent_marks_from_different_events_all_recorded` | 不同标记并发建，都落库且 ID 唯一 |
 | `test_concurrent_stale_and_fresh_next_do_not_corrupt_state` | 并发 next 后状态仍自洽 |
 
-### 4. 契约里需要你确认的 4 个点（T10 换句检查）
+### 5. 契约里需要你确认的 4 个点（T10 换句检查）
 
 第 7 节列了 `transfer` 动作和 `candidateRef` 字段，但**没定义候选对象结构**。
 C 先给了可运行形状（`tests/fixtures/cet/transfer_candidates.json`），需要你定：
@@ -138,12 +157,12 @@ C 先给了可运行形状（`tests/fixtures/cet/transfer_candidates.json`），
 
 你定了之后 C 改样例，**不要让前端照 C 的提议硬编码**。
 
-### 5. 另外两个待你处理的
+### 6. 另外两个待你处理的
 
 - **BUG-001**：`requirements.txt` 未锁 FastAPI 版本，装到 0.162 后 `app.routes` 只有 5/17 有 `.path`，底座一个测试因此失败。属版本漂移，**运行时正常**。锁版本会改你的开发环境，需三人同意，所以 C 没动。**写路由自检时请用 `app.openapi()["paths"]`，不要遍历 `app.routes`。**
 - **BUG-002**：无 AI 密钥时所有 AI 接口返回 500 而非优雅降级。根因在 `ai_config.py` —— 注释说会前置拦截，实际直接用占位符 `"missing-api-key"` 发请求。建议补前置检查，返回可展示的「未配置」错误。
 
-### 6. 验收场景与契约对照
+### 7. 验收场景与契约对照
 
 `docs/qa/验收场景覆盖矩阵.md` 列了 T01—T16 每个场景现在靠哪条测试验证。
 你要实现哪些接口，对照它看最清楚。

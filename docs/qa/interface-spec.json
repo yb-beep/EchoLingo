@@ -237,7 +237,7 @@
         },
         "submittedAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "answersVisible": {
           "type": "boolean",
@@ -388,7 +388,7 @@
         },
         "createdAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "developmentFixture": {
           "type": "boolean",
@@ -435,11 +435,11 @@
         },
         "confirmedAtSec": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "createdAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "developmentFixture": {
           "type": "boolean",
@@ -487,11 +487,11 @@
             },
             "confirmedAtSec": {
               "type": "string",
-              "sample": "2026-11-03T14:01:20Z"
+              "sample": "<timestamp>"
             },
             "createdAt": {
               "type": "string",
-              "sample": "2026-11-03T14:01:20Z"
+              "sample": "<timestamp>"
             }
           },
           "length": 1
@@ -583,11 +583,11 @@
         },
         "createdAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "updatedAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "currentStep": {
           "type": "object",
@@ -641,7 +641,7 @@
             },
             "createdAt": {
               "type": "string",
-              "sample": "2026-11-03T14:01:20Z"
+              "sample": "<timestamp>"
             }
           }
         },
@@ -726,11 +726,11 @@
         },
         "createdAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "updatedAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "currentStep": {
           "type": "object",
@@ -784,7 +784,7 @@
             },
             "createdAt": {
               "type": "string",
-              "sample": "2026-11-03T14:01:20Z"
+              "sample": "<timestamp>"
             }
           }
         },
@@ -870,7 +870,7 @@
             },
             "createdAt": {
               "type": "string",
-              "sample": "2026-11-03T14:01:20Z"
+              "sample": "<timestamp>"
             }
           }
         },
@@ -962,7 +962,7 @@
             },
             "createdAt": {
               "type": "string",
-              "sample": "2026-11-03T14:01:20Z"
+              "sample": "<timestamp>"
             }
           }
         },
@@ -1128,7 +1128,7 @@
             },
             "createdAt": {
               "type": "string",
-              "sample": "2026-11-03T14:01:20Z"
+              "sample": "<timestamp>"
             }
           }
         },
@@ -1232,7 +1232,7 @@
             },
             "createdAt": {
               "type": "string",
-              "sample": "2026-11-03T14:01:20Z"
+              "sample": "<timestamp>"
             }
           }
         },
@@ -1502,7 +1502,7 @@
         },
         "createdAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "developmentFixture": {
           "type": "boolean",
@@ -1590,7 +1590,7 @@
         },
         "createdAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "developmentFixture": {
           "type": "boolean",
@@ -1679,7 +1679,7 @@
         },
         "createdAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "developmentFixture": {
           "type": "boolean",
@@ -1768,7 +1768,7 @@
         },
         "createdAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "developmentFixture": {
           "type": "boolean",
@@ -1857,7 +1857,7 @@
         },
         "createdAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "developmentFixture": {
           "type": "boolean",
@@ -1956,7 +1956,7 @@
         },
         "createdAt": {
           "type": "string",
-          "sample": "2026-11-03T14:01:20Z"
+          "sample": "<timestamp>"
         },
         "developmentFixture": {
           "type": "boolean",

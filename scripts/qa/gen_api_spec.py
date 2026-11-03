@@ -69,11 +69,17 @@ _ID_PAT = _re.compile(
     r"\b(attempt|mark|practice|review|step|item|cand|req|evt)-[0-9a-f]{6,}\b"
 )
 
+# 时间戳同理：每次生成都是新的（submittedAt / createdAt / confirmedAtSec …）。
+# 不归一化会让 --check 永远失败，也会掩盖真正需要关注的变化。
+_TS_PAT = _re.compile(r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?\b")
+
 
 def normalize_ids(value):
     """把随机 hex 的运行时 ID 替换成 <prefix>-<id> 形式，保证生成可复现。"""
     if isinstance(value, str):
-        return _ID_PAT.sub(lambda m: f"{m.group(1)}-<id>", value)
+        value = _ID_PAT.sub(lambda m: f"{m.group(1)}-<id>", value)
+        value = _TS_PAT.sub("<timestamp>", value)
+        return value
     if isinstance(value, list):
         return [normalize_ids(v) for v in value]
     if isinstance(value, dict):

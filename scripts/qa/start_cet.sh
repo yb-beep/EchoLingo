@@ -7,6 +7,7 @@
 # 用法：
 #   scripts/qa/start_cet.sh              # 检查环境 → 后台启动底座
 #   scripts/qa/start_cet.sh --mock       # 另外拉起 Mock API（前端可用）
+#   scripts/qa/start_cet.sh --seed       # 顺手预置一节样例课（做有内容的 E2E）
 #   scripts/qa/start_cet.sh --fg         # 前台启动（看日志用，Ctrl-C 退出）
 #   PORT=5174 scripts/qa/start_cet.sh    # 换端口（多人同机时）
 #
@@ -30,6 +31,7 @@ for arg in "$@"; do
   case "$arg" in
     --mock) WITH_MOCK=1 ;;
     --mock-only) WITH_MOCK=1; MOCK_ONLY=1 ;;
+    --seed) WITH_SEED=1 ;;
     --fg)   FOREGROUND=1 ;;
     -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "未知参数：$arg" >&2; exit 64 ;;
@@ -37,6 +39,7 @@ for arg in "$@"; do
 done
 
 MOCK_ONLY="${MOCK_ONLY:-0}"
+WITH_SEED="${WITH_SEED:-0}"
 
 info() { printf '  %s\n' "$*"; }
 fail() { printf 'X  %s\n' "$*" >&2; exit 1; }
@@ -175,6 +178,18 @@ if [ "$WITH_MOCK" -eq 1 ]; then
       info "Mock 未就绪（底座可用，Mock 故障单独排查）"
     fi
   fi
+fi
+
+# ── 8. 可选：预置数据 ──
+if [ "${WITH_SEED}" -eq 1 ] && [ "${SKIP_SERVER}" -eq 0 ]; then
+  echo "-- 预置底座数据 --"
+  if "${PY}" scripts/qa/seed_base_data.py 2>&1 | tail -6 | sed 's/^/  /'; then
+    info "数据预置完成"
+  else
+    info "数据预置失败（不影响服务启动，单独排查）"
+  fi
+elif [ "${WITH_SEED}" -eq 1 ]; then
+  info "--seed 需要本次启动底座才生效；当前跳过了底座启动"
 fi
 
 cat <<EOF

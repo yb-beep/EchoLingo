@@ -106,6 +106,46 @@ def check_pages(browser, js_errors: list[str]) -> None:
     page.close()
 
 
+def check_seeded_content(browser, js_errors: list[str]) -> None:
+    """有内容时的页面渲染（依赖 seed_base_data.py 已预置课程）。
+
+    空库状态下只能验 200 和骨架；预置后才能真正验「页面把内容渲染出来了」。
+    没有预置数据时跳过，不误判为失败。
+    """
+    print("\n-- 有内容时的页面渲染 --")
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{BASE}/api/v2/lessons/library", timeout=10) as resp:
+            lessons = json.loads(resp.read().decode("utf-8")).get("lessons") or []
+    except Exception as exc:  # noqa: BLE001
+        check(False, "课程库可读", str(exc)[:80])
+        return
+
+    if not lessons:
+        check(True, "有内容渲染检查", "跳过：库为空，先跑 scripts/qa/seed_base_data.py")
+        return
+
+    lesson_id = lessons[0].get("id")
+    page = browser.new_page()
+    page.on("pageerror", lambda e: js_errors.append(f"{page.url}: {e}"))
+    try:
+        resp = page.goto(f"{BASE}/workspace/{lesson_id}", wait_until="networkidle", timeout=45_000)
+        ok = resp is not None and resp.ok
+        check(ok, f"工作台 /workspace/{lesson_id} 可打开",
+              f"HTTP {resp.status if resp else '无响应'}")
+        if ok:
+            body = page.evaluate("() => document.body.innerText")
+            check(len(body) > 100, "工作台有实质正文", f"{len(body)} 字符")
+            # 库里第一节是预置的 reading 课；有正文即说明渲染链路通
+            check("library" in body.lower() or "university" in body.lower(),
+                  "预置正文已渲染到页面")
+    except Exception as exc:  # noqa: BLE001
+        check(False, f"工作台 /workspace/{lesson_id} 可打开", str(exc)[:90])
+    finally:
+        page.close()
+
+
 def check_audio(browser) -> None:
     """播放链路的前置条件：浏览器能取到音频、能解码、时长对、能 seek。
 
@@ -235,6 +275,7 @@ def main() -> int:
         try:
             if not args.audio_only:
                 check_pages(browser, js_errors)
+                check_seeded_content(browser, js_errors)
             check_audio(browser)
             if not args.audio_only:
                 check_mock_ui(browser, js_errors)

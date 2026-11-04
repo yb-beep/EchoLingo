@@ -262,10 +262,15 @@ def _business_id(lesson: dict[str, Any]) -> str:
     取不到时返回空串（调用方保持底座 ID）。
     """
     src = str(lesson.get("source_url") or "")
+    # 只有真实文件来源才派生业务 ID；
+    # fixture:// 是测试夹具、upload: 是浏览器上传，都没有稳定业务含义，
+    # 强制派生会让「同一份材料换台机器 ID 就变」，反而失去稳定性。
+    if src.startswith("fixture://") or src.startswith("upload:"):
+        return ""
     if src:
         name = src.rsplit("/", 1)[-1]          # cet6-202512-conv2.mp3
         name = name.rsplit(".", 1)[0]          # cet6-202512-conv2
-        if name and not name.startswith("upload:"):
+        if name:
             return name
     return ""
 

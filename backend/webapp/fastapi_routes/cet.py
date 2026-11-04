@@ -12,7 +12,9 @@ router = APIRouter(prefix="/api/cet", tags=["cet"])
 
 @router.get("/materials")
 def list_cet_materials(level: str | None = Query(default=None)):
-    return {"materials": cet_service.list_materials(level)}
+    items = cet_service.list_materials(level)
+    # 顶层包装对齐契约：{items, count}（原为 {materials}）
+    return {"items": items, "count": len(items)}
 
 
 @router.get("/materials/{material_id}")
@@ -37,7 +39,8 @@ def create_cet_mark(body: dict[str, Any] = Body(...)):
 
 @router.get("/marks")
 def list_cet_marks(materialId: str = Query(...), listeningSessionId: str | None = Query(default=None)):
-    return {"marks": cet_service.list_marks(materialId, listeningSessionId)}
+    items = cet_service.list_marks(materialId, listeningSessionId)
+    return {"items": items, "count": len(items)}
 
 
 @router.patch("/marks/{mark_id}")
@@ -77,7 +80,8 @@ def finish_cet_practice(practice_id: str, body: dict[str, Any] = Body(...)):
 
 @router.get("/review-items")
 def list_cet_review_items():
-    return {"items": cet_service.list_review_items()}
+    items = cet_service.list_review_items()
+    return {"items": items, "count": len(items)}
 
 
 @router.post("/reviews", status_code=201)

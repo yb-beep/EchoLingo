@@ -260,6 +260,33 @@ def _lesson_id(material_id: str) -> int:
     return int(match.group(1))
 
 
+def _audio_sha256(lesson: dict[str, Any]) -> str:
+    """材料的音频哈希（契约要求，用于核对「是不是同一段音频」）。
+
+    底座不一定保存哈希；取不到就返回空串，而不是编一个值 ——
+    契约里 audioSha256 是便于核对的可选信息，不能伪造。
+    """
+    for key in ("audio_sha256", "media_sha256", "audioSha256"):
+        value = lesson.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _question_count(material_id: str, version: str) -> int:
+    """该材料版本下的题目数（契约要求）。取不到就 0。"""
+    try:
+        with _db() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS c FROM cet_questions "
+                "WHERE material_id = ? AND material_version = ?",
+                (material_id, version),
+            ).fetchone()
+            return int(row["c"] if row else 0)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 def _segments(lesson_id: int) -> list[dict[str, Any]]:
     return db.get_v2_subtitle_segments(lesson_id)
 
@@ -300,19 +327,27 @@ def _material(lesson: dict[str, Any], include_sentences: bool = True) -> dict[st
     }
     version = "sha256-" + hashlib.sha256(_json(version_payload).encode()).hexdigest()[:24]
     sentences = [_sentence_ref(material_id, version, segment) for segment in segments]
+    # 字段名对齐团队契约（C 的 tests/fixtures/cet/ 与 docs/qa/接口规格.md）：
+    #   id → materialId、version → materialVersion、durationSeconds → durationSec
+    # 并补 developmentFixture / section / audioSha256 / questionCount，
+    # 让前端与契约测试能按同一套字段工作。
     result = {
-        "id": material_id,
-        "version": version,
+        "materialId": material_id,
+        "materialVersion": version,
         "title": lesson.get("title") or f"听力材料 {lesson_id}",
         "level": _level(lesson),
+        "section": "",
         "audioUrl": lesson.get("media_url") or "",
-        "durationSeconds": float(lesson.get("duration") or 0),
+        "audioSha256": _audio_sha256(lesson),
+        "durationSec": float(lesson.get("duration") or 0),
         "source": {
             "type": lesson.get("source_type") or "",
             "value": lesson.get("source_url") or "",
             "materialStore": "echolingo.v2_lessons",
         },
         "sentenceCount": len(sentences),
+        "questionCount": _question_count(material_id, version),
+        "developmentFixture": bool(lesson.get("development_fixture")),
     }
     if include_sentences:
         result["sentences"] = sentences
@@ -361,19 +396,27 @@ def list_questions(material_id: str) -> dict[str, Any]:
     with _db() as conn:
         rows = conn.execute(
             "SELECT * FROM cet_questions WHERE material_id=? AND material_version=? ORDER BY question_number",
-            (material_id, material["version"]),
+            (material_id, material["materialVersion"]),
         ).fetchall()
     # Deliberately omit answers, sources and evidence before an attempt is submitted.
+    # 字段对齐契约（questions_before_attempt.json）：
+    #   id → questionId、questionNumber → number、prompt → stem
+    #   options 从 [{id,text}] 扁平化为字符串数组（契约形式，A 按索引作答）
+    #   补 materialId / materialVersion / answerSource
+    # 交卷前**不返回** answer / evidenceRef / explanation（契约硬要求）。
     questions = [
         {
-            "id": row["id"],
-            "questionNumber": row["question_number"],
-            "prompt": row["prompt"],
-            "options": _options(row["options_json"]),
+            "questionId": row["id"],
+            "number": row["question_number"],
+            "stem": row["prompt"],
+            "options": [opt["text"] for opt in _options(row["options_json"])],
+            "materialId": material_id,
+            "materialVersion": material["materialVersion"],
+            "answerSource": row["answer_source"] or "unknown",
         }
         for row in rows
     ]
-    return {"materialId": material_id, "materialVersion": material["version"], "questions": questions}
+    return {"materialId": material_id, "materialVersion": material["materialVersion"], "questions": questions}
 
 
 def _attempt_payload(attempt_id: str) -> dict[str, Any]:
@@ -391,7 +434,7 @@ def _attempt_payload(attempt_id: str) -> dict[str, Any]:
         evidence = None
         if row["evidence_sentence_id"]:
             material = get_material(attempt["material_id"])
-            if material["version"] == attempt["material_version"]:
+            if material["materialVersion"] == attempt["material_version"]:
                 evidence = _find_sentence(material, row["evidence_sentence_id"])
             else:
                 evidence = {
@@ -411,6 +454,32 @@ def _attempt_payload(attempt_id: str) -> dict[str, Any]:
                 "evidence": evidence,
             }
         )
+    # 契约要求：交卷后 answersVisible=true，且每条结果能给 A 直接渲染的字段
+    # （choice / answer / correct / answerSource / evidenceRef / explanation）。
+    # B 原有 answers 保留（含更细的诊断字段），新增 results 与之并行，避免破坏既有调用。
+    results = []
+    for row in answers:
+        row = dict(row)
+        letter = str(row.get("answer") or "")
+        correct_letter = row.get("correctAnswer")
+        results.append({
+            "questionId": row.get("questionId"),
+            "number": row.get("questionNumber"),
+            "choice": ("ABCDE".index(letter) if letter in "ABCDE" else None),
+            "answer": ("ABCDE".index(str(correct_letter)) if str(correct_letter) in "ABCDE" else None),
+            "correct": row.get("isCorrect"),
+            "answerSource": row.get("answerSource"),
+            "evidenceRef": ({
+                "sentenceId": row["evidence"]["sentenceId"],
+                "startSec": row["evidence"]["startSeconds"],
+                "endSec": row["evidence"]["endSeconds"],
+                "quote": row["evidence"]["text"],
+            } if row.get("evidence") else None),
+            "explanation": "",
+            "materialId": attempt["material_id"],
+            "materialVersion": attempt["material_version"],
+            "answerVisible": True,
+        })
     return {
         "attemptId": attempt["id"],
         "materialId": attempt["material_id"],
@@ -420,15 +489,30 @@ def _attempt_payload(attempt_id: str) -> dict[str, Any]:
         "gradedCount": attempt["graded_count"],
         "unknownCount": attempt["unknown_count"],
         "answers": answers,
+        "results": results,
+        "answersVisible": True,
         "submittedAt": attempt["created_at"],
     }
 
 
 def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
-    attempt_id = str(body.get("attemptId") or "").strip()
+    # 契约：attemptId 由服务端生成；幂等靠 listeningSessionId（同一会话只交一次卷）。
+    # 原实现要求客户端自带 attemptId，A 按契约调用会直接 422。
     material_id = str(body.get("materialId") or "").strip()
-    if not attempt_id or not material_id:
-        _error(422, "ATTEMPT_ID_REQUIRED", "attemptId 和 materialId 不能为空。")
+    session_id = str(body.get("listeningSessionId") or "").strip()
+    attempt_id = str(body.get("attemptId") or "").strip()
+    if not attempt_id:
+        if not session_id:
+            _error(422, "ATTEMPT_ID_REQUIRED", "materialId 和 listeningSessionId 不能为空。")
+        # 同一听音会话复用同一 attempt（幂等）
+        with _db() as _conn:
+            prev = _conn.execute(
+                "SELECT id FROM cet_attempts WHERE material_id=? AND listening_session_id=?",
+                (material_id, session_id),
+            ).fetchone()
+        attempt_id = prev["id"] if prev else f"attempt-{uuid.uuid4().hex[:12]}"
+    if not material_id:
+        _error(422, "ATTEMPT_ID_REQUIRED", "materialId 不能为空。")
     with _db() as conn:
         existing = conn.execute("SELECT material_id FROM cet_attempts WHERE id=?", (attempt_id,)).fetchone()
     if existing:
@@ -436,10 +520,10 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
             _error(409, "IDEMPOTENCY_CONFLICT", "attemptId 已用于另一份材料。")
         return _attempt_payload(attempt_id)
     material = get_material(material_id)
-    if body.get("materialVersion") != material["version"]:
-        _error(409, "MATERIAL_VERSION_CHANGED", "材料版本已变化，请刷新后重试。", currentVersion=material["version"])
+    if body.get("materialVersion") != material["materialVersion"]:
+        _error(409, "MATERIAL_VERSION_CHANGED", "材料版本已变化，请刷新后重试。", currentVersion=material["materialVersion"])
     question_data = list_questions(material_id)["questions"]
-    questions = {item["id"]: item for item in question_data}
+    questions = {item["questionId"]: item for item in question_data}
     raw_answers = body.get("answers")
     if not isinstance(raw_answers, list):
         _error(422, "ANSWERS_REQUIRED", "answers 必须是数组。")
@@ -450,11 +534,18 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
         question_id = str(item["questionId"])
         if question_id in answers:
             _error(422, "DUPLICATE_ANSWER", "同一题目不能重复作答。", questionId=question_id)
-        answers[question_id] = str(item.get("answer") or "").strip()
+        # 契约字段 choice 优先（0-based 选项索引或字母均可），兼容旧的 answer
+        raw_choice = item.get("choice")
+        if raw_choice is None:
+            raw_choice = item.get("answer")
+        if isinstance(raw_choice, int) and not isinstance(raw_choice, bool):
+            answers[question_id] = "ABCDE"[raw_choice] if 0 <= raw_choice < 5 else ""
+        else:
+            answers[question_id] = str(raw_choice or "").strip().upper()
     with _db() as conn:
         rows = conn.execute(
             "SELECT * FROM cet_questions WHERE material_id=? AND material_version=? ORDER BY question_number",
-            (material_id, material["version"]),
+            (material_id, material["materialVersion"]),
         ).fetchall()
         score = graded = unknown = 0
         answer_rows = []
@@ -477,7 +568,7 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
         inserted = conn.execute(
             "INSERT OR IGNORE INTO cet_attempts(id,material_id,material_version,listening_session_id,score,graded_count,unknown_count,created_at) "
             "VALUES(?,?,?,?,?,?,?,?)",
-            (attempt_id, material_id, material["version"], str(body.get("listeningSessionId") or ""), score, graded, unknown, now),
+            (attempt_id, material_id, material["materialVersion"], str(body.get("listeningSessionId") or ""), score, graded, unknown, now),
         )
         if not inserted.rowcount:
             existing = conn.execute("SELECT material_id FROM cet_attempts WHERE id=?", (attempt_id,)).fetchone()
@@ -492,18 +583,23 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _mark_payload(row: Any) -> dict[str, Any]:
+    # 字段对齐契约：
+    #   id → markId、rawSeconds → pressedAtSec（契约要求保留「原始按键秒数」这一语义）
+    # adjustedSeconds / speed / reactionDelaySeconds 仍保留（B 自己的诊断信息，契约不禁止）
     return {
-        "id": row["id"],
+        "markId": row["id"],
         "listeningSessionId": row["listening_session_id"],
         "materialId": row["material_id"],
         "materialVersion": row["material_version"],
-        "rawSeconds": row["raw_seconds"],
+        "pressedAtSec": row["raw_seconds"],
         "adjustedSeconds": row["adjusted_seconds"],
         "speed": row["speed"],
         "reactionDelaySeconds": row["reaction_delay_seconds"],
         "suggestedSentenceId": row["suggested_sentence_id"],
         "suggestionSource": "estimated_alignment",
         "confirmedSentenceId": row["confirmed_sentence_id"],
+        # 表里没有独立 confirmed_at 列；确认动作会刷新 updated_at，用它表示确认时间
+        "confirmedAtSec": row["updated_at"] if row["confirmed_sentence_id"] else None,
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
     }
@@ -524,11 +620,16 @@ def _suggest_sentence(material: dict[str, Any], seconds: float) -> dict[str, Any
 
 
 def create_mark(body: dict[str, Any]) -> dict[str, Any]:
+    # 契约要求：markId 由**服务端生成**（客户端只传材料、会话与按键秒数），
+    # 且原始按键字段名为 pressedAtSec（兼容旧的 rawSeconds）。
+    # 原实现要求客户端自带 markId 且只认 rawSeconds，A 按契约调用会直接 422。
     mark_id = str(body.get("markId") or body.get("id") or "").strip()
+    if not mark_id:
+        mark_id = f"mark-{uuid.uuid4().hex[:12]}"
     material_id = str(body.get("materialId") or "").strip()
     session_id = str(body.get("listeningSessionId") or "").strip()
-    if not mark_id or not material_id or not session_id:
-        _error(422, "MARK_ID_REQUIRED", "markId、materialId 和 listeningSessionId 不能为空。")
+    if not material_id or not session_id:
+        _error(422, "MARK_ID_REQUIRED", "materialId 和 listeningSessionId 不能为空。")
     with _db() as conn:
         existing = conn.execute("SELECT * FROM cet_marks WHERE id=?", (mark_id,)).fetchone()
     if existing:
@@ -536,7 +637,11 @@ def create_mark(body: dict[str, Any]) -> dict[str, Any]:
             _error(409, "IDEMPOTENCY_CONFLICT", "markId 已用于另一份材料。")
         return _mark_payload(existing)
     try:
-        seconds = float(body.get("rawSeconds"))
+        # 契约字段 pressedAtSec 优先；rawSeconds 保留兼容
+        raw = body.get("pressedAtSec")
+        if raw is None:
+            raw = body.get("rawSeconds")
+        seconds = float(raw)
         speed = float(body.get("speed", 1.0))
         reaction_delay = float(body.get("reactionDelaySeconds", 0.6))
     except (TypeError, ValueError):
@@ -547,13 +652,13 @@ def create_mark(body: dict[str, Any]) -> dict[str, Any]:
     ):
         _error(422, "INVALID_AUDIO_TIME", "按键时间、倍速或反应延迟无效。")
     material = get_material(material_id)
-    if body.get("materialVersion") != material["version"]:
-        _error(409, "MATERIAL_VERSION_CHANGED", "材料版本已变化，请刷新后重试。", currentVersion=material["version"])
-    if material["durationSeconds"] > 0 and seconds > material["durationSeconds"] + 0.001:
+    if body.get("materialVersion") != material["materialVersion"]:
+        _error(409, "MATERIAL_VERSION_CHANGED", "材料版本已变化，请刷新后重试。", currentVersion=material["materialVersion"])
+    if material["durationSec"] > 0 and seconds > material["durationSec"] + 0.001:
         _error(422, "INVALID_AUDIO_TIME", "按键时间超出原音频范围。")
     adjusted = max(0.0, seconds - reaction_delay * speed)
-    if material["durationSeconds"] > 0:
-        adjusted = min(adjusted, material["durationSeconds"])
+    if material["durationSec"] > 0:
+        adjusted = min(adjusted, material["durationSec"])
     suggested_id = str(body.get("suggestedSentenceId") or "").strip()
     suggested = _find_sentence(material, suggested_id) if suggested_id else _suggest_sentence(material, adjusted)
     now = _now()
@@ -561,7 +666,7 @@ def create_mark(body: dict[str, Any]) -> dict[str, Any]:
         nearby = conn.execute(
             "SELECT * FROM cet_marks WHERE listening_session_id=? AND material_id=? AND material_version=? "
             "AND ABS(raw_seconds-?)<=1.5 ORDER BY ABS(raw_seconds-?),created_at LIMIT 1",
-            (session_id, material_id, material["version"], seconds, seconds),
+            (session_id, material_id, material["materialVersion"], seconds, seconds),
         ).fetchone()
         if nearby:
             return _mark_payload(nearby)
@@ -573,7 +678,7 @@ def create_mark(body: dict[str, Any]) -> dict[str, Any]:
         conn.execute(
             "INSERT OR IGNORE INTO cet_marks(id,listening_session_id,material_id,material_version,raw_seconds,adjusted_seconds,speed,reaction_delay_seconds,suggested_sentence_id,created_at,updated_at) "
             "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            (mark_id, session_id, material_id, material["version"], seconds, adjusted, speed, reaction_delay,
+            (mark_id, session_id, material_id, material["materialVersion"], seconds, adjusted, speed, reaction_delay,
              suggested["sentenceId"], now, now),
         )
         row = conn.execute("SELECT * FROM cet_marks WHERE id=?", (mark_id,)).fetchone()
@@ -602,8 +707,8 @@ def confirm_mark(mark_id: str, body: dict[str, Any]) -> dict[str, Any]:
         if not row:
             _error(404, "MARK_NOT_FOUND", "标记不存在。", markId=mark_id)
         material = get_material(row["material_id"])
-        if row["material_version"] != material["version"]:
-            _error(409, "MATERIAL_VERSION_CHANGED", "标记所属材料版本已变化。", currentVersion=material["version"])
+        if row["material_version"] != material["materialVersion"]:
+            _error(409, "MATERIAL_VERSION_CHANGED", "标记所属材料版本已变化。", currentVersion=material["materialVersion"])
         if body.get("materialVersion") not in (None, row["material_version"]):
             _error(409, "MATERIAL_VERSION_CHANGED", "请求材料版本与标记不一致。")
         attempt = conn.execute(
@@ -635,7 +740,7 @@ def replace_questions_for_fixture(material_id: str, questions: list[dict[str, An
                 "INSERT INTO cet_questions(id,material_id,material_version,question_number,prompt,options_json,correct_answer,answer_source,evidence_sentence_id,created_at) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (
-                    str(question["id"]), material_id, material["version"], int(question["questionNumber"]),
+                    str(question["id"]), material_id, material["materialVersion"], int(question["questionNumber"]),
                     str(question["prompt"]), _json(question["options"]), question.get("correctAnswer"),
                     str(question.get("answerSource") or "developmentFixture"), question.get("evidenceSentenceId"), _now(),
                 ),
@@ -724,8 +829,12 @@ def _practice_payload(practice_id: str) -> dict[str, Any]:
             if heard_step and heard_step["action"] == "replay" and not heard_step["show_text"]:
                 outcome = "heard"
     return {
-        "id": practice["id"], "markId": practice["mark_id"],
+        # 字段对齐契约：id → practiceId、sentence → sentenceId
+        # （保留原 id/sentence 供 B 既有调用方使用，属新增而非替换）
+        "practiceId": practice["id"], "id": practice["id"],
+        "markId": practice["mark_id"],
         "materialId": practice["material_id"], "materialVersion": practice["material_version"],
+        "sentenceId": (sentence or {}).get("sentenceId") if isinstance(sentence, dict) else sentence,
         "sentence": sentence, "audioUrl": practice["audio_url"],
         "status": practice["status"], "revision": practice["revision"],
         "currentStepId": practice["current_step_id"],
@@ -784,10 +893,11 @@ def _cancel_pending_ai(conn, practice: Any, status: str = "cancelled") -> None:
 
 
 def create_practice(body: dict[str, Any]) -> dict[str, Any]:
-    practice_id = str(body.get("practiceId") or "").strip()
+    # 契约：practiceId 由服务端生成（客户端只传 markId）。兼容客户端自带。
     mark_id = str(body.get("markId") or "").strip()
-    if not practice_id or not mark_id:
-        _error(422, "PRACTICE_ID_REQUIRED", "practiceId 和 markId 不能为空。")
+    practice_id = str(body.get("practiceId") or "").strip() or f"practice-{uuid.uuid4().hex[:12]}"
+    if not mark_id:
+        _error(422, "PRACTICE_ID_REQUIRED", "markId 不能为空。")
     with _db() as conn:
         existing = conn.execute("SELECT id FROM cet_practices WHERE id=? OR mark_id=?", (practice_id, mark_id)).fetchone()
         if existing:
@@ -804,7 +914,7 @@ def create_practice(body: dict[str, Any]) -> dict[str, Any]:
         if not attempt:
             _error(409, "ATTEMPT_REQUIRED", "请先交卷，再进入回听带练。")
     material = get_material(mark["material_id"])
-    if material["version"] != mark["material_version"]:
+    if material["materialVersion"] != mark["material_version"]:
         _error(409, "MATERIAL_VERSION_CHANGED", "材料版本已变化，请重新确认句子。")
     sentence = _find_sentence(material, mark["confirmed_sentence_id"])
     now = _now()
@@ -937,7 +1047,7 @@ def _transfer_candidate(conn, practice: Any) -> dict[str, Any] | None:
     _, _, row = ranked[0]
     material_id = f"v2-{row['lesson_id']}"
     lesson = db.get_v2_lesson(int(row["lesson_id"]))
-    material_version = _material(lesson, include_sentences=False)["version"]
+    material_version = _material(lesson, include_sentences=False)["materialVersion"]
     return {
         "materialId": material_id,
         "materialVersion": material_version,
@@ -968,11 +1078,25 @@ def _next_action(conn, practice: Any, requested: str) -> str:
     return "replay"
 
 
+def _action_for_feedback(feedback: str) -> str:
+    """任务书 7.3：sound（没听清）→ 慢放；meaning（不懂意思）→ 解释；
+    heard（自评听懂）→ 换句检查。这三条是契约规定的语义。"""
+    return {"sound": "slow", "meaning": "explain", "heard": "transfer"}.get(feedback, "replay")
+
+
 def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
-    request_id = str(body.get("requestId") or "").strip()
-    if not request_id:
-        _error(422, "REQUEST_ID_REQUIRED", "requestId 不能为空。")
-    requested = str(body.get("action") or "").strip()
+    # 契约用 feedback（sound/meaning/heard）驱动下一步，由服务端决定动作；
+    # B 原实现要求客户端传 action + requestId。两者都支持：
+    #   有 feedback  → 按契约语义由服务端选动作
+    #   只有 action  → 保持 B 原有行为（兼容）
+    request_id = str(body.get("requestId") or "").strip() or f"req-{uuid.uuid4().hex[:12]}"
+    feedback = str(body.get("feedback") or "").strip()
+    if feedback:
+        if feedback not in {"sound", "meaning", "heard"}:
+            _error(422, "INVALID_FEEDBACK", "feedback 仅支持 sound、meaning、heard。")
+        requested = _action_for_feedback(feedback)
+    else:
+        requested = str(body.get("action") or "").strip()
     if requested in {"replay", "slow"}:
         return local_practice_action(practice_id, {**body, "actionId": request_id, "action": requested})
     if requested and requested not in {"chunk", "explain", "transfer"}:
@@ -1336,7 +1460,7 @@ def _save_review_item(conn, practice: Any) -> dict[str, Any]:
 def finish_practice(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
     finish_id = str(body.get("finishId") or "").strip()
     if not finish_id:
-        _error(422, "FINISH_ID_REQUIRED", "finishId 不能为空。")
+        finish_id = f"finish-{uuid.uuid4().hex[:12]}"
     with _db() as conn:
         practice = _practice_row(conn, practice_id)
         if practice["status"] == "complete":
@@ -1406,9 +1530,8 @@ def _review_payload(review_id: str, include_practice: bool = True) -> dict[str, 
 
 
 def create_review(body: dict[str, Any]) -> dict[str, Any]:
-    review_id = str(body.get("reviewId") or "").strip()
-    if not review_id:
-        _error(422, "REVIEW_ID_REQUIRED", "reviewId 不能为空。")
+    # 契约：reviewId 由服务端生成。兼容客户端自带。
+    review_id = str(body.get("reviewId") or "").strip() or f"review-{uuid.uuid4().hex[:12]}"
     try:
         budget = int(body.get("budgetMs", 600000))
     except (TypeError, ValueError):

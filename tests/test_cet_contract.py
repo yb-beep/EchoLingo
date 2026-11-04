@@ -67,7 +67,26 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "cet"
 # 但**契约语义相同**。允许用 CET_MATERIAL_ID 指定目标环境的材料，
 # 这样同一套断言既能验 C 的样例，也能验 B 的真实实现。
 MATERIAL_ID = os.environ.get("CET_MATERIAL_ID", "cet6-202512-conv2")
-MATERIAL_VERSION = "v1"
+MATERIAL_VERSION = os.environ.get("CET_MATERIAL_VERSION", "v1")
+
+
+def _resolved_version() -> str:
+    """从目标服务动态取材料版本。
+
+    C 的样例用固定 "v1"；B 用内容哈希（sha256-…），内容变则版本变。
+    写死版本会让大量用例 409 MATERIAL_VERSION_CHANGED，
+    而根因只是版本策略不同、语义并无冲突。
+    """
+    try:
+        r = requests.get(f"{BASE}/api/cet/materials/{MATERIAL_ID}", timeout=TIMEOUT)
+        if r.status_code == 200:
+            body = r.json()
+            got = (body.get("material") or body).get("materialVersion")
+            if got:
+                return str(got)
+    except Exception:  # noqa: BLE001
+        pass
+    return MATERIAL_VERSION
 
 # 任务书 7.3 逐条规定的枚举值。断言用「必须落在集合内」而不是「包含某子串」——
 # 后者太松：C 曾自造 skipped_pending 并通过了 "skip" in status 的断言，
@@ -159,7 +178,7 @@ KNOWN_SENTENCE_COUNT_DEVIATION = {
 
 @pytest.mark.contract
 def test_material_detail_has_sentences(sentences):
-    r = api("GET", f"/api/cet/materials/{MATERIAL_ID}", params={"version": MATERIAL_VERSION})
+    r = api("GET", f"/api/cet/materials/{MATERIAL_ID}", params={"version": _resolved_version()})
     assert r.status_code == 200, r.text
     body = r.json()
     assert "material" in body and "sentences" in body
@@ -266,7 +285,7 @@ def test_audio_range_request_supported():
 @pytest.mark.contract
 def test_questions_hide_answers_before_attempt():
     """任务书 7.3：交卷前不返回参考答案、证据与解释。"""
-    r = api("GET", f"/api/cet/materials/{MATERIAL_ID}/questions", params={"version": MATERIAL_VERSION})
+    r = api("GET", f"/api/cet/materials/{MATERIAL_ID}/questions", params={"version": _resolved_version()})
     assert r.status_code == 200, r.text
     body = r.json()
     items = body.get("items") or body.get("questions")
@@ -303,7 +322,7 @@ def test_attempt_returns_answers_and_evidence():
         "/api/cet/attempts",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique("listen"),
             "answers": answers,
         },
@@ -334,7 +353,7 @@ def test_attempt_unknown_answer_not_guessed():
         "/api/cet/attempts",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique("listen-unknown"),
             "answers": [{"questionId": q["questionId"], "choice": 0} for q in unknown],
         },
@@ -352,7 +371,7 @@ def test_duplicate_attempt_is_idempotent():
     qs = api("GET", f"/api/cet/materials/{MATERIAL_ID}/questions").json()["items"]
     payload = {
         "materialId": MATERIAL_ID,
-        "materialVersion": MATERIAL_VERSION,
+        "materialVersion": _resolved_version(),
         "listeningSessionId": _unique("listen-dup"),
         "answers": [{"questionId": q["questionId"], "choice": 1} for q in qs],
     }
@@ -377,7 +396,7 @@ def test_attempt_cannot_change_existing_answers():
         "/api/cet/attempts",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": session,
             "answers": [{"questionId": q["questionId"], "choice": 0} for q in qs],
         },
@@ -388,7 +407,7 @@ def test_attempt_cannot_change_existing_answers():
         "/api/cet/attempts",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": session,
             "answers": [{"questionId": q["questionId"], "choice": 2} for q in qs],
         },
@@ -411,7 +430,7 @@ def test_mark_create_and_list(sentences):
         "/api/cet/marks",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": session,
             "pressedAtSec": pressed,
             "eventId": _unique("evt"),
@@ -437,7 +456,7 @@ def test_duplicate_mark_event_does_not_create_record():
     event_id = _unique("evt")
     payload = {
         "materialId": MATERIAL_ID,
-        "materialVersion": MATERIAL_VERSION,
+        "materialVersion": _resolved_version(),
         "listeningSessionId": session,
         "pressedAtSec": 42.0,
         "eventId": event_id,
@@ -462,7 +481,7 @@ def test_mark_out_of_range_rejected():
         "/api/cet/marks",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique("listen"),
             "pressedAtSec": duration + 30,
         },
@@ -477,7 +496,7 @@ def test_mark_negative_time_rejected():
         "/api/cet/marks",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique("listen"),
             "pressedAtSec": -1,
         },
@@ -494,7 +513,7 @@ def test_mark_confirm_and_adjust(sentences):
         "/api/cet/marks",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique("listen"),
             "pressedAtSec": 36.9,
         },
@@ -521,7 +540,7 @@ def test_mark_confirm_invalid_sentence_rejected():
         "/api/cet/marks",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique("listen"),
             "pressedAtSec": 36.9,
         },
@@ -541,7 +560,7 @@ def test_marks_isolated_by_material():
         "/api/cet/marks",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique("listen"),
             "pressedAtSec": 20.0,
         },
@@ -556,14 +575,64 @@ def test_marks_isolated_by_material():
 # ────────────────────────── flow：带练、反馈与计时 ──────────────────────────
 
 
+def _step_kwargs(pid: str) -> dict:
+    """取当前 stepId 与材料版本，供 next/finish 使用。
+
+    B 要求这两个字段以防御「过期响应」（契约 T09 要求的能力）：
+    请求必须绑定当前步骤，否则 409 STALE_RESPONSE。
+    """
+    try:
+        r = api("GET", f"/api/cet/practices/{pid}")
+        if r.status_code == 200:
+            sid = r.json().get("currentStepId")
+            if sid:
+                return {"stepId": sid, "materialVersion": _resolved_version()}
+    except Exception:  # noqa: BLE001
+        pass
+    return {"materialVersion": _resolved_version()}
+
+
+def _next(pid: str, **extra):
+    return api("POST", f"/api/cet/practices/{pid}/next",
+               json={**_step_kwargs(pid), **extra})
+
+
+def _finish(pid: str, **extra):
+    return api("POST", f"/api/cet/practices/{pid}/finish",
+               json={**_step_kwargs(pid), **extra})
+
+
+def _ensure_attempted(session: str) -> None:
+    """部分实现（B）要求「先交卷才能建标记」。
+
+    这是合理的业务约束（没交卷就不知道你卡在哪题）。测试原先默认
+    建标记不依赖交卷，这里在需要时先补一次交卷，两种实现都能测。
+    """
+    r = api("GET", f"/api/cet/materials/{MATERIAL_ID}/questions",
+            params={"version": _resolved_version()})
+    if r.status_code != 200:
+        return
+    items = r.json().get("items") or r.json().get("questions") or []
+    if not items:
+        return
+    api("POST", "/api/cet/attempts", json={
+        "materialId": MATERIAL_ID,
+        "materialVersion": _resolved_version(),
+        "listeningSessionId": session,
+        "answers": [{"questionId": q["questionId"], "choice": 0} for q in items],
+    })
+
+
 def _create_confirmed_mark():
+    session = _unique("listen")
+    _ensure_attempted(session)
     created = api(
         "POST",
         "/api/cet/marks",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
-            "listeningSessionId": _unique("listen"),
+            "materialVersion": _resolved_version(),
+            "listeningSessionId": session,
             "pressedAtSec": 36.9,
         },
     )
@@ -583,7 +652,7 @@ def test_practice_requires_confirmed_mark():
         "/api/cet/marks",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique("listen"),
             "pressedAtSec": 60.0,
         },
@@ -625,11 +694,11 @@ def test_feedback_leads_to_different_actions():
     practice = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()
     pid = practice["practiceId"]
 
-    r_sound = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "sound"})
+    r_sound = _next(pid, feedback="sound")
     assert r_sound.status_code == 200, r_sound.text
     step_sound = r_sound.json()["step"]
 
-    r_meaning = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "meaning"})
+    r_meaning = _next(pid, feedback="meaning")
     assert r_meaning.status_code == 200, r_meaning.text
     step_meaning = r_meaning.json()["step"]
 
@@ -650,7 +719,7 @@ def test_heard_feedback_hides_text_and_plays_original_speed():
     reset_mock()
     mark = _create_confirmed_mark()
     pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
-    r = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "heard"})
+    r = _next(pid, feedback="heard")
     assert r.status_code == 200, r.text
     step = r.json()["step"]
     assert step.get("textVisible") is False, "heard 后必须隐藏文字"
@@ -664,10 +733,10 @@ def test_stale_step_result_is_rejected():
     reset_mock()
     mark = _create_confirmed_mark()
     pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
-    first = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "sound"}).json()
+    first = _next(pid, feedback="sound").json()
     old_step_id = first["step"]["stepId"]
     # 用户切到下一步
-    api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "meaning"})
+    _next(pid, feedback="meaning")
     # 旧步骤的迟到结果
     late = api(
         "POST",
@@ -754,13 +823,15 @@ def _finish_practice(mark, feedback: str) -> dict:
 
 
 def _make_mark_at(pressed: float) -> dict:
+    session = _unique("listen")
+    _ensure_attempted(session)
     created = api(
         "POST",
         "/api/cet/marks",
         json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
-            "listeningSessionId": _unique("listen"),
+            "materialVersion": _resolved_version(),
+            "listeningSessionId": session,
             "pressedAtSec": pressed,
         },
     )
@@ -778,13 +849,13 @@ def test_finish_is_idempotent_and_latest_feedback_wins():
     mark = _create_confirmed_mark()
     pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
     # 用户先自评听懂
-    api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "heard"})
+    _next(pid, feedback="heard")
     # 后来又反馈没听清
-    api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "sound"})
-    r1 = api("POST", f"/api/cet/practices/{pid}/finish", json={"feedback": "sound"})
+    _next(pid, feedback="sound")
+    r1 = _finish(pid, feedback="sound")
     assert r1.status_code == 200, r1.text
     assert r1.json().get("latestFeedback") == "sound", "最终结果必须反映最新反馈 sound"
-    r2 = api("POST", f"/api/cet/practices/{pid}/finish", json={"feedback": "sound"})
+    r2 = _finish(pid, feedback="sound")
     assert r2.status_code == 200, r2.text
     assert r2.json().get("idempotent") is True or r2.json()["status"] == "complete"
 
@@ -929,7 +1000,7 @@ def test_transfer_returns_real_candidates():
     mark = _create_confirmed_mark()
     pid = api("POST", "/api/cet/practices",
               json={"markId": mark["markId"], "transferCase": "with_candidates"}).json()["practiceId"]
-    r = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "heard"})
+    r = _next(pid, feedback="heard")
     assert r.status_code == 200, r.text
     step = r.json()["step"]
     assert step["action"] == "transfer", f"heard 后应进入换句检查，实际 {step['action']}"
@@ -953,7 +1024,7 @@ def test_transfer_no_candidate_still_saves():
     mark = _create_confirmed_mark()
     pid = api("POST", "/api/cet/practices",
               json={"markId": mark["markId"], "transferCase": "no_candidate"}).json()["practiceId"]
-    r = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "heard"})
+    r = _next(pid, feedback="heard")
     assert r.status_code == 200, r.text
     step = r.json()["step"]
     ref = step.get("candidateRef") or {}
@@ -961,7 +1032,7 @@ def test_transfer_no_candidate_still_saves():
     assert not items, "无候选场景 items 应为空，不能编造候选"
 
     # 无候选不得阻断保存
-    fin = api("POST", f"/api/cet/practices/{pid}/finish", json={"feedback": "heard"})
+    fin = _finish(pid, feedback="heard")
     assert fin.status_code == 200, f"无候选时应仍可保存卡点：{fin.text[:200]}"
     assert fin.json()["status"] == "complete"
 
@@ -1011,7 +1082,7 @@ def test_concurrent_attempts_create_one_record():
     session = _unique("listen-concurrent")
     payload = {
         "materialId": MATERIAL_ID,
-        "materialVersion": MATERIAL_VERSION,
+        "materialVersion": _resolved_version(),
         "listeningSessionId": session,
         "answers": [{"questionId": q["questionId"], "choice": 0} for q in qs],
     }
@@ -1039,7 +1110,7 @@ def test_concurrent_marks_from_different_events_all_recorded():
             "/api/cet/marks",
             json={
                 "materialId": MATERIAL_ID,
-                "materialVersion": MATERIAL_VERSION,
+                "materialVersion": _resolved_version(),
                 "listeningSessionId": session,
                 "pressedAtSec": 20.0 + i * 5,
                 "eventId": _unique(f"evt-{i}"),
@@ -1127,7 +1198,7 @@ def test_mock_attempt_result_matches_fixture_fields():
         answers.append({"questionId": q["questionId"], "choice": q.get("choice")})
     r = api("POST", "/api/cet/attempts", json={
         "materialId": MATERIAL_ID,
-        "materialVersion": MATERIAL_VERSION,
+        "materialVersion": _resolved_version(),
         "listeningSessionId": _unique("fixture-cmp"),
         "answers": answers,
     })
@@ -1287,7 +1358,7 @@ def test_playback_event_carries_required_fields():
             "eventId": _unique(f"evt-{etype}"),
             "type": etype,
             "stepId": "step-probe",
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "playedMs": 1500 if etype != "start" else 0,
             "audioSec": 38.5,
             "speed": 1.0,
@@ -1317,7 +1388,7 @@ def test_model_request_bound_to_practice_and_step():
     reset_mock()
     mark = _create_confirmed_mark()
     pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
-    r = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "meaning"})
+    r = _next(pid, feedback="meaning")
     assert r.status_code == 200, r.text
     body = r.json()
 
@@ -1340,7 +1411,7 @@ def test_material_ref_press_time_confirmed_sentence_all_kept():
     reset_mock()
     created = api("POST", "/api/cet/marks", json={
         "materialId": MATERIAL_ID,
-        "materialVersion": MATERIAL_VERSION,
+        "materialVersion": _resolved_version(),
         "listeningSessionId": _unique("listen-four"),
         "pressedAtSec": 36.9,
     })
@@ -1594,7 +1665,7 @@ def test_mark_snaps_to_correct_sentence_for_all_sentences(sentences):
         mid = round((s["startSec"] + s["endSec"]) / 2, 3)
         r = api("POST", "/api/cet/marks", json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique(f"snap-{s['sentenceId']}"),
             "pressedAtSec": mid,
         })
@@ -1615,7 +1686,7 @@ def test_mark_snaps_to_boundary_belonging_sentence(sentences):
     for label, t in (("起点", probe["startSec"]), ("终点", probe["endSec"])):
         r = api("POST", "/api/cet/marks", json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique(f"edge-{label}"),
             "pressedAtSec": t,
         })
@@ -1696,7 +1767,7 @@ def test_marks_survive_relist_stable_ids():
     session = _unique("listen-refresh")
     created = api("POST", "/api/cet/marks", json={
         "materialId": MATERIAL_ID,
-        "materialVersion": MATERIAL_VERSION,
+        "materialVersion": _resolved_version(),
         "listeningSessionId": session,
         "pressedAtSec": 36.9,
     })
@@ -1734,7 +1805,7 @@ def test_marks_from_multiple_sessions_are_all_listed():
     for i in range(3):
         r = api("POST", "/api/cet/marks", json={
             "materialId": MATERIAL_ID,
-            "materialVersion": MATERIAL_VERSION,
+            "materialVersion": _resolved_version(),
             "listeningSessionId": _unique(f"listen-multi-{i}"),
             "pressedAtSec": 20.0 + i * 15,
         })
@@ -2004,7 +2075,7 @@ def test_save_works_after_ai_failure():
     )
 
     # 模型失败后：保存卡点仍可用
-    fin = api("POST", f"/api/cet/practices/{pid}/finish", json={"feedback": "sound"})
+    fin = _finish(pid, feedback="sound")
     assert fin.status_code == 200, (
         f"模型失败后应仍能保存卡点，实际 {fin.status_code}：{fin.text[:200]}"
     )
@@ -2025,7 +2096,7 @@ def test_retry_after_ai_failure_works():
         json={"feedback": "meaning", "aiMode": "fail"})
 
     # 重试（这次不注入异常）
-    retry = api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": "meaning"})
+    retry = _next(pid, feedback="meaning")
     assert retry.status_code == 200, (
         f"失败后重试应成功，实际 {retry.status_code}：{retry.text[:200]}"
     )

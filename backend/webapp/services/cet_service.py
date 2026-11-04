@@ -254,10 +254,32 @@ def _db():
 
 
 def _lesson_id(material_id: str) -> int:
+    """把外部传入的 materialId 解析成底座 lesson id。
+
+    支持两种身份（任务书 7.1 要求「不用路径作为材料唯一身份」）：
+      1. 底座原生形式 v2-<数字>            —— B 原有实现
+      2. 业务稳定 ID，如 cet6-202512-conv2 —— 团队契约与前端使用的形式
+
+    业务 ID 的解析方式：按 lesson 的 source_url / title 做**稳定匹配**
+    （source_url 形如 file://cet6-202512-conv2.mp3，含业务 ID）。
+    这样同一份材料无论导入几次，业务 ID 都不变，符合「稳定身份」的要求。
+    """
     match = _MATERIAL_RE.fullmatch(material_id)
-    if not match:
+    if match:
+        return int(match.group(1))
+
+    # 业务 ID：按 source_url 或 title 后缀匹配第一个未归档课程
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT id, source_url, title FROM v2_lessons "
+            "WHERE COALESCE(archived,0)=0 "
+            "AND (source_url LIKE ? OR title LIKE ?) "
+            "ORDER BY id DESC LIMIT 1",
+            (f"%{material_id}%", f"%{material_id}%"),
+        ).fetchone()
+    if not row:
         _error(404, "MATERIAL_NOT_FOUND", "材料不存在。", materialId=material_id)
-    return int(match.group(1))
+    return int(row["id"])
 
 
 def _audio_sha256(lesson: dict[str, Any]) -> str:
@@ -371,7 +393,13 @@ def get_material(material_id: str) -> dict[str, Any]:
     lesson = db.get_v2_lesson(_lesson_id(material_id))
     if not lesson or int(lesson.get("archived") or 0):
         _error(404, "MATERIAL_NOT_FOUND", "材料不存在。", materialId=material_id)
-    return _material(lesson)
+    material = _material(lesson)
+    # 调用方用业务 ID（如 cet6-202512-conv2）查询时，响应里回显同一个 ID，
+    # 否则前端拿到的物化 ID 变了，后续所有请求都会对不上。
+    if not _MATERIAL_RE.fullmatch(material_id):
+        material["materialId"] = material_id
+        material["id"] = material_id
+    return material
 
 
 def _find_sentence(material: dict[str, Any], sentence_id: str) -> dict[str, Any]:
@@ -398,10 +426,13 @@ def _options(raw: str | list[Any]) -> list[dict[str, str]]:
 
 def list_questions(material_id: str) -> dict[str, Any]:
     material = get_material(material_id)
+    # 题目按**物化 ID**（v2-<数字>）存储；用业务 ID 查询时需换回物化 ID，
+    # 否则查不到（B 的 replace_questions_for_fixture 用的是 v2-<id> 写入）。
+    storage_id = f"v2-{_lesson_id(material_id)}"
     with _db() as conn:
         rows = conn.execute(
             "SELECT * FROM cet_questions WHERE material_id=? AND material_version=? ORDER BY question_number",
-            (material_id, material["materialVersion"]),
+            (storage_id, material["materialVersion"]),
         ).fetchall()
     # Deliberately omit answers, sources and evidence before an attempt is submitted.
     # 字段对齐契约（questions_before_attempt.json）：

@@ -62,7 +62,11 @@ IS_MOCK = _detect_mock(BASE)
 TIMEOUT = float(os.environ.get("CET_HTTP_TIMEOUT", "15"))
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "cet"
-MATERIAL_ID = "cet6-202512-conv2"
+# 材料 ID 可覆盖：C 的契约样例用业务 ID（cet6-202512-conv2），
+# 而 B 的后端从底座库派生 v2-<数字> 形式的 ID。两者身份体系不同，
+# 但**契约语义相同**。允许用 CET_MATERIAL_ID 指定目标环境的材料，
+# 这样同一套断言既能验 C 的样例，也能验 B 的真实实现。
+MATERIAL_ID = os.environ.get("CET_MATERIAL_ID", "cet6-202512-conv2")
 MATERIAL_VERSION = "v1"
 
 # 任务书 7.3 逐条规定的枚举值。断言用「必须落在集合内」而不是「包含某子串」——

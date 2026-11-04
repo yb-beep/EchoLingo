@@ -170,7 +170,8 @@ def build_questions(sentences: list[dict]) -> tuple[list[dict], list[dict]]:
             "number": q["number"],
             "stem": q["stem"],
             "options": q["options"],
-            "answerSource": q["answerSource"],
+            # 交卷前不暴露 answerSource：
+            # 它会让前端推断「该题有无可靠答案」，属间接泄露。
             "materialId": MATERIAL_ID,
             "materialVersion": MATERIAL_VERSION,
         }
@@ -193,6 +194,8 @@ def build_questions(sentences: list[dict]) -> tuple[list[dict], list[dict]]:
             "choice": _sample_choice(q),
             "correct": _sample_correct(q),
             "answer": q["answer"],
+            # answerSource 只在**交卷后**出现：交卷前暴露它会让人推断答案可用性
+            "answerSource": q["answerSource"],
             "answerVisible": True,
             "materialId": MATERIAL_ID,
             "materialVersion": MATERIAL_VERSION,
@@ -223,6 +226,11 @@ def validate_questions(before: list[dict], after: list[dict], sentences: list[di
             problems.append(f"第 {q['number']} 题选项不足")
         if "answer" in q:
             problems.append(f"第 {q['number']} 题在交卷前暴露了 answer 字段")
+        # 交卷前也不应暴露 answerSource（会让人推断有无可靠答案）
+        if "answerSource" in q:
+            problems.append(
+                f"第 {q['number']} 题在交卷前暴露了 answerSource 字段（间接泄露答案可用性）"
+            )
         if "evidenceRef" in q:
             problems.append(f"第 {q['number']} 题在交卷前暴露了 evidenceRef 字段")
         if len(set(q["options"])) != len(q["options"]):

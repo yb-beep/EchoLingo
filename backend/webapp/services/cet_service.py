@@ -332,14 +332,19 @@ def _material(lesson: dict[str, Any], include_sentences: bool = True) -> dict[st
     # 并补 developmentFixture / section / audioSha256 / questionCount，
     # 让前端与契约测试能按同一套字段工作。
     result = {
+        # 契约字段
         "materialId": material_id,
         "materialVersion": version,
+        # 旧字段别名：B 的自测与既有调用方仍读 id/version，保留以免回归
+        "id": material_id,
+        "version": version,
         "title": lesson.get("title") or f"听力材料 {lesson_id}",
         "level": _level(lesson),
         "section": "",
         "audioUrl": lesson.get("media_url") or "",
         "audioSha256": _audio_sha256(lesson),
         "durationSec": float(lesson.get("duration") or 0),
+        "durationSeconds": float(lesson.get("duration") or 0),
         "source": {
             "type": lesson.get("source_type") or "",
             "value": lesson.get("source_url") or "",
@@ -409,10 +414,15 @@ def list_questions(material_id: str) -> dict[str, Any]:
             "questionId": row["id"],
             "number": row["question_number"],
             "stem": row["prompt"],
+            # 旧字段别名（B 自测读 id/questionNumber/prompt）
+            "id": row["id"],
+            "questionNumber": row["question_number"],
+            "prompt": row["prompt"],
             "options": [opt["text"] for opt in _options(row["options_json"])],
             "materialId": material_id,
             "materialVersion": material["materialVersion"],
-            "answerSource": row["answer_source"] or "unknown",
+            # 交卷前**不返回** answerSource：它会暴露「该题有无可靠答案」，
+            # 前端据此可间接推断，属信息泄露。B 原本的取舍更安全，予以采纳。
         }
         for row in rows
     ]
@@ -592,6 +602,9 @@ def _mark_payload(row: Any) -> dict[str, Any]:
         "materialId": row["material_id"],
         "materialVersion": row["material_version"],
         "pressedAtSec": row["raw_seconds"],
+        # 旧字段别名（B 自测读 rawSeconds / id）
+        "rawSeconds": row["raw_seconds"],
+        "id": row["id"],
         "adjustedSeconds": row["adjusted_seconds"],
         "speed": row["speed"],
         "reactionDelaySeconds": row["reaction_delay_seconds"],

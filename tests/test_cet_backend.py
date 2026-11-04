@@ -181,7 +181,10 @@ def test_mark_confirm_restore_and_validation(client: TestClient):
 
 
 def test_empty_and_missing_resources(client: TestClient):
-    assert client.get("/api/cet/materials?level=cet6").json() == {"materials": []}
+    # 契约要求顶层为 {items, count}，同时保留 materials 别名兼容旧调用；
+    # 原断言写死全等 {"materials": []}，在契约字段存在时必然不等，已放宽为检查空列表。
+    _empty = client.get("/api/cet/materials?level=cet6").json()
+    assert _empty.get("items") == [] and _empty.get("count") == 0
     missing = client.get("/api/cet/materials/v2-99999")
     assert missing.status_code == 404
     assert missing.json()["detail"]["code"] == "MATERIAL_NOT_FOUND"

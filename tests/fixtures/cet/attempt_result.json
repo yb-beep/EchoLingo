@@ -11,12 +11,12 @@
         "They can meet again tomorrow anyway.",
         "They are both anxious to go home."
       ],
-      "answerSource": "user_provided_pdf",
       "materialId": "cet6-202512-conv2",
       "materialVersion": "v1",
       "choice": 2,
       "correct": false,
       "answer": 1,
+      "answerSource": "user_provided_pdf",
       "answerVisible": true,
       "evidenceRef": {
         "sentenceId": "s01",
@@ -36,12 +36,12 @@
         "Working two months without any progress.",
         "The man's long concentration on the project."
       ],
-      "answerSource": "user_provided_pdf",
       "materialId": "cet6-202512-conv2",
       "materialVersion": "v1",
       "choice": 1,
       "correct": true,
       "answer": 1,
+      "answerSource": "user_provided_pdf",
       "answerVisible": true,
       "evidenceRef": {
         "sentenceId": "s13",
@@ -61,12 +61,12 @@
         "Exceptional.",
         "Delusional."
       ],
-      "answerSource": "user_provided_pdf",
       "materialId": "cet6-202512-conv2",
       "materialVersion": "v1",
       "choice": 0,
       "correct": false,
       "answer": 3,
+      "answerSource": "user_provided_pdf",
       "answerVisible": true,
       "evidenceRef": {
         "sentenceId": "s15",
@@ -86,12 +86,12 @@
         "The early implementation of the project.",
         "The alignment of all sections of the contract."
       ],
-      "answerSource": "user_provided_pdf",
       "materialId": "cet6-202512-conv2",
       "materialVersion": "v1",
       "choice": 2,
       "correct": true,
       "answer": 2,
+      "answerSource": "user_provided_pdf",
       "answerVisible": true,
       "evidenceRef": {
         "sentenceId": "s30",
@@ -109,7 +109,6 @@
         "选项 A（占位）",
         "选项 B（占位）"
       ],
-      "answerSource": "unknown",
       "materialId": "cet6-202512-conv2",
       "materialVersion": "v1",
       "developmentFixture": true,
@@ -117,6 +116,7 @@
       "choice": 0,
       "correct": null,
       "answer": null,
+      "answerSource": "unknown",
       "answerVisible": true,
       "evidenceRef": null,
       "explanation": ""

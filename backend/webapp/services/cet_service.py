@@ -253,6 +253,23 @@ def _db():
         db.reset_current_db_path(token)
 
 
+def _business_id(lesson: dict[str, Any]) -> str:
+    """从课程的 source_url / title 派生稳定的业务 ID。
+
+    例如 source_url = "file://cet6-202512-conv2.mp3"
+    → 业务 ID "cet6-202512-conv2"
+    这样同一份材料无论导入几次，对外 ID 都不变。
+    取不到时返回空串（调用方保持底座 ID）。
+    """
+    src = str(lesson.get("source_url") or "")
+    if src:
+        name = src.rsplit("/", 1)[-1]          # cet6-202512-conv2.mp3
+        name = name.rsplit(".", 1)[0]          # cet6-202512-conv2
+        if name and not name.startswith("upload:"):
+            return name
+    return ""
+
+
 def _lesson_id(material_id: str) -> int:
     """把外部传入的 materialId 解析成底座 lesson id。
 
@@ -385,7 +402,17 @@ def list_materials(level: str | None = None) -> list[dict[str, Any]]:
     if level is not None and level not in {"cet4", "cet6", "unspecified"}:
         _error(422, "INVALID_LEVEL", "level 仅支持 cet4、cet6 或 unspecified。")
     lessons = db.list_v2_lessons()
-    materials = [_material(lesson, include_sentences=False) for lesson in lessons]
+    materials = []
+    for lesson in lessons:
+        item = _material(lesson, include_sentences=False)
+        # 列表也回显**业务稳定 ID**：底座 materialId 是 v2-<数字>，
+        # 会随导入次数变化；业务 ID 由 source_url 派生，稳定可引用。
+        # 任务书 7.1 要求「不用路径作为材料唯一身份」，这正是它的落点。
+        biz = _business_id(lesson)
+        if biz:
+            item["materialId"] = biz
+            item["id"] = biz
+        materials.append(item)
     return [item for item in materials if level is None or item["level"] == level]
 
 

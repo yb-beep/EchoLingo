@@ -64,10 +64,12 @@ from webapp.fastapi_routes.output import router as output_router
 from webapp.fastapi_routes.pages import router as pages_router
 from webapp.fastapi_routes.settings import router as settings_router
 from webapp.fastapi_routes.study import router as study_router
+from webapp.fastapi_routes.cet import router as cet_router
 from webapp.fastapi_routes.vocab import router as vocab_router
 from webapp.fastapi_routes.v2_lessons import router as v2_lessons_router
 from webapp.fastapi_routes.v2_chat import router as v2_chat_router
 from webapp.runtime import ai_config
+from webapp.services import cet_service
 from webapp.storage.lessons import migrate_lessons_to_db
 
 
@@ -148,6 +150,7 @@ def _recover_stuck_reading_tts() -> None:
 
 def create_app() -> FastAPI:
     db.init_db()
+    cet_service.init_cet_schema()
     migrate_lessons_to_db()
 
     @asynccontextmanager
@@ -196,6 +199,7 @@ def create_app() -> FastAPI:
         app.include_router(survey_router)
     app.include_router(lessons_router)
     app.include_router(study_router)
+    app.include_router(cet_router)
     app.include_router(vocab_router)
     app.include_router(jobs_router)
     app.include_router(output_router)
@@ -221,7 +225,7 @@ app = create_app()
 def main() -> None:
     import uvicorn
 
-    host = os.environ.get("ELT_HOST", "0.0.0.0")
+    host = os.environ.get("ELT_HOST", "127.0.0.1")
     port = int(os.environ.get("ELT_PORT", "5173"))
     print(f"EchoLingo FastAPI server starting on http://localhost:{port}")
     if host == "0.0.0.0":

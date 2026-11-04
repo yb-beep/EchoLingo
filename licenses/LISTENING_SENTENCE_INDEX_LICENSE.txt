@@ -1,0 +1,35 @@
+MIT License
+
+Copyright (c) 2026 listening-sentence-index contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+素材版权声明（NOTICE / Material Copyright）
+
+本软件不包含、不分发任何音频文件或听力原文。
+
+四六级 / 雅思 / 托福等考试的真题音频与官方原文受著作权保护。使用者应自行
+通过合法渠道获取音频，并对自己的素材来源负责。
+
+软件生成的 HTML 内嵌了使用者提供的源音频，因此该 HTML 的版权状态与源音频
+一致。自用无碍；公开传播前，使用者须自行确认已获得相应授权。
+
+作者不对使用者的素材来源及传播行为承担任何责任。

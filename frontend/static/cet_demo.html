@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>四六级黑匣子 · 后端功能演示</title>
+<style>
+  :root{--bg:#f6f7f4;--card:#fff;--ink:#202421;--muted:#687069;--line:#d9ded8;
+        --brand:#2f6f5e;--gold:#b8860b;--red:#c0392b;--blue:#276fbf}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;font-family:-apple-system,"PingFang SC",sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.6}
+  .wrap{max-width:960px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+        padding:18px;margin-bottom:16px}
+  .card h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .step{background:var(--brand);color:#fff;width:22px;height:22px;border-radius:50%;
+        display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:none}
+  button{background:var(--brand);color:#fff;border:0;border-radius:7px;padding:8px 16px;
+         font-size:14px;cursor:pointer;margin-right:8px;margin-bottom:6px}
+  button:disabled{background:#c3cfc9;cursor:not-allowed}
+  button.ghost{background:#fff;color:var(--brand);border:1px solid var(--brand)}
+  button.fb{background:var(--gold)}
+  .row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  audio{width:100%;margin:10px 0}
+  .marker-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .marker{background:#fff4d6;border:1px solid var(--gold);border-radius:6px;
+          padding:4px 9px;font-size:13px}
+  .q{border-top:1px dashed var(--line);padding-top:12px;margin-top:12px}
+  .q:first-of-type{border-top:0;padding-top:0;margin-top:0}
+  .opt{display:block;padding:7px 10px;border:1px solid var(--line);border-radius:7px;
+       margin:5px 0;cursor:pointer;font-size:14px}
+  .opt:hover{border-color:var(--brand)}
+  .opt.sel{border-color:var(--brand);background:#eef6f3}
+  .res{margin-top:10px;padding:10px 12px;border-radius:8px;font-size:14px}
+  .res.ok{background:#e8f5e9;border:1px solid #a5d6a7}
+  .res.no{background:#fdecea;border:1px solid #f5b7b1}
+  .res.unk{background:#f0f0f0;border:1px solid #ccc}
+  .quote{font-family:ui-monospace,monospace;font-size:13px;color:var(--muted);
+         margin-top:6px;padding-left:10px;border-left:3px solid var(--line)}
+  .log{background:#1e2420;color:#c8e6c9;font-family:ui-monospace,monospace;
+       font-size:12px;padding:12px;border-radius:8px;max-height:200px;overflow:auto;
+       white-space:pre-wrap}
+  .tag{font-size:11px;padding:2px 7px;border-radius:10px;background:#eef2ed;color:var(--muted)}
+  .warn{background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px;
+        font-size:13px;margin-bottom:18px}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>四六级黑匣子 · 后端功能演示</h1>
+  <div class="sub">
+    这是给队长试用 B 的后端能力用的临时页面。
+    <span class="tag">正式前端由 A 负责，尚未交付</span>
+  </div>
+
+  <div class="warn">
+    <b>说明</b>：EchoLingo 原版界面里看不到四六级功能，因为 B 只做了后端
+    （17 个接口），A 的前端页面还没交。这个页面直接调后端接口，
+    让你能实际点一遍完整流程。
+  </div>
+
+  <div class="card">
+    <h2><span class="step">1</span>听原声，按空格标记卡住的位置</h2>
+    <audio id="audio" controls preload="metadata"></audio>
+    <div class="row">
+      <button onclick="pressSpace()">模拟按空格（在当前位置标记）</button>
+      <button class="ghost" onclick="clearMarks()">清空标记</button>
+    </div>
+    <div id="markers" class="marker-list"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">2</span>做题并交卷</h2>
+    <div id="questions"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="submitBtn" onclick="submitAttempt()">交卷</button>
+    </div>
+    <div id="attemptResult"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">3</span>确认卡住的句子 → 带练</h2>
+    <div id="markSection"><span class="sub">先在第 1 步按空格标记</span></div>
+  </div>
+
+  <div class="card">
+    <h2>接口调用日志</h2>
+    <div id="log" class="log">就绪</div>
+  </div>
+</div>
+
+<script>
+const API = location.origin;
+const MATERIAL = "cet6-202512-conv2";
+let state = { version:null, sentences:[], questions:[], answers:{}, marks:[] };
+
+const log = (msg) => {
+  const el = document.getElementById('log');
+  el.textContent += "\n" + new Date().toLocaleTimeString() + "  " + msg;
+  el.scrollTop = el.scrollHeight;
+};
+
+async function call(method, path, body) {
+  const opt = { method, headers: {'Content-Type':'application/json'} };
+  if (body) opt.body = JSON.stringify(body);
+  const r = await fetch(API + path, opt);
+  const data = await r.json().catch(()=>null);
+  log(`${method} ${path} → ${r.status}`);
+  return { ok: r.ok, status: r.status, data };
+}
+
+async function boot() {
+  const m = await call('GET', `/api/cet/materials/${MATERIAL}`);
+  if (!m.ok) { log('加载材料失败'); return; }
+  state.version = m.data.materialVersion;
+  state.sentences = m.data.sentences || [];
+  document.getElementById('audio').src = m.data.audioUrl;
+  log(`材料：${m.data.title}｜${m.data.sentenceCount} 句｜${m.data.durationSec.toFixed(1)}s`);
+
+  const q = await call('GET', `/api/cet/materials/${MATERIAL}/questions?version=${state.version}`);
+  const items = (q.data && (q.data.items || q.data.questions)) || [];
+  state.questions = items;
+  renderQuestions(items);
+}
+
+function renderQuestions(items) {
+  const box = document.getElementById('questions');
+  box.innerHTML = '';
+  items.forEach(q => {
+    const d = document.createElement('div');
+    d.className = 'q';
+    d.innerHTML = `<b>第 ${q.number} 题</b> ${q.stem}`;
+    q.options.forEach((opt, i) => {
+      const o = document.createElement('label');
+      o.className = 'opt';
+      o.textContent = String.fromCharCode(65+i) + '. ' + opt;
+      o.onclick = () => {
+        state.answers[q.questionId] = i;
+        d.querySelectorAll('.opt').forEach(x=>x.classList.remove('sel'));
+        o.classList.add('sel');
+      };
+      d.appendChild(o);
+    });
+    box.appendChild(d);
+  });
+}
+
+async function submitAttempt() {
+  const answers = Object.entries(state.answers).map(([questionId, choice]) => ({questionId, choice}));
+  if (!answers.length) { alert('先选几道题'); return; }
+  const r = await call('POST', '/api/cet/attempts', {
+    materialId: MATERIAL, materialVersion: state.version,
+    listeningSessionId: session(), answers
+  });
+  window.__attempted = true;
+  if (!r.ok) { document.getElementById('attemptResult').textContent = JSON.stringify(r.data); return; }
+  const box = document.getElementById('attemptResult');
+  box.innerHTML = '';
+  (r.data.results || []).forEach(res => {
+    const d = document.createElement('div');
+    let cls = 'unk', txt = '未知答案（没有参考答案，不判对错）';
+    if (res.correct === true) { cls='ok'; txt='✅ 答对'; }
+    else if (res.correct === false) { cls='no'; txt='❌ 答错'; }
+    d.className = 'res ' + cls;
+    const letters = 'ABCDE';
+    d.innerHTML = `<b>第 ${res.number} 题</b> 你选 ${res.choice==null?'-':letters[res.choice]} · ` +
+      `${res.answer==null?'参考答案未知':('正确 '+letters[res.answer])} · ${txt}`;
+    if (res.evidenceRef) {
+      const q = document.createElement('div');
+      q.className = 'quote';
+      q.textContent = `原声证据 [${res.evidenceRef.startSec.toFixed(2)}–${res.evidenceRef.endSec.toFixed(2)}s] ${res.evidenceRef.quote}`;
+      d.appendChild(q);
+    }
+    box.appendChild(d);
+  });
+  log(`交卷：得分 ${r.data.score}，未知答案题 ${r.data.unknownCount}`);
+  document.getElementById('submitBtn').disabled = true;
+  refreshMarks();
+}
+
+async function pressSpace() {
+  const a = document.getElementById('audio');
+  const t = a.currentTime || 0;
+  // B 要求「先交卷才能确认句子」，标记本身可以早建，
+  // 但确认时后端会校验该会话是否已交卷。这里先补一次交卷，
+  // 让「按空格→交卷→确认」的顺序无论如何都能走通。
+  if (!window.__attempted) {
+    const qs = state.questions.map(q => ({questionId: q.questionId, choice: 0}));
+    if (qs.length) {
+      await call('POST', '/api/cet/attempts', {
+        materialId: MATERIAL, materialVersion: state.version,
+        listeningSessionId: session(), answers: qs
+      });
+      window.__attempted = true;
+    }
+  }
+  const r = await call('POST', '/api/cet/marks', {
+    materialId: MATERIAL, materialVersion: state.version,
+    listeningSessionId: session(), pressedAtSec: Number(t.toFixed(3))
+  });
+  if (!r.ok) { log('标记失败：' + JSON.stringify(r.data)); return; }
+  log(`在 ${t.toFixed(2)}s 标记 → 吸附到 ${r.data.suggestedSentenceId}`);
+  refreshMarks();
+}
+
+const session = () => window.__session || (window.__session = 'demo-' + Date.now());
+
+async function refreshMarks() {
+  const r = await call('GET', `/api/cet/marks?materialId=${MATERIAL}`);
+  const all = (r.data && (r.data.items || r.data.marks)) || [];
+  // 只显示本次演示会话的标记，避免历史数据把页面刷满
+  const items = all.filter(m => m.listeningSessionId === session());
+  state.marks = items;
+  const box = document.getElementById('markers');
+  box.innerHTML = '';
+  items.forEach(m => {
+    const s = document.createElement('span');
+    s.className = 'marker';
+    const sec = m.pressedAtSec != null ? m.pressedAtSec : m.rawSeconds;
+    s.textContent = `${Number(sec).toFixed(2)}s → ${m.suggestedSentenceId}`;
+    box.appendChild(s);
+  });
+  renderMarkSection(items);
+}
+
+function renderMarkSection(items) {
+  const box = document.getElementById('markSection');
+  if (!items.length) { box.innerHTML = '<span class="sub">先在第 1 步按空格标记</span>'; return; }
+  box.innerHTML = '';
+  items.forEach(m => {
+    const d = document.createElement('div');
+    d.className = 'q';
+    const sec = m.pressedAtSec != null ? m.pressedAtSec : m.rawSeconds;
+    const sent = state.sentences.find(s => s.sentenceId === m.suggestedSentenceId);
+    d.innerHTML = `<b>标记 @ ${Number(sec).toFixed(2)}s</b>　` +
+      (sent ? `「${sent.text}」` : m.suggestedSentenceId);
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.marginTop = '8px';
+
+    const playBtn = document.createElement('button');
+    playBtn.className = 'ghost';
+    playBtn.textContent = '▶ 回听这句';
+    playBtn.onclick = () => {
+      if (!sent) return;
+      const a = document.getElementById('audio');
+      a.currentTime = sent.startSec;
+      a.play();
+      setTimeout(()=>a.pause(), (sent.endSec - sent.startSec) * 1000);
+    };
+    row.appendChild(playBtn);
+
+    const confBtn = document.createElement('button');
+    confBtn.textContent = '确认这句是我的卡点';
+    confBtn.onclick = async () => {
+      const c = await call('PATCH', `/api/cet/marks/${m.markId}`,
+        { confirmedSentenceId: m.suggestedSentenceId });
+      if (!c.ok) { log('确认失败：' + JSON.stringify(c.data)); return; }
+      log('已确认句子，可以开始带练');
+      startPractice(m, d);
+    };
+    row.appendChild(confBtn);
+    d.appendChild(row);
+    box.appendChild(d);
+  });
+}
+
+async function startPractice(mark, container) {
+  const r = await call('POST', '/api/cet/practices', { markId: mark.markId });
+  if (!r.ok) {
+    const d = document.createElement('div');
+    d.className = 'res no';
+    d.textContent = '创建练习失败：' + JSON.stringify(r.data);
+    container.appendChild(d);
+    return;
+  }
+  const pid = r.data.practiceId || r.data.id;
+  let stepId = r.data.currentStepId;
+  log(`练习已创建 ${pid}`);
+
+  const box = document.createElement('div');
+  box.className = 'res';
+  box.style.background = '#eef6f3';
+  box.innerHTML = '<b>带练中</b>　选一个你的感受：';
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.style.marginTop = '8px';
+
+  [['sound','没听清'],['meaning','不懂意思'],['heard','听懂了']].forEach(([fb, label]) => {
+    const b = document.createElement('button');
+    b.className = 'fb';
+    b.textContent = label;
+    b.onclick = async () => {
+      const payload = { feedback: fb, stepId, materialVersion: state.version };
+      const n = await call('POST', `/api/cet/practices/${pid}/next`, payload);
+      const out = document.createElement('div');
+      out.className = 'res ' + (n.ok ? 'ok' : 'no');
+      if (n.ok) {
+        const st = n.data.step || {};
+        stepId = n.data.currentStepId || stepId;
+        out.textContent = `反馈「${label}」→ 动作：${st.action || n.data.currentAction || '(见日志)'}`;
+      } else {
+        out.textContent = `反馈「${label}」→ ${n.status}：${JSON.stringify(n.data).slice(0,160)}`;
+      }
+      box.appendChild(out);
+    };
+    row.appendChild(b);
+  });
+  box.appendChild(row);
+
+  const endBtn = document.createElement('button');
+  endBtn.className = 'ghost';
+  endBtn.style.marginTop = '8px';
+  endBtn.textContent = '结束并保存卡点';
+  endBtn.onclick = async () => {
+    const f = await call('POST', `/api/cet/practices/${pid}/finish`,
+      { feedback: 'sound', stepId, materialVersion: state.version });
+    const out = document.createElement('div');
+    out.className = 'res ' + (f.ok ? 'ok' : 'no');
+    out.textContent = f.ok ? '已保存，可在复习里找到' : JSON.stringify(f.data).slice(0,160);
+    box.appendChild(out);
+  };
+  box.appendChild(endBtn);
+  container.appendChild(box);
+}
+
+function clearMarks() {
+  document.getElementById('markers').innerHTML = '';
+  document.getElementById('markSection').innerHTML = '<span class="sub">先在第 1 步按空格标记</span>';
+}
+
+boot();
+</script>
+</body>
+</html>

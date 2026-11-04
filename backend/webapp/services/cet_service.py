@@ -461,6 +461,21 @@ def list_questions(material_id: str) -> dict[str, Any]:
             "SELECT * FROM cet_questions WHERE material_id=? AND material_version=? ORDER BY question_number",
             (storage_id, material["materialVersion"]),
         ).fetchall()
+        if not rows:
+            # 材料版本是按 mediaUrl+segments 算的哈希，改一次 mediaUrl 就变。
+            # 题目若仍挂在旧版本下会查不到（表现为「题数突然变 0」）。
+            # 这里回退到该材料的任意版本，并把版本号对齐到当前，
+            # 避免因为元数据微调而丢失整批题目。
+            rows = conn.execute(
+                "SELECT * FROM cet_questions WHERE material_id=? ORDER BY question_number",
+                (storage_id,),
+            ).fetchall()
+            if rows:
+                conn.execute(
+                    "UPDATE cet_questions SET material_version=? WHERE material_id=?",
+                    (material["materialVersion"], storage_id),
+                )
+                conn.commit()
     # Deliberately omit answers, sources and evidence before an attempt is submitted.
     # 字段对齐契约（questions_before_attempt.json）：
     #   id → questionId、questionNumber → number、prompt → stem
@@ -611,10 +626,18 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
         else:
             answers[question_id] = str(raw_choice or "").strip().upper()
     with _db() as conn:
+        # 题目按物化 ID（v2-<数字>）存储，且版本可能因元数据微调而落后；
+        # 这里与 list_questions 用同一套解析，避免「列表有题、交卷判 0 条」。
+        storage_id = f"v2-{_lesson_id(material_id)}"
         rows = conn.execute(
             "SELECT * FROM cet_questions WHERE material_id=? AND material_version=? ORDER BY question_number",
-            (material_id, material["materialVersion"]),
+            (storage_id, material["materialVersion"]),
         ).fetchall()
+        if not rows:
+            rows = conn.execute(
+                "SELECT * FROM cet_questions WHERE material_id=? ORDER BY question_number",
+                (storage_id,),
+            ).fetchall()
         score = graded = unknown = 0
         answer_rows = []
         for row in rows:

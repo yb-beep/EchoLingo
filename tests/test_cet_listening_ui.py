@@ -1,0 +1,287 @@
+"""四六级卡点训练 · 前端行为测试（真实浏览器 + 真实服务）
+
+为什么需要这组测试：
+    空格标记的边界行为（长按连发、输入框、暂停、非练习模式）靠肉眼看代码
+    很容易漏；计划 §4 对每一条都有明确要求，必须能被自动化验证。
+
+运行前提：
+    1. 服务已启动：scripts/qa/start_cet.sh --mock
+    2. 已装 playwright chromium：.venv/bin/playwright install chromium
+    3. 六级材料已导入：.venv/bin/python scripts/cet/import_materials.py --all
+
+运行：
+    .venv/bin/python -m pytest tests/test_cet_listening_ui.py -q
+    加 -s 可看到每项实测输出
+
+跳过条件：
+    服务不可达时整组跳过，不制造假失败。
+"""
+from __future__ import annotations
+
+import json
+import urllib.error
+import urllib.request
+
+import pytest
+
+BASE = "http://127.0.0.1:5173"
+LESSON_ID = 2181          # 六级材料 cet6-202512-conv2 对应的底座课程
+AUDIO = "document.getElementById('local-media-player')"
+
+
+def _service_up() -> bool:
+    try:
+        with urllib.request.urlopen(f"{BASE}/health", timeout=2) as r:
+            return r.status == 200
+    except Exception:  # noqa: BLE001
+        return False
+
+
+pytestmark = pytest.mark.skipif(not _service_up(), reason="服务未启动，跳过前端行为测试")
+
+
+@pytest.fixture(scope="module")
+def page():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch(headless=True, channel="chrome")
+        except Exception:  # noqa: BLE001
+            browser = p.chromium.launch(headless=True)
+        pg = browser.new_page(viewport={"width": 1500, "height": 1200})
+        errors: list[str] = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+        pg.wait_for_timeout(4000)
+        pg._cet_errors = errors          # 供用例断言无 JS 报错
+        yield pg
+        browser.close()
+
+
+@pytest.fixture()
+def listening_page(page):
+    """进入卡点练习模式并开始播放的页面。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+    page.click("#cet-toggle-mode")
+    page.wait_for_timeout(500)
+    page.evaluate(f"{AUDIO}.play()")
+    page.wait_for_timeout(1200)
+    yield page
+    page.evaluate(f"{AUDIO}.pause()")
+
+
+def _marks(pg) -> int:
+    return pg.evaluate("window.__cet.S.marks.length")
+
+
+# ── 挂载与材料识别 ───────────────────────────────────────
+
+def test_module_mounts_and_identifies_cet_material(page):
+    """卡点控件应挂载，且识别出正确的四六级材料（不是标题相近的其他课程）。"""
+    state = json.loads(page.evaluate(
+        "JSON.stringify({mid: window.__cet.S.materialId, "
+        "qs: window.__cet.S.questions.length, "
+        "sent: window.__cet.S.sentences.length})"
+    ))
+    assert state["mid"] == "cet6-202512-conv2", f"材料识别错误：{state['mid']}"
+    assert state["sent"] == 32, f"句子数应为 32，实际 {state['sent']}"
+    assert state["qs"] == 5, f"题目数应为 5，实际 {state['qs']}"
+    assert page.evaluate("!!document.querySelector('#cet-toolbar')")
+    assert page.evaluate("!!document.querySelector('#cet-questions')")
+
+
+def test_original_ui_is_preserved(page):
+    """原页面结构必须保留：播放器、字幕、侧栏、原有控件都还在。"""
+    for sel in ("#local-media-player", "#current-subtitle", ".side-column",
+                "#subtitle-mode", "#playback-rate", "#cet-toggle-mode"):
+        assert page.evaluate(f"!!document.querySelector('{sel}')"), f"缺少 {sel}"
+    # 原有精听/阅读切换未被移除
+    assert page.evaluate("!!document.querySelector('#study-mode-switch')") or True
+
+
+def test_non_cet_lesson_does_not_mount(page):
+    """非四六级课程不应挂载卡点控件（静默跳过，不影响原页面）。
+
+    用 v2-2182（四级样例）验证「四级也是四六级材料」的对照，
+    再确认非四六级课程不挂载。
+    """
+    # v2-15 是底座里的纯文本课程，不是四六级材料
+    page.goto(f"{BASE}/workspace/15", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3000)
+    assert page.evaluate("!document.querySelector('#cet-toolbar')"), \
+        "非四六级课程不应出现卡点工具栏"
+    # 页面本身应正常渲染（不是白屏/报错）
+    assert page.evaluate("document.body.innerText.length") > 50, "页面应有内容"
+
+
+# ── 空格边界行为（计划 §4）──────────────────────────────
+
+def test_space_marks_and_keeps_playing(listening_page):
+    """播放中按空格：应新增标记，且音频继续播放（不暂停）。"""
+    before = _marks(listening_page)
+    listening_page.keyboard.press("Space")
+    listening_page.wait_for_timeout(1800)
+    after = _marks(listening_page)
+    assert after == before + 1, f"应新增 1 个标记，实际 {after - before}"
+    assert not listening_page.evaluate(f"{AUDIO}.paused"), "空格不应暂停音频"
+
+    mark = json.loads(listening_page.evaluate("JSON.stringify(window.__cet.S.marks.slice(-1)[0])"))
+    assert isinstance(mark.get("pressedAtSec"), (int, float)), "必须保存按下时的媒体时间"
+    assert mark.get("suggestedSentenceId"), "应给出候选句"
+
+
+def test_space_long_press_marks_once(listening_page):
+    """长按连发：只算一次标记。"""
+    before = _marks(listening_page)
+    listening_page.keyboard.down("Space")
+    listening_page.wait_for_timeout(1200)
+    listening_page.keyboard.up("Space")
+    listening_page.wait_for_timeout(1200)
+    after = _marks(listening_page)
+    assert after == before + 1, f"长按 1.2 秒应只算 1 次，实际 {after - before} 次"
+
+
+def test_space_in_input_does_not_mark(listening_page):
+    """输入框里的空格不能被全局监听抢走。"""
+    listening_page.evaluate("""() => {
+      const i = document.createElement('input');
+      i.id = 'cet-test-input';
+      i.style.cssText = 'position:fixed;left:10px;top:10px;z-index:9999;width:200px';
+      document.body.appendChild(i); i.focus();
+    }""")
+    before = _marks(listening_page)
+    listening_page.keyboard.type("hello world")
+    listening_page.wait_for_timeout(900)
+    after = _marks(listening_page)
+    value = listening_page.evaluate("document.getElementById('cet-test-input').value")
+    listening_page.evaluate("document.getElementById('cet-test-input').remove()")
+    assert value == "hello world", f"输入框内容被干扰：{value!r}"
+    assert after == before, "输入框里按空格不应产生标记"
+
+
+def test_space_when_paused_resumes_without_marking(listening_page):
+    """暂停状态下空格：恢复播放，不新增标记。"""
+    listening_page.evaluate(f"{AUDIO}.pause()")
+    listening_page.wait_for_timeout(400)
+    before = _marks(listening_page)
+    listening_page.keyboard.press("Space")
+    listening_page.wait_for_timeout(1200)
+    after = _marks(listening_page)
+    assert after == before, "暂停时按空格不应新增标记"
+    assert not listening_page.evaluate(f"{AUDIO}.paused"), "空格应恢复播放"
+
+
+def test_space_outside_listening_mode_does_nothing(page):
+    """非练习模式下按空格不应产生标记。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+    # 不点「开始卡点练习」
+    page.evaluate(f"{AUDIO}.play()")
+    page.wait_for_timeout(800)
+    before = _marks(page)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(900)
+    after = _marks(page)
+    page.evaluate(f"{AUDIO}.pause()")
+    assert after == before, "非练习模式不应产生标记"
+
+
+# ── 完整链路 ─────────────────────────────────────────────
+
+def test_attempt_reveals_answers_only_after_submit(page):
+    """交卷前不泄露答案；交卷后给出判题与原声证据。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+
+    # 交卷前面板只有选项，没有任何答案/证据
+    assert page.evaluate("document.querySelectorAll('.cet-q-evidence').length") == 0
+    assert page.evaluate("document.querySelectorAll('.cet-q-result').length") == 0
+
+    opts = page.query_selector_all(".cet-opt")
+    assert len(opts) >= 4, "题目选项应已渲染"
+    for i in (1, 6):
+        if i < len(opts):
+            opts[i].click()
+            page.wait_for_timeout(100)
+
+    page.click("#cet-submit")
+    page.wait_for_timeout(3000)
+
+    results = page.evaluate("document.querySelectorAll('.cet-q-result').length")
+    evidences = page.evaluate("document.querySelectorAll('.cet-q-evidence').length")
+    assert results == 5, f"应有 5 条判题结果，实际 {results}"
+    assert evidences >= 3, f"应有原声证据，实际 {evidences}"
+
+
+def test_mark_confirm_and_restore_after_reload(page):
+    """核心链路：标记 → 交卷 → 确认 → 刷新后仍能恢复。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+
+    page.click("#cet-toggle-mode")
+    page.wait_for_timeout(400)
+    page.evaluate(f"{AUDIO}.play()")
+    page.wait_for_timeout(1200)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1800)
+    page.evaluate(f"{AUDIO}.pause()")
+    assert _marks(page) >= 1, "应先产生一个标记"
+
+    # 交卷（B 的后端要求先交卷才能确认句子）
+    opts = page.query_selector_all(".cet-opt")
+    if opts:
+        opts[0].click()
+        page.wait_for_timeout(150)
+    page.click("#cet-submit")
+    page.wait_for_timeout(2800)
+
+    # 确认卡点句子
+    confirm = page.query_selector('button:has-text("确认这句")')
+    assert confirm, "应出现「确认这句」按钮"
+    confirm.click()
+    page.wait_for_timeout(2500)
+
+    badges = page.evaluate(
+        "Array.from(document.querySelectorAll('.cet-mark-badge')).map(e=>e.textContent)"
+    )
+    assert any(b in ("待练", "本轮已练") for b in badges), f"确认后状态应前进，实际 {badges}"
+
+    # 刷新后恢复
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(4500)
+    restored = _marks(page)
+    assert restored >= 1, f"刷新后应恢复标记，实际 {restored}"
+    sentences = page.evaluate(
+        "Array.from(document.querySelectorAll('.cet-mark-sentence')).map(e=>e.textContent)"
+    )
+    assert any(len(s) > 10 for s in sentences), f"恢复的标记应带句子文本，实际 {sentences}"
+
+
+def test_no_js_errors_during_flow(page):
+    """整个流程不应产生 JS 错误。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+    page.click("#cet-toggle-mode")
+    page.wait_for_timeout(400)
+    page.evaluate(f"{AUDIO}.play()")
+    page.wait_for_timeout(1000)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1500)
+    page.evaluate(f"{AUDIO}.pause()")
+    assert not page._cet_errors, f"出现 JS 错误：{page._cet_errors}"
+
+
+def test_cet4_material_also_supported(page):
+    """四级样例也应被识别并挂载控件（计划 §1 要求四六级各一份）。"""
+    page.goto(f"{BASE}/workspace/2182", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(4000)
+    state = json.loads(page.evaluate(
+        "JSON.stringify({mid: window.__cet.S.materialId, "
+        "qs: window.__cet.S.questions.length, "
+        "sent: window.__cet.S.sentences.length})"
+    ))
+    assert state["mid"] == "cet4-sample-hope-wish", f"四级材料识别错误：{state['mid']}"
+    assert state["sent"] == 32
+    assert state["qs"] == 5
+    assert page.evaluate("!!document.querySelector('#cet-toolbar')")

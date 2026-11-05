@@ -170,8 +170,14 @@
 
     const m = media();
     if (!m) return;
+
     // 暂停状态下空格恢复播放，不新增标记（计划 §4）
-    if (m.paused) return;
+    if (m.paused) {
+      e.preventDefault();
+      m.play();
+      flashHint('继续播放');
+      return;
+    }
 
     e.preventDefault();
     // 防连发：300ms 内只认一次

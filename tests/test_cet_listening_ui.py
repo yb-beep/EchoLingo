@@ -41,21 +41,32 @@ pytestmark = pytest.mark.skipif(not _service_up(), reason="服务未启动，跳
 
 
 @pytest.fixture(scope="module")
-def page():
+def browser():
+    """共享一个浏览器实例。
+
+    Playwright Sync API 在同一进程里反复 with sync_playwright() 会报
+    "using Sync API inside the asyncio loop"，所以统一在这里开一次。
+    """
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as p:
         try:
-            browser = p.chromium.launch(headless=True, channel="chrome")
+            b = p.chromium.launch(headless=True, channel="chrome")
         except Exception:  # noqa: BLE001
-            browser = p.chromium.launch(headless=True)
-        pg = browser.new_page(viewport={"width": 1500, "height": 1200})
-        errors: list[str] = []
-        pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
-        pg.wait_for_timeout(4000)
-        pg._cet_errors = errors          # 供用例断言无 JS 报错
-        yield pg
-        browser.close()
+            b = p.chromium.launch(headless=True)
+        yield b
+        b.close()
+
+
+@pytest.fixture(scope="module")
+def page(browser):
+    pg = browser.new_page(viewport={"width": 1500, "height": 1200})
+    errors: list[str] = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    pg.wait_for_timeout(4000)
+    pg._cet_errors = errors          # 供用例断言无 JS 报错
+    yield pg
+    pg.close()
 
 
 @pytest.fixture()
@@ -438,3 +449,44 @@ def test_review_pause_and_restore_after_reload(page):
     assert restored, "刷新后应恢复复习面板"
     rows = page.evaluate("document.querySelectorAll('.cet-review-row').length")
     assert rows >= 1, f"恢复后应有条目，实际 {rows}"
+
+
+# ── T16：窄窗口适配 ──────────────────────────────────────
+
+@pytest.mark.parametrize("width,height,label", [
+    (420, 900, "窄屏手机"),
+    (768, 1024, "平板"),
+    (1280, 800, "小笔记本"),
+])
+def test_narrow_window_no_overflow(browser, width, height, label):
+    """窄窗口下按钮可操作、无横向溢出（计划 T16）。
+
+    用共享的 browser fixture：Playwright Sync API 不能在同一个进程里
+    反复 with sync_playwright()（会撞 asyncio loop）。
+    """
+    pg = browser.new_page(viewport={"width": width, "height": height})
+    errors: list[str] = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+        pg.wait_for_timeout(3500)
+
+        assert pg.evaluate("!!document.querySelector('#cet-toggle-mode')"), \
+            f"{label}: 卡点按钮应存在"
+
+        clickable = pg.evaluate("""() => {
+          const b = document.querySelector('#cet-toggle-mode');
+          const r = b.getBoundingClientRect();
+          return r.width > 20 && r.height > 15
+                 && r.left >= 0 && r.right <= window.innerWidth + 2;
+        }""")
+        assert clickable, f"{label}: 卡点按钮应可点击且不超出视口"
+
+        overflow = pg.evaluate(
+            "document.documentElement.scrollWidth > document.documentElement.clientWidth + 2"
+        )
+        assert not overflow, f"{label}: 不应出现横向溢出"
+
+        assert not errors, f"{label}: 不应有 JS 错误 {errors}"
+    finally:
+        pg.close()

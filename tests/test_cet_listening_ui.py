@@ -30,6 +30,7 @@ BASE = os.environ.get("CET_UI_BASE", "http://127.0.0.1:5173").rstrip("/")
 # F09：不硬编码 lesson id（导入脚本用自增 ID，换库会变）。
 # 默认值仅用于本机；换环境时用 CET_UI_LESSON_ID 指定。
 LESSON_ID = int(os.environ.get("CET_UI_LESSON_ID", "2181"))
+CET4_LESSON_ID = int(os.environ.get("CET_UI_CET4_LESSON_ID", "2182"))
 AUDIO = "document.getElementById('local-media-player')"
 
 
@@ -371,10 +372,11 @@ def test_feedback_meaning_degrades_gracefully_without_ai(page):
     btn.click()
     page.wait_for_timeout(4000)
 
-    out = page.evaluate("(document.querySelector('#cet-practice-out')||{}).textContent || ''")
+    # 用 innerText 读，包含子元素里的提示（等待区、降级说明都是子节点）
+    out = page.evaluate("(document.querySelector('#cet-practice-out')||{}).innerText || ''")
     # 配置了模型会给解释；没配置要给「仍可回听/慢放/保存」这类可操作提示
-    assert ("解释" in out) or ("模型" in out) or ("暂不" in out), \
-        f"「不懂意思」应给明确反馈，实际：{out}"
+    assert any(k in out for k in ("解释", "模型", "暂不", "回听", "慢放")), \
+        f"「不懂意思」应给明确反馈，实际：{out!r}"
     # 无论成败，回听与保存必须仍可用
     assert page.evaluate("!!document.querySelector('#local-media-player')")
 
@@ -605,22 +607,36 @@ def test_f02_review_replay_seeks_to_sentence_start(page):
     page.click("#cet-review-btn")
     page.wait_for_timeout(3000)
 
+    # R6：必须真正拿到条目起点；取不到直接失败，不能跳过断言
     entry_start = page.evaluate("""() => {
-      const st = window.__cet && window.__cet.__reviewState;
+      const st = window.__cet && window.__cet.getReviewState && window.__cet.getReviewState();
       const e = st && st.entries && st.entries[0];
       return e && e.item && e.item.sentence ? e.item.sentence.startSeconds : null;
     }""")
+    assert entry_start is not None, \
+        "取不到复习条目的起始时间（getReviewState 未导出或条目缺 sentence）"
 
-    play = page.query_selector('button:has-text("回听")')
+    # R6：限定在复习面板内找「回听」，不能点到卡点按钮
+    play = page.query_selector("#cet-review button:has-text('回听')")
     assert play, "复习面板应有「回听」按钮"
     play.click()
-    page.wait_for_timeout(1500)
+    page.wait_for_timeout(1200)
 
     now = page.evaluate(f"{AUDIO}.currentTime")
-    if entry_start is not None:
-        assert now > 0.05 or abs(now - entry_start) < 1.5, \
-            f"回听应跳到句子起点附近（{entry_start}），实际停在 {now}"
+    # 断言真的跳到了该条目起点附近（±1.5 秒），不能只看「> 0.05」
+    assert abs(now - entry_start) < 1.5, \
+        f"回听应跳到条目起点 {entry_start}，实际 {now}"
+
+    # 断言播放确实在推进
+    t1 = page.evaluate(f"{AUDIO}.currentTime")
+    page.wait_for_timeout(800)
+    t2 = page.evaluate(f"{AUDIO}.currentTime")
+    assert t2 > t1, f"回听后播放应推进，实际 {t1} → {t2}"
+
+    # 暂停后音频必须停（R4）
     page.evaluate(f"{AUDIO}.pause()")
+    page.wait_for_timeout(300)
+    assert page.evaluate(f"{AUDIO}.paused"), "暂停后音频应停止"
 
 
 def test_f04_feedback_persisted_to_record(page):
@@ -660,3 +676,137 @@ def test_f04_feedback_persisted_to_record(page):
 
     latest = page.evaluate("window.__cet.S.practice && window.__cet.S.practice.latestFeedback")
     assert latest == "sound", f"反馈应落库为 sound，实际 {latest!r}"
+
+
+# ── 复验返修回归（R1–R6）────────────────────────────────
+
+def test_r1_cross_material_does_not_leak_state(browser):
+    """R1：在六级页面交卷带练后切到四级，不能串入六级的成绩与练习。"""
+    pg = browser.new_page(viewport={"width": 1500, "height": 1400})
+    try:
+        pg.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+        pg.evaluate("localStorage.clear(); sessionStorage.clear()")
+        pg.reload(wait_until="networkidle")
+        pg.wait_for_timeout(4000)
+
+        pg.click("#cet-toggle-mode")
+        pg.wait_for_timeout(400)
+        pg.evaluate(f"{AUDIO}.play()")
+        pg.wait_for_timeout(1200)
+        pg.keyboard.press("Space")
+        pg.wait_for_timeout(1800)
+        pg.evaluate(f"{AUDIO}.pause()")
+        opts = pg.query_selector_all(".cet-opt")
+        if opts:
+            opts[0].click()
+            pg.wait_for_timeout(150)
+        pg.click("#cet-submit")
+        pg.wait_for_timeout(2800)
+
+        # 切到四级页面
+        pg.goto(f"{BASE}/workspace/{CET4_LESSON_ID}", wait_until="networkidle", timeout=45000)
+        pg.wait_for_timeout(4500)
+
+        assert pg.evaluate("window.__cet.S.materialId") == "cet4-sample-hope-wish", \
+            "四级页面应识别为四级材料"
+        state = pg.evaluate("(document.querySelector('#cet-attempt-state')||{}).textContent || ''")
+        assert "已交卷" not in state, f"四级页面不应显示六级成绩，实际 {state!r}"
+
+        practice_visible = pg.evaluate(
+            "!!document.querySelector('#cet-practice') && !document.querySelector('#cet-practice').hidden"
+        )
+        assert not practice_visible, "四级页面不应显示六级的带练面板"
+    finally:
+        pg.close()
+
+
+def test_r4_review_pause_stops_audio(page):
+    """R4：复习暂停后音频必须真的停止，不能显示已暂停但还在响。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+    page.click("#cet-review-btn")
+    page.wait_for_timeout(3000)
+
+    play = page.query_selector("#cet-review button:has-text('回听')")
+    assert play, "复习面板应有回听按钮"
+    play.click()
+    page.wait_for_timeout(1200)
+    assert not page.evaluate(f"{AUDIO}.paused"), "回听后应在播放"
+
+    pause = page.query_selector("#cet-review button:has-text('暂停')")
+    assert pause, "应有暂停按钮"
+    pause.click()
+    page.wait_for_timeout(1500)
+
+    assert page.evaluate(f"{AUDIO}.paused"), "暂停后音频必须停止"
+    t1 = page.evaluate(f"{AUDIO}.currentTime")
+    page.wait_for_timeout(800)
+    t2 = page.evaluate(f"{AUDIO}.currentTime")
+    assert abs(t2 - t1) < 0.1, f"暂停后时间不应推进：{t1} → {t2}"
+
+
+def test_r5_waiting_note_mounted_during_request(page):
+    """R5：请求期间等待提示必须真的挂到 DOM（原实现 parentNode 恒为 null）。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.evaluate("localStorage.clear(); sessionStorage.clear()")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(4000)
+
+    page.click("#cet-toggle-mode")
+    page.wait_for_timeout(400)
+    page.evaluate(f"{AUDIO}.play()")
+    page.wait_for_timeout(1200)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1800)
+    page.evaluate(f"{AUDIO}.pause()")
+    opts = page.query_selector_all(".cet-opt")
+    if opts:
+        opts[0].click()
+        page.wait_for_timeout(150)
+    page.click("#cet-submit")
+    page.wait_for_timeout(2800)
+    confirm = page.query_selector('button:has-text("确认这句")')
+    if confirm:
+        confirm.click()
+        page.wait_for_timeout(2500)
+    start = page.query_selector('button:has-text("开始带练")')
+    assert start, "应出现开始带练"
+    start.click()
+    page.wait_for_timeout(3000)
+
+    # R5：请求要延迟才观察得到等待区。无 key 时后端秒回 503，
+    # 不延迟的话等待提示刚挂上就被移除，测不到「是否挂载」。
+    page.evaluate("""() => {
+      const orig = window.fetch;
+      window.__cetDelayNext = true;
+      window.fetch = async (url, opt) => {
+        if (window.__cetDelayNext && String(url).includes('/next')) {
+          window.__cetDelayNext = false;
+          await new Promise(r => setTimeout(r, 2500));
+        }
+        return orig(url, opt);
+      };
+    }""")
+
+    meaning = page.query_selector('button:has-text("不懂意思")')
+    assert meaning, "应有不懂意思按钮"
+    meaning.click()
+
+    # 请求进行中检查等待区确实挂在 DOM
+    page.wait_for_timeout(700)
+    during = page.evaluate("""() => {
+      const n = document.querySelector('#cet-practice-out .cet-ai-note');
+      return n ? n.textContent : null;
+    }""")
+    assert during is not None, \
+        "请求期间等待提示必须挂在 DOM 上（原实现创建后未挂载）"
+
+    # 3 秒后兜底文案应变成可操作说明
+    page.wait_for_timeout(3000)
+    after = page.evaluate("""() => {
+      const n = document.querySelector('#cet-practice-out .cet-ai-note');
+      return n ? n.textContent : null;
+    }""")
+    if after is not None:
+        assert ('回听' in after) or ('慢放' in after) or ('保存' in after) or ('模型' in after), \
+            f"3 秒兜底应给可操作提示，实际 {after!r}"

@@ -1,0 +1,98 @@
+[
+  {
+    "id": "practice-da0bd357b676",
+    "latest_feedback": "meaning",
+    "effective_ms": 0,
+    "raw_seconds": 40.0,
+    "events": [
+      {
+        "event_type": "feedback",
+        "n": 2
+      },
+      {
+        "event_type": "local_action",
+        "n": 1
+      }
+    ]
+  },
+  {
+    "id": "practice-7fd8dbbd0c53",
+    "latest_feedback": "heard",
+    "effective_ms": 4780,
+    "raw_seconds": 6.493,
+    "events": [
+      {
+        "event_type": "feedback",
+        "n": 4
+      },
+      {
+        "event_type": "local_action",
+        "n": 1
+      },
+      {
+        "event_type": "playback_end",
+        "n": 1
+      },
+      {
+        "event_type": "playback_start",
+        "n": 1
+      }
+    ]
+  },
+  {
+    "id": "practice-93d670372efc",
+    "latest_feedback": "sound",
+    "effective_ms": 0,
+    "raw_seconds": 1.122,
+    "events": [
+      {
+        "event_type": "feedback",
+        "n": 1
+      },
+      {
+        "event_type": "local_action",
+        "n": 1
+      },
+      {
+        "event_type": "playback_interrupt",
+        "n": 1
+      },
+      {
+        "event_type": "playback_start",
+        "n": 1
+      },
+      {
+        "event_type": "visibility",
+        "n": 6
+      }
+    ]
+  },
+  {
+    "id": "practice-5502d4f231ad",
+    "latest_feedback": "meaning",
+    "effective_ms": 4784,
+    "raw_seconds": 1.12,
+    "events": [
+      {
+        "event_type": "feedback",
+        "n": 2
+      },
+      {
+        "event_type": "local_action",
+        "n": 1
+      },
+      {
+        "event_type": "playback_end",
+        "n": 1
+      },
+      {
+        "event_type": "playback_start",
+        "n": 1
+      },
+      {
+        "event_type": "visibility",
+        "n": 6
+      }
+    ]
+  }
+]

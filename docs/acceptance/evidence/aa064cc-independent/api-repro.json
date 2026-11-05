@@ -1,0 +1,25 @@
+{
+  "partial_submit": {
+    "choices": [
+      1,
+      null,
+      null,
+      null,
+      null
+    ],
+    "unansweredCount": 4
+  },
+  "stale_feedback": {
+    "response_status": 409,
+    "error": {
+      "detail": {
+        "code": "STALE_RESPONSE",
+        "message": "步骤或材料版本已变化，请刷新后重试。"
+      }
+    },
+    "before": "sound",
+    "after": "meaning",
+    "history_length_before": 1,
+    "history_length_after": 2
+  }
+}

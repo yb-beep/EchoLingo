@@ -502,6 +502,8 @@
       out.textContent = `反馈「${label}」处理中…`;
     }
     const waitingNote = el('div', 'cet-ai-note', '正在生成解释…（3 秒后仍无结果可继续回听或保存）');
+    // R5：创建后必须挂到 DOM，否则 parentNode 恒为 null，3 秒兜底提示永远不出现
+    if (out) out.appendChild(waitingNote);
     const timer = setTimeout(() => {
       if (waitingNote.parentNode) {
         waitingNote.textContent = '仍在等待模型；你可以先回听、慢放、看原文或保存本轮。';
@@ -519,9 +521,12 @@
       if (waitingNote.parentNode) waitingNote.remove();
 
       // 跨练习/过期响应过滤：旧练习的结果不能覆盖当前界面（F01）
-      if (S.practice && S.practice.practiceId !== practiceAtSend) return;
-      if (typeof revisionAtSend === 'number' && typeof r.revision === 'number'
-          && r.revision < revisionAtSend) return;
+      // R5：身份不符直接丢弃（旧练习的响应不能覆盖新状态）。
+      // 注意：不能用 revision 大小比较来判过期 ——
+      // 后端在记录反馈时就会 revision+1，返回的 revision 通常大于发送时的快照，
+      // 若拿「当前 S.practice.revision」比会把正常响应误判成过期。
+      // 正确做法：只认 practiceId 身份 + 后端明确的 STALE_RESPONSE 错误。
+      if (!S.practice || S.practice.practiceId !== practiceAtSend) return;
 
       S.practice = { ...S.practice, ...r, currentStepId: r.currentStepId || S.practice.currentStepId };
       const step = r.currentStep || r.step || {};
@@ -548,6 +553,8 @@
     } catch (err) {
       clearTimeout(timer);
       if (waitingNote.parentNode) waitingNote.remove();
+      // R5：失败也要做身份过滤，旧练习的错误不能改当前界面
+      if (!S.practice || S.practice.practiceId !== practiceAtSend) return;
       if (out) {
         out.className = 'cet-practice-out error';
         if (err.code === 'STALE_RESPONSE') {
@@ -596,20 +603,93 @@
     const data = step.data || {};
     const candidate = data.candidate || null;
 
-    if (!candidate) {
+    // R3：无候选时后端把步骤设成 finish，前端要明确「未检验」，不假成功
+    if (!candidate || data.noCandidate) {
       const note = el('div', 'cet-ai-note warn',
         '这次还没有合适的换句材料。已记为「未检验」，你可以继续复习。');
       out.appendChild(note);
       return;
     }
+
+    // R3：选项可能是对象 {id,text} 或纯字符串，必须取文本，不能直接拼对象
+    const optionText = (opt, i) => {
+      if (typeof opt === 'string') return opt;
+      if (opt && typeof opt === 'object') {
+        return String(opt.text ?? opt.label ?? opt.id ?? `选项 ${i + 1}`);
+      }
+      return String(opt ?? '');
+    };
+    const optionId = (opt, i) => {
+      if (opt && typeof opt === 'object' && opt.id != null) return String(opt.id);
+      return 'ABCDE'[i] || String(i);
+    };
+
     const box = el('div', 'cet-transfer');
-    box.appendChild(el('div', 'cet-transfer-stem', data.question || '听新片段并作答'));
-    (data.options || []).forEach((opt, i) => {
-      const b = el('button', 'cet-opt', `${'ABCDE'[i]}. ${opt}`);
-      b.onclick = () => flashHint('换句作答已提交（详见后端记录）');
+    box.appendChild(el('div', 'cet-transfer-stem',
+      String(data.question || '听新片段并作答')));
+
+    const opts = Array.isArray(data.options) ? data.options : [];
+    if (!opts.length) {
+      box.appendChild(el('div', 'cet-ai-note warn', '候选题没有可用选项，已记为「未检验」。'));
+      out.appendChild(box);
+      return;
+    }
+
+    let submitted = false;
+    const buttons = [];
+    opts.forEach((opt, i) => {
+      const b = el('button', 'cet-opt', `${'ABCDE'[i]}. ${optionText(opt, i)}`);
+      b.onclick = async () => {
+        if (submitted) return;
+        submitted = true;
+        buttons.forEach((x) => { x.disabled = true; });
+        const ok = await submitTransferAnswer(optionId(opt, i), candidate);
+        if (!ok) {
+          // R3：提交失败必须能重试，不能显示成功
+          submitted = false;
+          buttons.forEach((x) => { x.disabled = false; });
+        }
+      };
+      buttons.push(b);
       box.appendChild(b);
     });
     out.appendChild(box);
+  }
+
+  // R3：真正提交换句作答（发事件，等后端确认）
+  async function submitTransferAnswer(answer, candidate) {
+    if (!S.practice || !S.practice.practiceId) return false;
+    const out = $('#cet-practice-out');
+    try {
+      const r = await api('POST', `/practices/${S.practice.practiceId}/events`, {
+        eventId: uid('transfer'),
+        type: 'transfer_answer',
+        stepId: S.practice.currentStepId,
+        materialVersion: S.materialVersion,
+        audioTime: clampToStepRange(media() ? media().currentTime : 0),
+        speed: media() ? (media().playbackRate || 1) : 1,
+        candidateId: (candidate && (candidate.id || candidate.sentenceId)) || null,
+        answer,
+      });
+      if (out) {
+        const res = (r && r.lastTransferResult) || {};
+        const correct = res.isCorrect;
+        const note = el('div',
+          `cet-ai-note ${correct === false ? 'warn' : ''}`,
+          correct === true ? '换句作答正确'
+            : (correct === false ? '换句作答不正确，已记录'
+              : '换句作答已提交（服务端未判定）'));
+        out.appendChild(note);
+      }
+      if (r) S.practice = { ...S.practice, ...r };
+      save();
+      return true;
+    } catch (err) {
+      if (out) {
+        out.appendChild(el('div', 'cet-ai-note warn', `换句作答提交失败：${err.message}`));
+      }
+      return false;
+    }
   }
 
   // 执行本地动作：改播放速度、跳回句子起点、显隐原文
@@ -854,8 +934,16 @@
 
       const play = el('button', 'cet-btn-sm', '回听');
       play.onclick = () => {
+        // R4：复习条目可能属于别的材料。当前播放器只有本页音源，
+        // 跨材料时不能播错，必须明确告知而不是假装回听成功。
+        const entryMaterial = (cur.item && cur.item.materialId)
+          || (sent && sent.materialId) || null;
+        if (entryMaterial && S.materialId && entryMaterial !== S.materialId
+            && entryMaterial !== S.materialId.replace(/^cet[46]-/, '')) {
+          flashHint('该复习条目属于其他材料，请先打开对应课程再回听', true);
+          return;
+        }
         // 字段名是 startSeconds/endSeconds；起点允许为 0。
-        // 用 replayRange 统一管理守卫，避免多次点击叠加出双重播放。
         replayRange(sent.startSeconds, sent.endSeconds);
       };
       row.appendChild(play);
@@ -908,6 +996,11 @@
 
   async function reviewAction(action, practiceId) {
     if (!reviewState) return;
+    // R4：暂停 / 跳过 / 结束都要先停掉正在播的回放，
+    // 否则页面显示「已暂停」但音频还在响。
+    if (action === 'pause' || action === 'skip' || action === 'complete' || action === 'finish') {
+      stopActiveReplay();
+    }
     try {
       // 后端要求 actionId 用于幂等去重（重复提交不重复计时）
       const payload = { action, actionId: uid(`rv-${action}`) };
@@ -926,16 +1019,31 @@
   }
 
   // ── 恢复 ────────────────────────────────────────────────
+  // R1：按材料 ID 分键保存，避免在四级页面恢复出六级的成绩与练习。
+  const stateKey = (mid) => `cet.state.v2.${mid || 'unknown'}`;
+
   function save() {
+    if (!S.materialId) return;
     try {
-      // 用 localStorage：sessionStorage 关标签就没了，F03 要求「关标签重开」也能找回
-      localStorage.setItem('cet.state.v1', JSON.stringify({
+      localStorage.setItem(stateKey(S.materialId), JSON.stringify({
         materialId: S.materialId,
         attemptId: S.attempt && S.attempt.attemptId,
         practiceId: S.practice && S.practice.practiceId,
         reviewId: reviewState && reviewState.id,
       }));
     } catch (_) { /* 隐私模式可能失败，不阻塞 */ }
+  }
+
+  function loadSaved() {
+    if (!S.materialId) return {};
+    try {
+      const raw = localStorage.getItem(stateKey(S.materialId));
+      if (!raw) return {};
+      const saved = JSON.parse(raw);
+      // 二次核对：键里存的材料必须与当前材料一致，否则丢弃
+      if (saved.materialId && saved.materialId !== S.materialId) return {};
+      return saved;
+    } catch (_) { return {}; }
   }
 
   async function restore() {
@@ -954,10 +1062,11 @@
 
     // F03：恢复交卷结果（原来只恢复标记，刷新后右侧回到「未交卷」）
     try {
-      const saved = JSON.parse(localStorage.getItem('cet.state.v1') || '{}');
+      const saved = loadSaved();
       if (saved.attemptId) {
         const at = await api('GET', `/attempts/${saved.attemptId}`);
-        if (at && at.attemptId) {
+        // R1：归属核对——取回的记录必须属于当前材料，否则丢弃（防跨材料串入）
+        if (at && at.attemptId && at.materialId === S.materialId) {
           S.attempt = at;
           renderAttemptResult(at);
           const st = $('#cet-attempt-state');
@@ -968,10 +1077,11 @@
 
     // F03：恢复带练（原来只恢复标记，刷新后带练面板消失）
     try {
-      const saved = JSON.parse(localStorage.getItem('cet.state.v1') || '{}');
+      const saved = loadSaved();
       if (saved.practiceId) {
         const pr = await api('GET', `/practices/${saved.practiceId}`);
-        if (pr && pr.practiceId) {
+        // R1：练习也必须属于当前材料
+        if (pr && pr.practiceId && pr.materialId === S.materialId) {
           S.practice = pr;
           renderPractice();
           renderMarks();
@@ -983,7 +1093,7 @@
 
     // 恢复复习会话（计划 T11：重启后恢复原会话和步骤）
     try {
-      const saved = JSON.parse(localStorage.getItem('cet.state.v1') || '{}');
+      const saved = loadSaved();
       if (saved.reviewId) {
         const rv = await api('GET', `/reviews/${saved.reviewId}`);
         if (rv && rv.status && rv.status !== 'complete') {
@@ -1036,5 +1146,9 @@
   }
 
   // 暴露给调试与测试
-  window.__cet = { S, api, setListening, createMark, confirmMark, submitAttempt };
+  // 导出给自动化测试用（R6：测试曾读不存在的 __reviewState 导致断言被跳过）
+  window.__cet = {
+    S, api, setListening, createMark, confirmMark, submitAttempt,
+    getReviewState: () => reviewState,
+  };
 })();

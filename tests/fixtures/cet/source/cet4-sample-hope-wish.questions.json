@@ -1,0 +1,80 @@
+{
+  "materialId": "cet4-sample-hope-wish",
+  "note": "四级样例：Let's Learn English 课程片段，hope/wish 语法讲解 + 秘鲁艺术节对话。真实音频、真实时间轴。第 5 题故意无答案。",
+  "audioSha256": "006c81d84930c8e1000000000000000000000000000000000000000000000000",
+  "questions": [
+    {
+      "questionId": "cet4-q1",
+      "number": 1,
+      "stem": "What is the speaker hoping to do in about an hour?",
+      "options": [
+        "Finish the work.",
+        "Meet the right guy.",
+        "Learn to make art.",
+        "Watch a video."
+      ],
+      "answer": 0,
+      "answerSource": "transcript_derived",
+      "evidenceSentenceId": "s01",
+      "evidenceQuote": "Okay, I’m hoping to finish in about an hour."
+    },
+    {
+      "questionId": "cet4-q2",
+      "number": 2,
+      "stem": "According to the lesson, what does \"hope\" combine with to talk about the future?",
+      "options": [
+        "A gerund.",
+        "An infinitive.",
+        "A past participle.",
+        "A modal verb."
+      ],
+      "answer": 1,
+      "answerSource": "transcript_derived",
+      "evidenceSentenceId": "s06",
+      "evidenceQuote": "That’s an example of using “hope” with an infinitive to talk about doing something in the future."
+    },
+    {
+      "questionId": "cet4-q3",
+      "number": 3,
+      "stem": "Where does Bruna say she is?",
+      "options": [
+        "In the kid's section.",
+        "In the art making section.",
+        "At the festival entrance.",
+        "At home."
+      ],
+      "answer": 1,
+      "answerSource": "transcript_derived",
+      "evidenceSentenceId": "s12",
+      "evidenceQuote": "I'm in the art making section."
+    },
+    {
+      "questionId": "cet4-q4",
+      "number": 4,
+      "stem": "What does Bruna wish she could do?",
+      "options": [
+        "Visit Peru.",
+        "Dance Marinera Norteña.",
+        "Make art like Anna's.",
+        "Speak Spanish fluently."
+      ],
+      "answer": 2,
+      "answerSource": "transcript_derived",
+      "evidenceSentenceId": "s15",
+      "evidenceQuote": "I wish I could do art like that."
+    },
+    {
+      "questionId": "cet4-q5",
+      "number": 5,
+      "stem": "（样例占位）这道题故意不给参考答案，用于验证未知答案路径。",
+      "options": [
+        "选项 A（占位）",
+        "选项 B（占位）"
+      ],
+      "answer": null,
+      "answerSource": "unknown",
+      "evidenceSentenceId": null,
+      "evidenceQuote": null
+    }
+  ]
+}

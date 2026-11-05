@@ -318,13 +318,26 @@ def _audio_sha256(lesson: dict[str, Any]) -> str:
 
 
 def _question_count(material_id: str, version: str) -> int:
-    """该材料版本下的题目数（契约要求）。取不到就 0。"""
+    """该材料的题目数（契约要求）。
+
+    先按精确版本查；查不到时回退到「该材料任意版本」。
+    原因：材料版本是按 mediaUrl+segments 算的哈希，改一次 media_url
+    （比如音频换个存放路径）版本就变，但题目并没有变。
+    只按精确版本查会出现「列表显示 0 题、点进去却有题」的矛盾。
+    """
     try:
         with _db() as conn:
             row = conn.execute(
                 "SELECT COUNT(*) AS c FROM cet_questions "
                 "WHERE material_id = ? AND material_version = ?",
                 (material_id, version),
+            ).fetchone()
+            exact = int(row["c"] if row else 0)
+            if exact:
+                return exact
+            row = conn.execute(
+                "SELECT COUNT(*) AS c FROM cet_questions WHERE material_id = ?",
+                (material_id,),
             ).fetchone()
             return int(row["c"] if row else 0)
     except Exception:  # noqa: BLE001

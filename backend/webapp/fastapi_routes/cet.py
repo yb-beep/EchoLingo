@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
 from webapp.services import cet_service
 
@@ -15,6 +15,24 @@ def list_cet_materials(level: str | None = Query(default=None)):
     items = cet_service.list_materials(level)
     # 顶层包装对齐契约：{items, count}（原为 {materials}）
     return {"items": items, "count": len(items), "materials": items}
+
+
+@router.get("/materials/by-lesson/{lesson_id}")
+def cet_material_by_lesson(lesson_id: int):
+    """按底座 lesson id 查四六级材料。
+
+    前端在 /workspace/<lesson_id> 页面里需要知道「当前课程是不是四六级材料」，
+    用 lesson id 精确查最可靠（标题匹配会命中相近课程）。
+    不是四六级材料时返回 404，前端据此不挂载卡点控件。
+    """
+    material = cet_service.find_material_by_lesson(lesson_id)
+    if not material:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "NOT_CET_MATERIAL", "message": "该课程不是四六级材料。",
+                    "lessonId": lesson_id},
+        )
+    return material
 
 
 @router.get("/materials/{material_id}")

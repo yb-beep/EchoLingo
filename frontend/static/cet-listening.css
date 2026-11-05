@@ -1,0 +1,217 @@
+/* 四六级卡点训练 · 样式
+ *
+ * 原则：复用 EchoLingo 原有 CSS 变量与圆角/间距，不引入新设计系统。
+ * 只加本功能必需的类，避免影响原页面。
+ */
+
+/* 工具栏：挂在 .learning-controls 里，与原控件同一行 */
+.cet-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.cet-btn {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--brand, #2f6f5e);
+  border-radius: 8px;
+  background: var(--brand, #2f6f5e);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: filter .15s;
+}
+.cet-btn:hover { filter: brightness(1.06); }
+.cet-btn.active { background: #b8860b; border-color: #b8860b; }
+.cet-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+.cet-btn-sm {
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink, #202421);
+  font-size: 12px;
+  cursor: pointer;
+}
+.cet-btn-sm:hover { border-color: var(--brand, #2f6f5e); color: var(--brand, #2f6f5e); }
+
+.cet-hint {
+  font-size: 12px;
+  color: var(--muted, #687069);
+}
+.cet-hint.error { color: #c0392b; }
+
+/* 标记列表 */
+.cet-marks {
+  margin-top: 12px;
+  border-top: 1px dashed var(--line, #d9ded8);
+  padding-top: 10px;
+}
+.cet-marks-title {
+  font-size: 12px;
+  color: var(--muted, #687069);
+  margin-bottom: 8px;
+}
+
+.cet-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 9px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  border-left: 3px solid transparent;
+  background: #fafbf9;
+}
+
+/* 三态：颜色 + 文字双重标识（不只靠颜色，见计划 §4） */
+.cet-mark-pending { border-left-color: #e08e0b; background: #fff8ec; }
+.cet-mark-ready   { border-left-color: #276fbf; background: #eef4fc; }
+.cet-mark-done    { border-left-color: #2f8f4e; background: #eef8f1; }
+
+.cet-mark-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted, #687069);
+  min-width: 52px;
+}
+
+.cet-mark-badge {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.cet-mark-badge-pending { background: #fdebc8; color: #8a5a00; }
+.cet-mark-badge-ready   { background: #d8e6f8; color: #17457a; }
+.cet-mark-badge-done    { background: #d6eedd; color: #1c5c33; }
+
+.cet-mark-sentence {
+  flex: 1 1 200px;
+  color: var(--ink, #202421);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cet-mark-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+/* 侧栏面板 */
+.cet-panel {
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.cet-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.cet-panel-state {
+  font-size: 11px;
+  color: var(--muted, #687069);
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #f1f3f0;
+}
+.cet-panel-state.done { background: #d6eedd; color: #1c5c33; }
+
+.cet-panel-foot { margin-top: 10px; }
+
+.cet-empty {
+  font-size: 12px;
+  color: var(--muted, #687069);
+  padding: 8px 0;
+}
+
+/* 题目 */
+.cet-q { margin-bottom: 14px; }
+.cet-q-stem {
+  font-size: 13px;
+  line-height: 1.55;
+  margin-bottom: 7px;
+}
+.cet-q-opts { display: flex; flex-direction: column; gap: 5px; }
+
+.cet-opt {
+  text-align: left;
+  padding: 7px 10px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 7px;
+  background: #fff;
+  font-size: 12.5px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.cet-opt:hover { border-color: var(--brand, #2f6f5e); }
+.cet-opt.sel {
+  border-color: var(--brand, #2f6f5e);
+  background: #eef6f3;
+}
+
+/* 交卷结果 */
+.cet-q-result {
+  padding: 9px 10px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
+.cet-q-ok  { background: #e8f5e9; border: 1px solid #a5d6a7; }
+.cet-q-no  { background: #fdecea; border: 1px solid #f5b7b1; }
+.cet-q-unk { background: #f2f2f2; border: 1px solid #d5d5d5; }
+
+.cet-q-evidence {
+  margin-top: 6px;
+  padding-left: 9px;
+  border-left: 3px solid rgba(0, 0, 0, .1);
+  font-size: 11.5px;
+  color: var(--muted, #687069);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  line-height: 1.5;
+}
+
+/* 带练 */
+.cet-feedback {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.cet-practice-out {
+  font-size: 12.5px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #f6f7f4;
+  margin-bottom: 10px;
+  min-height: 34px;
+  line-height: 1.5;
+}
+.cet-practice-out.ok { background: #eef6f3; }
+.cet-practice-out.error { background: #fdecea; color: #a3312a; }
+
+/* 练习模式下给播放器一点视觉提示 */
+body.cet-listening .learning-controls {
+  box-shadow: inset 0 -2px 0 #e08e0b;
+}
+
+/* 窄窗口不溢出（计划 T16） */
+@media (max-width: 720px) {
+  .cet-toolbar { margin-left: 0; width: 100%; }
+  .cet-mark-sentence { flex-basis: 100%; white-space: normal; }
+}

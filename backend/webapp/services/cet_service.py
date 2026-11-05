@@ -434,6 +434,28 @@ def list_materials(level: str | None = None) -> list[dict[str, Any]]:
     return [item for item in materials if level is None or item["level"] == level]
 
 
+def find_material_by_lesson(lesson_id: int) -> dict[str, Any] | None:
+    """按底座 lesson id 反查四六级材料。
+
+    前端在 /workspace/<lesson_id> 页面里，最可靠的匹配依据就是 lesson id，
+    不要用标题字符串模糊匹配 —— 实测会命中标题相近的其他课程。
+    返回 None 表示这个课程不是四六级材料。
+    """
+    lesson = db.get_v2_lesson(lesson_id)
+    if not lesson or int(lesson.get("archived") or 0):
+        return None
+    # 只有打过 cet4/cet6 标签的课程才算四六级材料
+    level = _level(lesson)
+    if level not in {"cet4", "cet6"}:
+        return None
+    material = _material(lesson)
+    biz = _business_id(lesson)
+    if biz:
+        material["materialId"] = biz
+        material["id"] = biz
+    return material
+
+
 def get_material(material_id: str) -> dict[str, Any]:
     lesson = db.get_v2_lesson(_lesson_id(material_id))
     if not lesson or int(lesson.get("archived") or 0):

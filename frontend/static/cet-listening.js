@@ -54,8 +54,10 @@
 
   function sessionId() {
     if (!S.sessionId) {
-      S.sessionId = sessionStorage.getItem(CFG.storageKey) || uid('cet-session');
-      sessionStorage.setItem(CFG.storageKey, S.sessionId);
+      // S4：用 localStorage。sessionStorage 关标签就丢，
+      // 导致重开后按新会话 ID 查不到已保存的卡点（记录还在，入口没了）。
+      S.sessionId = localStorage.getItem(CFG.storageKey) || uid('cet-session');
+      localStorage.setItem(CFG.storageKey, S.sessionId);
     }
     return S.sessionId;
   }
@@ -447,6 +449,51 @@
     }
   }
 
+  // S4：把 practice.currentStep 的内容渲染到输出区（恢复与首次都走这里）
+  function renderCurrentStepInto(container) {
+    if (!container || !S.practice) return;
+    const step = S.practice.currentStep || {};
+    const action = step.action || '';
+    const data = step.data || {};
+
+    if (action === 'explain') {
+      const text = String(data.explanation || '').trim();
+      if (text) {
+        const box = el('div', 'cet-explain');
+        box.appendChild(el('div', 'cet-explain-text', text));
+        const phrases = Array.isArray(data.keyPhrases) ? data.keyPhrases : [];
+        if (phrases.length) {
+          const ph = el('div', 'cet-explain-phrases');
+          phrases.forEach((p) => {
+            const t = typeof p === 'string' ? p : (p.text || p.phrase || '');
+            if (t) ph.appendChild(el('span', 'cet-phrase', t));
+          });
+          box.appendChild(ph);
+        }
+        container.appendChild(box);
+        return;
+      }
+      container.appendChild(el('div', 'cet-ai-note',
+        '本步骤没有可显示的解释正文；可继续回听或重新反馈。'));
+      return;
+    }
+
+    if (action === 'transfer' || data.noCandidate) {
+      renderTransfer({ currentStep: step, transferStatus: S.practice.transferStatus }, container);
+      return;
+    }
+
+    if (action === 'slow' || action === 'replay' || action === 'chunk') {
+      container.appendChild(el('div', 'cet-ai-note',
+        `当前步骤：${ACTION_LABEL[action] || action}${step.speed && step.speed < 1 ? `（${step.speed}x）` : ''}`));
+      return;
+    }
+
+    if (action === 'finish') {
+      container.appendChild(el('div', 'cet-ai-note', '本轮已结束，可保存或开始复习。'));
+    }
+  }
+
   function renderPractice() {
     let box = $('#cet-practice');
     if (!box) {
@@ -476,6 +523,10 @@
     out.id = 'cet-practice-out';
     box.appendChild(out);
 
+    // S4：恢复时要把当前步骤的内容渲染出来，不能只重建按钮。
+    // 原来刷新后解释正文/换句候选项都会消失。
+    renderCurrentStepInto(out);
+
     const saveBtn = el('button', 'cet-btn', '保存本轮');
     saveBtn.onclick = finishPractice;
     box.appendChild(saveBtn);
@@ -490,11 +541,16 @@
     transfer: '换句检验',
   };
 
+  // S6：请求序号。同一练习的多个请求若在网络上乱序到达，
+  // 只允许「最后一次发出」的响应落地，避免旧成功覆盖新步骤。
+  let feedbackSeq = 0;
+
   async function sendFeedback(feedback, label) {
     if (!S.practice) return;
     const out = $('#cet-practice-out');
-    const practiceAtSend = S.practice.practiceId;   // 用于过滤跨练习的迟到响应
-    const revisionAtSend = S.practice.revision;
+    const practiceAtSend = S.practice.practiceId;
+    const stepAtSend = S.practice.currentStepId;
+    const seq = ++feedbackSeq;
 
     // 请求一开始就显示等待（不是等返回后才启动计时）
     if (out) {
@@ -521,12 +577,12 @@
       if (waitingNote.parentNode) waitingNote.remove();
 
       // 跨练习/过期响应过滤：旧练习的结果不能覆盖当前界面（F01）
-      // R5：身份不符直接丢弃（旧练习的响应不能覆盖新状态）。
-      // 注意：不能用 revision 大小比较来判过期 ——
-      // 后端在记录反馈时就会 revision+1，返回的 revision 通常大于发送时的快照，
-      // 若拿「当前 S.practice.revision」比会把正常响应误判成过期。
-      // 正确做法：只认 practiceId 身份 + 后端明确的 STALE_RESPONSE 错误。
+      // S6：三重过滤 —— 练习身份、请求序号、发送时步骤。
+      // 序号保证只有「最后一次发出」的响应能落地；
+      // 步骤校验保证旧步骤的迟到成功不会覆盖新步骤。
       if (!S.practice || S.practice.practiceId !== practiceAtSend) return;
+      if (seq !== feedbackSeq) return;
+      if (S.practice.currentStepId && S.practice.currentStepId !== stepAtSend) return;
 
       S.practice = { ...S.practice, ...r, currentStepId: r.currentStepId || S.practice.currentStepId };
       const step = r.currentStep || r.step || {};
@@ -546,15 +602,23 @@
       if (action === 'explain') {
         renderExplain(r, step);
       }
-      if (action === 'transfer') {
+      // S3：无候选时后端把步骤设成 finish，action 不再是 transfer，
+      // 原来只在 action==='transfer' 时渲染，导致「未检验」提示永远不出现。
+      // 改为：只要响应里带 noCandidate / transferStatus，就渲染换句区。
+      const stepData = step.data || {};
+      const isTransferCase = action === 'transfer'
+        || stepData.noCandidate === true
+        || (r && r.transferStatus === 'no_candidate');
+      if (isTransferCase) {
         renderTransfer(r);
       }
       save();
     } catch (err) {
       clearTimeout(timer);
       if (waitingNote.parentNode) waitingNote.remove();
-      // R5：失败也要做身份过滤，旧练习的错误不能改当前界面
+      // S6：失败同样要过滤（身份 + 序号）
       if (!S.practice || S.practice.practiceId !== practiceAtSend) return;
+      if (seq !== feedbackSeq) return;
       if (out) {
         out.className = 'cet-practice-out error';
         if (err.code === 'STALE_RESPONSE') {
@@ -596,15 +660,15 @@
   }
 
   // F05：换句检验的候选渲染（本轮先做「没有候选」的明确状态，不假成功）
-  function renderTransfer(resp) {
-    const out = $('#cet-practice-out');
+  function renderTransfer(resp, container) {
+    const out = container || $('#cet-practice-out');
     if (!out) return;
     const step = (resp && resp.currentStep) || {};
     const data = step.data || {};
     const candidate = data.candidate || null;
 
-    // R3：无候选时后端把步骤设成 finish，前端要明确「未检验」，不假成功
-    if (!candidate || data.noCandidate) {
+    // R3/S3：无候选时后端把步骤设成 finish，前端要明确「未检验」，不假成功
+    if (!candidate || data.noCandidate || (resp && resp.transferStatus === 'no_candidate')) {
       const note = el('div', 'cet-ai-note warn',
         '这次还没有合适的换句材料。已记为「未检验」，你可以继续复习。');
       out.appendChild(note);
@@ -681,7 +745,10 @@
               : '换句作答已提交（服务端未判定）'));
         out.appendChild(note);
       }
-      if (r) S.practice = { ...S.practice, ...r };
+      // S6：换句提交的成功合并也要核对身份
+      if (r && S.practice && r.practiceId === S.practice.practiceId) {
+        S.practice = { ...S.practice, ...r };
+      }
       save();
       return true;
     } catch (err) {

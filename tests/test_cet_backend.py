@@ -114,8 +114,10 @@ def test_material_questions_attempt_and_idempotency(client: TestClient):
     assert item["sentenceCount"] == 5
 
     detail = client.get(f"/api/cet/materials/{client.material_id}").json()
+    # 契约要求顶层为 {material, sentences}（S5 后调整），
+    # 句子在外层、材料元信息在 material 内。
     assert detail["sentences"][1]["startSeconds"] == 2.5
-    assert detail["source"]["materialStore"] == "echolingo.v2_lessons"
+    assert detail["material"]["source"]["materialStore"] == "echolingo.v2_lessons"
 
     questions_response = client.get(f"/api/cet/materials/{client.material_id}/questions")
     assert questions_response.status_code == 200

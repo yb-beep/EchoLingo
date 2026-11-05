@@ -1,0 +1,11 @@
+{
+  "status": 409,
+  "detail": {
+    "code": "STALE_RESPONSE",
+    "message": "步骤或材料版本已变化，请刷新后重试。"
+  },
+  "beforeFeedback": "heard",
+  "afterFeedback": "sound",
+  "beforeHistory": 3,
+  "afterHistory": 4
+}

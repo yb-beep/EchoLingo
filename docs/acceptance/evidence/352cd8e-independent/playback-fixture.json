@@ -1,0 +1,10 @@
+[
+  {
+    "type": "playback_start",
+    "status": 200
+  },
+  {
+    "type": "playback_end",
+    "status": 200
+  }
+]

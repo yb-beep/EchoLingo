@@ -810,3 +810,224 @@ def test_r5_waiting_note_mounted_during_request(page):
     if after is not None:
         assert ('回听' in after) or ('慢放' in after) or ('保存' in after) or ('模型' in after), \
             f"3 秒兜底应给可操作提示，实际 {after!r}"
+
+
+# ── 复验返修回归（S1–S6）────────────────────────────────
+
+def _api_json(method, path, body=None):
+    """直接打后端接口，用于验证持久化结果（不经浏览器）。"""
+    import json as _json
+    import urllib.error
+    import urllib.request
+    data = _json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(BASE + path, data=data, method=method)
+    if data:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, _json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, _json.loads(e.read().decode())
+        except Exception:  # noqa: BLE001
+            return e.code, None
+
+
+def _new_practice():
+    """建一条完整前置链（交卷→标记→确认→练习），返回 (practiceId, stepId, version)。"""
+    import time as _time
+    mid = "cet6-202512-conv2"
+    _, mat = _api_json("GET", f"/api/cet/materials/{mid}")
+    ver = (mat.get("material") or mat)["materialVersion"]
+    tag = f"pytest-{int(_time.time() * 1000)}"
+    _, qs = _api_json("GET", f"/api/cet/materials/{mid}/questions?version={ver}")
+    items = (qs or {}).get("items") or (qs or {}).get("questions") or []
+    _api_json("POST", "/api/cet/attempts", {
+        "materialId": mid, "materialVersion": ver, "listeningSessionId": tag,
+        "answers": [{"questionId": q["questionId"], "choice": 0} for q in items],
+    })
+    _, mark = _api_json("POST", "/api/cet/marks", {
+        "materialId": mid, "materialVersion": ver,
+        "listeningSessionId": tag, "pressedAtSec": 36.9,
+    })
+    _api_json("PATCH", f"/api/cet/marks/{mark['markId']}",
+              {"confirmedSentenceId": mark["suggestedSentenceId"]})
+    _, pr = _api_json("POST", "/api/cet/practices", {"markId": mark["markId"]})
+    return pr["practiceId"], pr["currentStepId"], ver
+
+
+def test_s1_model_receives_current_feedback():
+    """S1：模型调用参数必须与本次反馈一致，不能是上一次的反馈。"""
+    pid, step, ver = _new_practice()
+    # sound
+    s1, r1 = _api_json("POST", f"/api/cet/practices/{pid}/next",
+                       {"feedback": "sound", "stepId": step, "materialVersion": ver})
+    assert s1 == 200, f"sound 应成功：{s1} {r1}"
+    step2 = (r1 or {}).get("currentStepId")
+    # meaning（会走 explain → 无 key 时 503，但 AI 请求记录应已写入）
+    s2, r2 = _api_json("POST", f"/api/cet/practices/{pid}/next",
+                       {"feedback": "meaning", "stepId": step2, "materialVersion": ver})
+    # 查 AI 请求记录里的 feedback
+    import sqlite3
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           ".cet-qa", "data", "vocab.db")
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT request_json FROM cet_ai_requests WHERE practice_id=? "
+            "ORDER BY created_at DESC LIMIT 1", (pid,)
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row, "应有 AI 请求记录"
+    import json as _json
+    req = _json.loads(row[0] or "{}")
+    assert req.get("feedback") == "meaning", \
+        f"模型参数应是本次反馈 meaning，实际 {req.get('feedback')!r}"
+
+
+def test_s2_rejected_request_leaves_no_feedback():
+    """S2：被 409 拒绝的请求不能留下本次反馈（校验与落库必须同一事务）。"""
+    pid, step, ver = _new_practice()
+    s1, r1 = _api_json("POST", f"/api/cet/practices/{pid}/next",
+                       {"feedback": "sound", "stepId": step, "materialVersion": ver})
+    assert s1 == 200
+
+    _, before = _api_json("GET", f"/api/cet/practices/{pid}")
+    fb_before = before.get("latestFeedback")
+    hist_before = len(before.get("feedbackHistory") or [])
+    rev_before = before.get("revision")
+
+    # 用已过期的旧 stepId 发 heard → 应 409
+    s2, r2 = _api_json("POST", f"/api/cet/practices/{pid}/next",
+                       {"feedback": "heard", "stepId": step, "materialVersion": ver})
+    assert s2 == 409, f"旧步骤应被拒绝，实际 {s2}"
+    assert (r2.get("detail") or {}).get("code") == "STALE_RESPONSE"
+
+    _, after = _api_json("GET", f"/api/cet/practices/{pid}")
+    assert after.get("latestFeedback") == fb_before, \
+        f"被拒绝的请求不应改 latestFeedback：{fb_before!r} → {after.get('latestFeedback')!r}"
+    assert len(after.get("feedbackHistory") or []) == hist_before, \
+        "被拒绝的请求不应增加 feedbackHistory"
+    assert after.get("revision") == rev_before, "被拒绝的请求不应改 revision"
+
+
+def test_s3_no_candidate_shows_unverified(page):
+    """S3：无候选时前端必须显示「未检验」，不能只显示动作名 finish。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.evaluate("localStorage.clear()")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(4000)
+
+    page.click("#cet-toggle-mode")
+    page.wait_for_timeout(400)
+    page.evaluate(f"{AUDIO}.play()")
+    page.wait_for_timeout(1200)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1800)
+    page.evaluate(f"{AUDIO}.pause()")
+    opts = page.query_selector_all(".cet-opt")
+    if opts:
+        opts[0].click()
+        page.wait_for_timeout(150)
+    page.click("#cet-submit")
+    page.wait_for_timeout(2800)
+    confirm = page.query_selector('button:has-text("确认这句")')
+    if confirm:
+        confirm.click()
+        page.wait_for_timeout(2500)
+    start = page.query_selector('button:has-text("开始带练")')
+    assert start, "应出现开始带练"
+    start.click()
+    page.wait_for_timeout(3000)
+
+    heard = page.query_selector('button:has-text("听懂了")')
+    assert heard, "应有听懂了按钮"
+    heard.click()
+    page.wait_for_timeout(3500)
+
+    out = page.evaluate("(document.querySelector('#cet-practice-out')||{}).innerText || ''")
+    assert ("未检验" in out) or ("换句材料" in out), \
+        f"无候选应显示「未检验」说明，实际：{out!r}"
+
+
+def test_s4_reload_restores_step_content(page):
+    """S4：刷新后要恢复当前步骤内容，不能只重建按钮。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.evaluate("localStorage.clear()")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(4000)
+
+    page.click("#cet-toggle-mode")
+    page.wait_for_timeout(400)
+    page.evaluate(f"{AUDIO}.play()")
+    page.wait_for_timeout(1200)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1800)
+    page.evaluate(f"{AUDIO}.pause()")
+    opts = page.query_selector_all(".cet-opt")
+    if opts:
+        opts[0].click()
+        page.wait_for_timeout(150)
+    page.click("#cet-submit")
+    page.wait_for_timeout(2800)
+    confirm = page.query_selector('button:has-text("确认这句")')
+    if confirm:
+        confirm.click()
+        page.wait_for_timeout(2500)
+    start = page.query_selector('button:has-text("开始带练")')
+    assert start
+    start.click()
+    page.wait_for_timeout(3000)
+
+    # 触发一个会留下步骤内容的动作
+    heard = page.query_selector('button:has-text("听懂了")')
+    if heard:
+        heard.click()
+        page.wait_for_timeout(3500)
+    before = page.evaluate("(document.querySelector('#cet-practice-out')||{}).innerText || ''")
+
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(5000)
+
+    visible = page.evaluate(
+        "!!document.querySelector('#cet-practice') && !document.querySelector('#cet-practice').hidden"
+    )
+    assert visible, "刷新后带练面板应恢复"
+    after = page.evaluate("(document.querySelector('#cet-practice-out')||{}).innerText || ''")
+    # 步骤内容必须恢复（不能只剩按钮）
+    assert after.strip(), f"刷新后应恢复步骤内容；刷新前为 {before!r}"
+    marks = page.evaluate("document.querySelectorAll('.cet-mark').length")
+    assert marks >= 1, f"刷新后卡点应恢复，实际 {marks}"
+
+
+def test_s5_real_contract_material_detail_shape():
+    """S5：真实服务的材料详情必须符合契约 {material, sentences} 且句子含契约字段。"""
+    status, body = _api_json("GET", "/api/cet/materials/cet6-202512-conv2")
+    assert status == 200, f"材料详情应 200，实际 {status}"
+    assert "material" in body and "sentences" in body, \
+        f"契约要求 {{material, sentences}}，实际顶层 {sorted(body.keys())}"
+    sentences = body["sentences"]
+    assert sentences, "句子列表不应为空"
+    for field in ("materialId", "materialVersion", "sentenceId", "index", "startSec", "endSec", "text"):
+        assert field in sentences[0], f"句子缺契约字段 {field}"
+
+
+def test_s5_bogus_version_is_rejected():
+    """S5：不存在的材料版本必须被拒绝，不能返回 200。"""
+    status, _ = _api_json(
+        "GET", "/api/cet/materials/cet6-202512-conv2?version=bogus-v0"
+    )
+    assert status in (409, 422), f"bogus 版本应被拒绝，实际 {status}"
+
+
+def test_s5_questions_include_items():
+    """S5：题目接口必须提供契约要求的 items。"""
+    _, mat = _api_json("GET", "/api/cet/materials/cet6-202512-conv2")
+    ver = (mat.get("material") or mat)["materialVersion"]
+    status, body = _api_json(
+        "GET", f"/api/cet/materials/cet6-202512-conv2/questions?version={ver}"
+    )
+    assert status == 200
+    assert "items" in body and isinstance(body["items"], list), \
+        f"契约要求 items，实际顶层 {sorted(body.keys())}"

@@ -1,0 +1,11 @@
+{
+  "beforePause": {
+    "paused": false,
+    "time": 30.246189
+  },
+  "afterPause": {
+    "paused": true,
+    "review": "已暂停 · 剩余约 10 分钟 · 第 1 处",
+    "time": 30.264743
+  }
+}

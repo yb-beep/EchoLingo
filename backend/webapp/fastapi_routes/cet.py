@@ -36,13 +36,36 @@ def cet_material_by_lesson(lesson_id: int):
 
 
 @router.get("/materials/{material_id}")
-def get_cet_material(material_id: str):
-    return cet_service.get_material(material_id)
+def get_cet_material(material_id: str, version: str | None = Query(default=None)):
+    """材料详情。
+
+    契约要求顶层含 material 包装；同时校验 version（不符必须拒绝）。
+    """
+    material = cet_service.get_material(material_id)
+    # S5：版本不符必须拒绝（原来忽略 version 参数，bogus-v0 也返回 200）
+    if version and version != material["materialVersion"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "MATERIAL_VERSION_CHANGED",
+                "message": "材料版本已变化，请刷新后重试。",
+                "currentVersion": material["materialVersion"],
+                "requestedVersion": version,
+            },
+        )
+    # 契约：{material: {...}, sentences: [...]}
+    return {"material": material, "sentences": material.get("sentences", [])}
 
 
 @router.get("/materials/{material_id}/questions")
 def get_cet_questions(material_id: str):
-    return cet_service.list_questions(material_id)
+    """题目列表。
+
+    契约要求 items；底座旧字段 questions 保留兼容。
+    """
+    data = cet_service.list_questions(material_id)
+    questions = data.get("questions") or []
+    return {**data, "items": questions, "count": len(questions)}
 
 
 @router.get("/attempts/{attempt_id}")

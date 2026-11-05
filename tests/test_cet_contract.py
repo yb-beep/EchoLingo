@@ -187,7 +187,9 @@ def test_material_detail_has_sentences(sentences):
     for s in got:
         for field in ("materialId", "materialVersion", "sentenceId", "index", "startSec", "endSec", "text"):
             assert field in s, f"句子缺少字段 {field}：{s}"
-        assert s["materialVersion"] == MATERIAL_VERSION
+        # Mock 用固定版本；真实服务用内容哈希，应与服务实际返回的版本一致
+        assert s["materialVersion"] == (MATERIAL_VERSION if IS_MOCK else _resolved_version()), \
+            f"句子版本应与材料版本一致：{s['materialVersion']}"
 
     if IS_MOCK:
         # Mock 必须与样例逐字一致

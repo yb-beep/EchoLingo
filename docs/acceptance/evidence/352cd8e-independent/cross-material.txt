@@ -1,0 +1,45 @@
+- banner:
+  - link "返回首页":
+    - /url: /
+    - generic: ←
+    - generic: 首页
+  - heading "视频加载中…" [level=1]
+  - generic: 字幕生成中
+- main:
+  - region "video and current subtitle":
+    - generic "playback and subtitle controls":
+      - text: 字幕
+      - combobox "字幕":
+        - option "英文 + 点词查询" [selected]
+        - option "英文"
+        - option "中文"
+        - option "中英双语"
+        - option "隐藏字幕"
+      - text: 倍速
+      - combobox "倍速":
+        - option "0.5x"
+        - option "0.75x"
+        - option "1x" [selected]
+        - option "1.25x"
+        - option "1.5x"
+        - option "2x"
+      - button "精听"
+      - button "阅读"
+    - region "current subtitle":
+      - strong: 当前句
+      - button "上一句" [disabled]: ‹
+      - generic: 等待字幕
+      - button "下一句" [disabled]: ›
+      - button "加入精读" [disabled]:
+        - text: 加入精读
+      - generic: 字幕正在后台加载…
+      - generic: 字幕就绪前可正常播放视频。
+  - complementary "learning workspace":
+    - tablist "学习工具":
+      - tab "导航" [selected]: 导航
+      - tab "收藏": 收藏
+      - tab "AI 伴读": AI 伴读
+    - heading "内容大纲" [level=2]
+    - generic: 按主题跳转。用 A/B 按钮选取讨论区间。
+    - button "AI 总结结构"
+    - generic: 正在生成内容大纲…

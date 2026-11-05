@@ -1,0 +1,7 @@
+[
+  {
+    "practice_id": "practice-e74eb4f9da2c",
+    "event_type": "transfer_answer",
+    "payload_json": "{\"candidateId\":\"transfer-de0ae4e61c6607e4c6db\",\"answer\":\"A\",\"correctAnswer\":\"A\",\"isCorrect\":true,\"answerSource\":\"ai:audit-fixture:req-30dfef48ab3a\",\"explanation\":\"验收模拟依据\"}"
+  }
+]

@@ -363,12 +363,19 @@ def _level(lesson: dict[str, Any]) -> str:
 
 def _sentence_ref(material_id: str, version: str, segment: dict[str, Any]) -> dict[str, Any]:
     lesson_id = _lesson_id(material_id)
+    start = float(segment["start"])
+    end = float(segment["end"])
     return {
         "materialId": material_id,
         "materialVersion": version,
         "sentenceId": f"v2-{lesson_id}-{int(segment['index'])}",
-        "startSeconds": float(segment["start"]),
-        "endSeconds": float(segment["end"]),
+        # 契约字段（startSec/endSec 是绝对秒；index 是句序）
+        "index": int(segment["index"]),
+        "startSec": start,
+        "endSec": end,
+        # 底座旧字段名，保留兼容
+        "startSeconds": start,
+        "endSeconds": end,
         "text": str(segment["text"]),
         "timingSource": "echolingo.v2_subtitle_segments",
     }
@@ -1112,39 +1119,58 @@ def _local_chunks(sentence: dict[str, Any]) -> list[dict[str, Any]]:
     return chunks
 
 
-def local_practice_action(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
+def _local_practice_action_conn(
+    conn, practice_id: str, body: dict[str, Any], *, already_validated: bool = False
+) -> bool:
+    """在**调用方给定的连接**内执行本地动作。
+
+    S2：拆出连接内版本，让「校验 + 反馈 + 步骤推进」能在同一事务完成。
+    返回 True 表示已处理；False 表示幂等重复（调用方直接返回当前状态）。
+
+    参数 already_validated=True 时跳过 stepId/version 校验
+    （调用方已在同一事务里校验过）。
+    """
     action = str(body.get("action") or "").strip()
     action_id = str(body.get("actionId") or "").strip()
     if action not in {"replay", "slow", "chunk", "explain"} or not action_id:
         _error(422, "INVALID_LOCAL_ACTION", "本地动作仅支持 replay、slow、chunk、explain，且需要 actionId。")
-    with _db() as conn:
-        duplicate = conn.execute(
-            "SELECT id FROM cet_practice_events WHERE practice_id=? AND id=?", (practice_id, action_id)
-        ).fetchone()
-        if duplicate:
-            return _practice_payload(practice_id)
-        practice = _practice_row(conn, practice_id)
-        if practice["status"] != "active":
-            _error(409, "PRACTICE_COMPLETE", "练习已结束。")
+    duplicate = conn.execute(
+        "SELECT id FROM cet_practice_events WHERE practice_id=? AND id=?", (practice_id, action_id)
+    ).fetchone()
+    if duplicate:
+        return False
+    practice = _practice_row(conn, practice_id)
+    if practice["status"] != "active":
+        _error(409, "PRACTICE_COMPLETE", "练习已结束。")
+    if not already_validated:
         if body.get("stepId") != practice["current_step_id"] or body.get("materialVersion") != practice["material_version"]:
             _error(409, "STALE_RESPONSE", "步骤或材料版本已变化，请刷新后重试。")
-        _cancel_pending_ai(conn, practice)
-        payload: dict[str, Any] = {"source": "local"}
-        sentence = json.loads(practice["sentence_json"])
-        if action == "chunk":
-            payload["chunks"] = _local_chunks(sentence)
-            payload["timingSource"] = "estimated_alignment"
-        elif action == "explain":
-            payload.update({"explanation": "", "degraded": True, "text": sentence["text"]})
-        _new_step(
-            conn, practice, action, "local", show_text=action != "replay",
-            speed=0.75 if action in {"slow", "chunk"} else 1.0, payload=payload,
-        )
-        conn.execute(
-            "INSERT INTO cet_practice_events(id,practice_id,step_id,material_version,event_type,payload_json,created_at) "
-            "VALUES(?,?,?,?,'local_action',?,?)",
-            (action_id, practice_id, practice["current_step_id"], practice["material_version"], _json({"action": action}), _now()),
-        )
+    _cancel_pending_ai(conn, practice)
+    payload: dict[str, Any] = {"source": "local"}
+    sentence = json.loads(practice["sentence_json"])
+    if action == "chunk":
+        payload["chunks"] = _local_chunks(sentence)
+        payload["timingSource"] = "estimated_alignment"
+    elif action == "explain":
+        payload.update({"explanation": "", "degraded": True, "text": sentence["text"]})
+    _new_step(
+        conn, practice, action, "local", show_text=action != "replay",
+        speed=0.75 if action in {"slow", "chunk"} else 1.0, payload=payload,
+    )
+    conn.execute(
+        "INSERT INTO cet_practice_events(id,practice_id,step_id,material_version,event_type,payload_json,created_at) "
+        "VALUES(?,?,?,?,'local_action',?,?)",
+        (action_id, practice_id, practice["current_step_id"], practice["material_version"],
+         _json({"action": action}), _now()),
+    )
+    return True
+
+
+def local_practice_action(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    """独立入口（供路由直接调用）：自己开连接、自己提交。"""
+    with _db() as conn:
+        _local_practice_action_conn(conn, practice_id, body)
+        conn.commit()
     return _practice_payload(practice_id)
 
 
@@ -1324,7 +1350,6 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
     # R2：反馈落库必须在**校验通过之后**、且与状态推进同一事务。
     # 原实现先调 _persist_feedback（内部独立 commit），再校验 stepId/version，
     # 导致 409 被拒绝的请求仍然改写了 latestFeedback 与 feedbackHistory。
-    local_action: str | None = None
     with _db() as conn:
         previous = conn.execute("SELECT * FROM cet_ai_requests WHERE id=?", (request_id,)).fetchone()
         if previous:
@@ -1339,23 +1364,26 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
         # 校验全部通过后才记录反馈（同一事务，失败一起回滚）
         if feedback:
             _persist_feedback_conn(conn, practice, feedback, request_id)
-            conn.commit()          # 先提交，避免下面新连接等锁（database is locked）
+            # S1：practice 是更新前的快照，必须重新读取，
+            # 否则后面 request_data 与 generate() 会拿到旧的 latest_feedback
+            #（实测：meaning 入库了，模型却收到 sound）。
+            practice = conn.execute(
+                "SELECT * FROM cet_practices WHERE id=?", (practice_id,)
+            ).fetchone()
         action = _next_action(conn, practice, requested)
+        # S2：本地动作在**同一事务**内完成（校验 + 反馈 + 步骤推进），
+        # 不再提前 commit 回避锁冲突 —— 提前 commit 会破坏原子性：
+        # 并发交错时被 409 拒绝的请求仍留下本次反馈。
         if action in {"replay", "slow"}:
-            # 本地动作走独立连接：这里立即结束事务，出 with 块后执行
-            local_action = action
-            sentence = None
-        else:
-            sentence = json.loads(practice["sentence_json"])
-        if local_action:
-            # 本地动作不需要创建 AI 请求，直接退出事务
-            pass
-        candidate = _transfer_candidate(conn, practice) if action == "transfer" else None
-        if local_action:
-            # 本地动作（replay/slow）不需要 AI 请求记录，跳过后续写入
-            return local_practice_action(
-                practice_id, {**body, "actionId": request_id, "action": local_action}
+            handled = _local_practice_action_conn(
+                conn, practice_id,
+                {**body, "actionId": request_id, "action": action},
+                already_validated=True,
             )
+            conn.commit()
+            return _practice_payload(practice_id)
+        sentence = json.loads(practice["sentence_json"])
+        candidate = _transfer_candidate(conn, practice) if action == "transfer" else None
         revision = practice["revision"] + 1
         now = _now()
         request_data = {"sentence": sentence, "feedback": practice["latest_feedback"], "candidate": candidate}
@@ -1377,12 +1405,15 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
         )
         if not changed.rowcount:
             _error(409, "STALE_RESPONSE", "练习已变化，请刷新后重试。")
+    # S1：模型参数必须与本次反馈一致。
+    # 优先用本次请求的 feedback；没有（如 replay）才回退到库里最新值。
+    model_feedback = feedback or (practice["latest_feedback"] or "")
     try:
         if action == "transfer" and candidate is None:
             generated, model = {"noCandidate": True, "reason": "no_candidate"}, ""
         else:
             from webapp.services import cet_ai
-            generated, model = cet_ai.generate(action, sentence, practice["latest_feedback"] or "", candidate)
+            generated, model = cet_ai.generate(action, sentence, model_feedback, candidate)
     except cet_ai.CETAIError as exc:
         with _db() as conn:
             current = _practice_row(conn, practice_id)
@@ -1458,12 +1489,6 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
         conn.execute(
             "UPDATE cet_ai_requests SET status='succeeded',response_json=?,model=?,completed_at=? WHERE id=?",
             (_json(generated), model, _now(), request_id),
-        )
-    # 本地动作（replay/slow）必须在事务提交之后执行：
-    # local_practice_action 会开新连接，事务内调用会等锁（实测 database is locked）。
-    if local_action:
-        return local_practice_action(
-            practice_id, {**body, "actionId": request_id, "action": local_action}
         )
     return _practice_payload(practice_id)
 

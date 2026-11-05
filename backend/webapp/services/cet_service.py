@@ -588,8 +588,12 @@ def _attempt_payload(attempt_id: str) -> dict[str, Any]:
         results.append({
             "questionId": row.get("questionId"),
             "number": row.get("questionNumber"),
-            "choice": ("ABCDE".index(letter) if letter in "ABCDE" else None),
-            "answer": ("ABCDE".index(str(correct_letter)) if str(correct_letter) in "ABCDE" else None),
+            # 注意：未作答时 letter 是空串，而 Python 里 '' in 'ABCDE' 为 True，
+            # 直接 .index('') 会得到 0（= A），把「没作答」显示成「选了 A」。
+            # 必须先判空再判是否在字母表里。
+            "choice": ("ABCDE".index(letter) if letter and letter in "ABCDE" else None),
+            "answer": ("ABCDE".index(str(correct_letter))
+                       if correct_letter and str(correct_letter) in "ABCDE" else None),
             "correct": row.get("isCorrect"),
             "answerSource": row.get("answerSource"),
             "evidenceRef": ({
@@ -603,8 +607,13 @@ def _attempt_payload(attempt_id: str) -> dict[str, Any]:
             "materialVersion": attempt["material_version"],
             "answerVisible": True,
         })
+    # 未作答数动态算（不新增列，避免破坏已有数据库）
+    unanswered_count = sum(
+        1 for row in answers if not str(row.get("answer") or "").strip()
+    )
     return {
         "attemptId": attempt["id"],
+        "unansweredCount": unanswered_count,
         "materialId": attempt["material_id"],
         "materialVersion": attempt["material_version"],
         "listeningSessionId": attempt["listening_session_id"],
@@ -616,6 +625,11 @@ def _attempt_payload(attempt_id: str) -> dict[str, Any]:
         "answersVisible": True,
         "submittedAt": attempt["created_at"],
     }
+
+
+def get_attempt(attempt_id: str) -> dict[str, Any]:
+    """按 attemptId 取回交卷结果（F03：刷新/重开后要能恢复交卷状态）。"""
+    return _attempt_payload(attempt_id)
 
 
 def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
@@ -678,7 +692,7 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
                 "SELECT * FROM cet_questions WHERE material_id=? ORDER BY question_number",
                 (storage_id,),
             ).fetchall()
-        score = graded = unknown = 0
+        score = graded = unknown = unanswered = 0
         answer_rows = []
         for row in rows:
             answer = answers.get(row["id"], "")
@@ -686,6 +700,10 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
             if correct is None or not str(correct).strip():
                 status, is_correct = "unknown", None
                 unknown += 1
+            elif not answer:
+                # 未作答：既不判对也不判错（不能把空白当错答，也不能当对）
+                status, is_correct = "unanswered", None
+                unanswered += 1
             else:
                 graded += 1
                 is_correct = answer == str(correct)
@@ -1218,6 +1236,46 @@ def _action_for_feedback(feedback: str) -> str:
     return {"sound": "slow", "meaning": "explain", "heard": "transfer"}.get(feedback, "replay")
 
 
+def _persist_feedback(practice_id: str, feedback: str, request_id: str) -> None:
+    """把用户反馈写入练习记录与事件表（幂等）。
+
+    F04 的根因：原实现只用 feedback 选动作，不落库，
+    导致 latest_feedback 恒为 null、feedbackHistory 为空，
+    AI 请求读不到反馈，训练记录里也没有用户判断。
+    """
+    with _db() as conn:
+        practice = conn.execute(
+            "SELECT id, current_step_id FROM cet_practices WHERE id=?", (practice_id,)
+        ).fetchone()
+        if not practice:
+            _error(404, "PRACTICE_NOT_FOUND", "练习不存在。", practiceId=practice_id)
+        event_id = f"fb-{request_id}"
+        duplicate = conn.execute(
+            "SELECT id FROM cet_practice_events WHERE id=?", (event_id,)
+        ).fetchone()
+        if duplicate:
+            return
+        conn.execute(
+            "INSERT INTO cet_practice_events"
+            "(id,practice_id,step_id,material_version,event_type,payload_json,created_at) "
+            "SELECT ?,?,?,?,?,?,?",
+            (
+                event_id, practice_id, practice["current_step_id"],
+                conn.execute("SELECT material_version FROM cet_practices WHERE id=?",
+                             (practice_id,)).fetchone()["material_version"],
+                "feedback",
+                _json({"feedback": feedback, "source": "user"}),
+                _now(),
+            ),
+        )
+        conn.execute(
+            "UPDATE cet_practices SET latest_feedback=?, feedback_source='user', "
+            "revision=revision+1, updated_at=? WHERE id=?",
+            (feedback, _now(), practice_id),
+        )
+        conn.commit()
+
+
 def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
     # 契约用 feedback（sound/meaning/heard）驱动下一步，由服务端决定动作；
     # B 原实现要求客户端传 action + requestId。两者都支持：
@@ -1229,6 +1287,10 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
         if feedback not in {"sound", "meaning", "heard"}:
             _error(422, "INVALID_FEEDBACK", "feedback 仅支持 sound、meaning、heard。")
         requested = _action_for_feedback(feedback)
+        # F04：反馈必须先**落库**，否则 latest_feedback 永远为 null，
+        # AI 请求读不到反馈、训练记录里也没有用户到底说了什么。
+        # 幂等：同一 request_id 重复提交不重复写。
+        _persist_feedback(practice_id, feedback, request_id)
     else:
         requested = str(body.get("action") or "").strip()
     if requested in {"replay", "slow"}:
@@ -1286,11 +1348,29 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
                     "UPDATE cet_ai_requests SET status='failed',error_code=?,completed_at=? WHERE id=? AND status='pending'",
                     (exc.code, _now(), request_id),
                 )
+                # 关键：AI 失败后必须把 ai_request_id 清空并回退 revision 语义，
+                # 否则练习会停在「有一个 pending 请求」的状态：
+                #   - 后续事件上报会被判 STALE_RESPONSE（stepId 对不上）
+                #   - 有效用时因 ai_waiting=True 一直不累计
+                #   - 用户看似能继续，实际状态已经坏了
+                conn.execute(
+                    "UPDATE cet_practices SET ai_request_id=NULL, revision=?, updated_at=? "
+                    "WHERE id=? AND revision=?",
+                    (revision, _now(), practice_id, revision),
+                )
+                conn.commit()
             else:
                 conn.execute("UPDATE cet_ai_requests SET status='stale',completed_at=? WHERE id=?", (_now(), request_id))
                 conn.commit()
                 _error(409, "STALE_RESPONSE", "模型错误结果已过期，未改变当前练习。", practiceId=practice_id, requestId=request_id)
-        _error(exc.status, exc.code, exc.message, practiceId=practice_id, requestId=request_id)
+        # 503 也要带回当前练习状态：反馈已经落库了，
+        # 前端需要知道 latestFeedback / 当前步骤，才能继续操作而不是白屏。
+        try:
+            state = _practice_payload(practice_id)
+        except Exception:  # noqa: BLE001
+            state = {}
+        _error(exc.status, exc.code, exc.message, practiceId=practice_id,
+               requestId=request_id, practice=state)
     with _db() as conn:
         practice = _practice_row(conn, practice_id)
         request = conn.execute("SELECT * FROM cet_ai_requests WHERE id=?", (request_id,)).fetchone()

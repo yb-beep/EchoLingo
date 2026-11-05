@@ -24,8 +24,12 @@ import urllib.request
 
 import pytest
 
-BASE = "http://127.0.0.1:5173"
-LESSON_ID = 2181          # 六级材料 cet6-202512-conv2 对应的底座课程
+import os
+# F07：允许指定隔离地址，避免「只测交付者本机那一个库」
+BASE = os.environ.get("CET_UI_BASE", "http://127.0.0.1:5173").rstrip("/")
+# F09：不硬编码 lesson id（导入脚本用自增 ID，换库会变）。
+# 默认值仅用于本机；换环境时用 CET_UI_LESSON_ID 指定。
+LESSON_ID = int(os.environ.get("CET_UI_LESSON_ID", "2181"))
 AUDIO = "document.getElementById('local-media-player')"
 
 
@@ -107,8 +111,11 @@ def test_original_ui_is_preserved(page):
     for sel in ("#local-media-player", "#current-subtitle", ".side-column",
                 "#subtitle-mode", "#playback-rate", "#cet-toggle-mode"):
         assert page.evaluate(f"!!document.querySelector('{sel}')"), f"缺少 {sel}"
-    # 原有精听/阅读切换未被移除
-    assert page.evaluate("!!document.querySelector('#study-mode-switch')") or True
+    # 原有精听/阅读切换未被移除。
+    # 注意：这个元素带 hidden 属性（未进入精听模式时隐藏），所以只检查存在性，
+    # 不检查可见性。不能写成 `... or True` —— 那是永真断言，等于没测。
+    assert page.evaluate("!!document.querySelector('#study-mode-switch')"), \
+        "原精听/阅读切换控件应存在"
 
 
 def test_non_cet_lesson_does_not_mount(page):
@@ -307,9 +314,13 @@ def _to_practice(page):
     不复用会拿到上一个用例已确认过的标记（表现为没有「确认这句」按钮）。
     """
     page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
-    page.evaluate("sessionStorage.clear()")
+    # 两个 storage 都要清：localStorage 存了 attemptId/practiceId，
+    # 不清会把上一个用例的带练状态带进来（表现为「没有确认这句按钮」）。
+    page.evaluate("localStorage.clear(); sessionStorage.clear()")
     page.reload(wait_until="networkidle")
-    page.wait_for_timeout(3500)
+    page.wait_for_timeout(4000)
+    # 等模块完成材料加载
+    page.wait_for_function("window.__cet && window.__cet.S.materialId", timeout=20000)
     page.click("#cet-toggle-mode")
     page.wait_for_timeout(400)
     page.evaluate(f"{AUDIO}.play()")
@@ -490,3 +501,162 @@ def test_narrow_window_no_overflow(browser, width, height, label):
         assert not errors, f"{label}: 不应有 JS 错误 {errors}"
     finally:
         pg.close()
+
+
+# ── 返修回归（F01–F06）──────────────────────────────────
+
+def test_f06_unanswered_shows_dash_not_a(page):
+    """F06：未作答题必须显示「-」，不能显示成「你选 A」。
+
+    根因是 '' in 'ABCDE' 为 True 且 .index('')=0，空作答被当成选项 A。
+    """
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.evaluate("localStorage.clear()")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(4000)
+
+    # 只答第 1 题，其余留空
+    opts = page.query_selector_all(".cet-opt")
+    assert opts, "选项应已渲染"
+    opts[0].click()
+    page.wait_for_timeout(150)
+    page.click("#cet-submit")
+    page.wait_for_timeout(3000)
+
+    text = page.evaluate("document.querySelector('#cet-question-list').innerText")
+    import re as _re
+    picks = _re.findall(r"你选 ([A-E-])", text)
+    assert picks, f"应能读到判题结果，实际文本：{text[:200]}"
+    assert picks[0] == "A", f"第 1 题选了 A，应显示 A，实际 {picks[0]}"
+    assert picks[1:] and all(p == "-" for p in picks[1:]), \
+        f"未作答题应显示「-」，实际 {picks[1:]}"
+
+
+def test_f03_reload_restores_attempt_and_practice(page):
+    """F03：刷新后必须恢复交卷状态与带练面板，不能只恢复标记。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.evaluate("localStorage.clear()")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(4000)
+
+    page.click("#cet-toggle-mode")
+    page.wait_for_timeout(400)
+    page.evaluate(f"{AUDIO}.play()")
+    page.wait_for_timeout(1200)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1800)
+    page.evaluate(f"{AUDIO}.pause()")
+
+    opts = page.query_selector_all(".cet-opt")
+    if opts:
+        opts[0].click()
+        page.wait_for_timeout(150)
+    page.click("#cet-submit")
+    page.wait_for_timeout(2800)
+
+    confirm = page.query_selector('button:has-text("确认这句")')
+    assert confirm, "应出现确认按钮"
+    confirm.click()
+    page.wait_for_timeout(2500)
+
+    start = page.query_selector('button:has-text("开始带练")')
+    assert start, "应出现开始带练"
+    start.click()
+    page.wait_for_timeout(3000)
+
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(5000)
+
+    state = page.evaluate("(document.querySelector('#cet-attempt-state')||{}).textContent || ''")
+    assert "已交卷" in state, f"刷新后应恢复交卷状态，实际 {state!r}"
+
+    practice_visible = page.evaluate(
+        "!!document.querySelector('#cet-practice') && !document.querySelector('#cet-practice').hidden"
+    )
+    assert practice_visible, "刷新后带练面板应恢复"
+
+
+def test_f02_paused_review_shows_resume_button(page):
+    """F02：暂停后必须显示「已暂停」并给出「继续复习」，不能仍显示「进行中/暂停」。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+    page.evaluate("localStorage.clear()")
+    page.click("#cet-review-btn")
+    page.wait_for_timeout(3000)
+
+    pause = page.query_selector('button:has-text("暂停")')
+    assert pause, "进行中应显示「暂停」"
+    pause.click()
+    page.wait_for_timeout(2500)
+
+    state = page.evaluate("(document.querySelector('#cet-review-state')||{}).textContent || ''")
+    assert "已暂停" in state, f"暂停后状态应显示「已暂停」，实际 {state!r}"
+
+    has_resume = page.evaluate(
+        "!!Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('继续复习'))"
+    )
+    assert has_resume, "暂停后应出现「继续复习」按钮"
+
+
+def test_f02_review_replay_seeks_to_sentence_start(page):
+    """F02：复习回听必须跳到条目句子的起点（曾因字段拼写错误停在开头）。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+    page.click("#cet-review-btn")
+    page.wait_for_timeout(3000)
+
+    entry_start = page.evaluate("""() => {
+      const st = window.__cet && window.__cet.__reviewState;
+      const e = st && st.entries && st.entries[0];
+      return e && e.item && e.item.sentence ? e.item.sentence.startSeconds : null;
+    }""")
+
+    play = page.query_selector('button:has-text("回听")')
+    assert play, "复习面板应有「回听」按钮"
+    play.click()
+    page.wait_for_timeout(1500)
+
+    now = page.evaluate(f"{AUDIO}.currentTime")
+    if entry_start is not None:
+        assert now > 0.05 or abs(now - entry_start) < 1.5, \
+            f"回听应跳到句子起点附近（{entry_start}），实际停在 {now}"
+    page.evaluate(f"{AUDIO}.pause()")
+
+
+def test_f04_feedback_persisted_to_record(page):
+    """F04：用户反馈必须落库（latestFeedback / feedbackHistory），不能只切换动作。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.evaluate("localStorage.clear()")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(4000)
+
+    # 走到带练
+    page.click("#cet-toggle-mode")
+    page.wait_for_timeout(400)
+    page.evaluate(f"{AUDIO}.play()")
+    page.wait_for_timeout(1200)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1800)
+    page.evaluate(f"{AUDIO}.pause()")
+    opts = page.query_selector_all(".cet-opt")
+    if opts:
+        opts[0].click()
+        page.wait_for_timeout(150)
+    page.click("#cet-submit")
+    page.wait_for_timeout(2800)
+    confirm = page.query_selector('button:has-text("确认这句")')
+    if confirm:
+        confirm.click()
+        page.wait_for_timeout(2500)
+    start = page.query_selector('button:has-text("开始带练")')
+    assert start, "应出现开始带练"
+    start.click()
+    page.wait_for_timeout(3000)
+
+    sound = page.query_selector('button:has-text("没听清")')
+    assert sound, "应有「没听清」按钮"
+    sound.click()
+    page.wait_for_timeout(2500)
+
+    latest = page.evaluate("window.__cet.S.practice && window.__cet.S.practice.latestFeedback")
+    assert latest == "sound", f"反馈应落库为 sound，实际 {latest!r}"

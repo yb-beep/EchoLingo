@@ -436,6 +436,8 @@
       S.practice = pr;
       renderPractice();
       renderMarks();
+      bindPlaybackEvents();
+      save();          // F03：不存下来，刷新后就找不回带练
     } catch (err) {
       if (err.code === 'ATTEMPT_REQUIRED') {
         flashHint('请先交卷，再开始带练', true);
@@ -491,34 +493,61 @@
   async function sendFeedback(feedback, label) {
     if (!S.practice) return;
     const out = $('#cet-practice-out');
+    const practiceAtSend = S.practice.practiceId;   // 用于过滤跨练习的迟到响应
+    const revisionAtSend = S.practice.revision;
+
+    // 请求一开始就显示等待（不是等返回后才启动计时）
     if (out) {
       out.className = 'cet-practice-out';
       out.textContent = `反馈「${label}」处理中…`;
     }
+    const waitingNote = el('div', 'cet-ai-note', '正在生成解释…（3 秒后仍无结果可继续回听或保存）');
+    const timer = setTimeout(() => {
+      if (waitingNote.parentNode) {
+        waitingNote.textContent = '仍在等待模型；你可以先回听、慢放、看原文或保存本轮。';
+        waitingNote.classList.add('warn');
+      }
+    }, 3000);
+
     try {
       const r = await api('POST', `/practices/${S.practice.practiceId}/next`, {
         feedback,
         stepId: S.practice.currentStepId,
         materialVersion: S.materialVersion,
       });
+      clearTimeout(timer);
+      if (waitingNote.parentNode) waitingNote.remove();
+
+      // 跨练习/过期响应过滤：旧练习的结果不能覆盖当前界面（F01）
+      if (S.practice && S.practice.practiceId !== practiceAtSend) return;
+      if (typeof revisionAtSend === 'number' && typeof r.revision === 'number'
+          && r.revision < revisionAtSend) return;
+
       S.practice = { ...S.practice, ...r, currentStepId: r.currentStepId || S.practice.currentStepId };
-      // 动作在 currentStep.action（不是 step.action）
       const step = r.currentStep || r.step || {};
       const action = step.action || r.currentAction || '';
+
       if (out) {
-        const name = ACTION_LABEL[action] || action || '已更新';
-        out.textContent = `反馈「${label}」→ ${name}`;
-        out.classList.add('ok');
+        out.className = 'cet-practice-out ok';
+        out.textContent = `反馈「${label}」→ ${ACTION_LABEL[action] || action || '已更新'}`;
       }
-      // 本地动作立刻执行，不等 AI（计划 §5：标记/暂停/慢放/原文显隐不等待 AI）
+
+      // 本地动作立刻执行，不等 AI
       if (action === 'replay' || action === 'slow' || action === 'chunk') {
         executeLocalAction(action, step);
       }
+
+      // F01：explain 成功时渲染后端正文，不再固定显示「模型暂不可用」
       if (action === 'explain') {
-        showExplainPending();
+        renderExplain(r, step);
+      }
+      if (action === 'transfer') {
+        renderTransfer(r);
       }
       save();
     } catch (err) {
+      clearTimeout(timer);
+      if (waitingNote.parentNode) waitingNote.remove();
       if (out) {
         out.className = 'cet-practice-out error';
         if (err.code === 'STALE_RESPONSE') {
@@ -530,6 +559,57 @@
         }
       }
     }
+  }
+
+  // F01：把后端生成正文渲染出来（cet_service 放在 currentStep.data 里）
+  function renderExplain(resp, step) {
+    const out = $('#cet-practice-out');
+    if (!out) return;
+    const data = (step && step.data) || (resp && resp.currentStep && resp.currentStep.data) || {};
+    const text = String(data.explanation || '').trim();
+    const phrases = Array.isArray(data.keyPhrases) ? data.keyPhrases : [];
+
+    if (!text) {
+      const note = el('div', 'cet-ai-note warn',
+        '模型未返回可用解释；你仍可以回听、慢放、看原文或保存本轮。');
+      out.appendChild(note);
+      return;
+    }
+    const box = el('div', 'cet-explain');
+    box.appendChild(el('div', 'cet-explain-text', text));
+    if (phrases.length) {
+      const ph = el('div', 'cet-explain-phrases');
+      phrases.forEach((p) => {
+        const t = typeof p === 'string' ? p : (p.text || p.phrase || '');
+        if (t) ph.appendChild(el('span', 'cet-phrase', t));
+      });
+      box.appendChild(ph);
+    }
+    out.appendChild(box);
+  }
+
+  // F05：换句检验的候选渲染（本轮先做「没有候选」的明确状态，不假成功）
+  function renderTransfer(resp) {
+    const out = $('#cet-practice-out');
+    if (!out) return;
+    const step = (resp && resp.currentStep) || {};
+    const data = step.data || {};
+    const candidate = data.candidate || null;
+
+    if (!candidate) {
+      const note = el('div', 'cet-ai-note warn',
+        '这次还没有合适的换句材料。已记为「未检验」，你可以继续复习。');
+      out.appendChild(note);
+      return;
+    }
+    const box = el('div', 'cet-transfer');
+    box.appendChild(el('div', 'cet-transfer-stem', data.question || '听新片段并作答'));
+    (data.options || []).forEach((opt, i) => {
+      const b = el('button', 'cet-opt', `${'ABCDE'[i]}. ${opt}`);
+      b.onclick = () => flashHint('换句作答已提交（详见后端记录）');
+      box.appendChild(b);
+    });
+    out.appendChild(box);
   }
 
   // 执行本地动作：改播放速度、跳回句子起点、显隐原文
@@ -593,6 +673,116 @@
     }
   }
 
+  // ── 播放事件上报（F04）────────────────────────────────
+  // 有效用时依赖这些事件：只在前台播放时累计，暂停/后台不累计。
+  let playbackStartAt = null;
+
+  // 把时间夹到当前步骤的播放范围内：
+  // 后端会校验 PLAYBACK_OUT_OF_RANGE，用户暂停在别处时直接发真实 currentTime 会被拒。
+  function clampToStepRange(t) {
+    const step = (S.practice && S.practice.currentStep) || {};
+    const rng = step.playRange || {};
+    const start = typeof rng.startSeconds === 'number' ? rng.startSeconds : null;
+    const end = typeof rng.endSeconds === 'number' ? rng.endSeconds : null;
+    if (start == null || end == null) return t;
+    return Math.min(Math.max(t, start), end);
+  }
+
+  function sendEvent(type, extra) {
+    if (!S.practice || !S.practice.practiceId) return;
+    const payload = {
+      eventId: uid(`ev-${type}`),
+      type,
+      stepId: S.practice.currentStepId,
+      materialVersion: S.materialVersion,
+      ...extra,
+    };
+    if (typeof payload.audioTime === 'number') {
+      payload.audioTime = Number(clampToStepRange(payload.audioTime).toFixed(3));
+    }
+    // 事件失败不阻塞界面（计划 §5：落盘失败需显式提示，但不卡操作）
+    api('POST', `/practices/${S.practice.practiceId}/events`, payload).catch(() => {});
+  }
+
+  function bindPlaybackEvents() {
+    const md = media();
+    if (!md || md.__cetBound) return;
+    md.__cetBound = true;
+    md.addEventListener('play', () => {
+      playbackStartAt = Date.now();
+      sendEvent('playback_start', {
+        audioTime: Number((md.currentTime || 0).toFixed(3)),
+        speed: md.playbackRate || 1,
+      });
+    });
+    md.addEventListener('pause', () => {
+      if (playbackStartAt) {
+        sendEvent('playback_end', {
+          audioTime: Number((md.currentTime || 0).toFixed(3)),
+          speed: md.playbackRate || 1,
+          activeMs: Date.now() - playbackStartAt,
+        });
+        playbackStartAt = null;
+      }
+    });
+    md.addEventListener('ended', () => {
+      if (playbackStartAt) {
+        sendEvent('playback_end', {
+          audioTime: Number((md.currentTime || 0).toFixed(3)),
+          speed: md.playbackRate || 1,
+          activeMs: Date.now() - playbackStartAt,
+        });
+        playbackStartAt = null;
+      }
+    });
+    // 页面切到后台时报中断，避免后台时间被算作有效练习
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (playbackStartAt) {
+          sendEvent('playback_interrupt', {
+          audioTime: Number((md.currentTime || 0).toFixed(3)),
+          speed: md.playbackRate || 1,
+          reason: 'hidden',
+        });
+          playbackStartAt = null;
+        }
+        sendEvent('visibility', { visible: false });
+      } else {
+        sendEvent('visibility', { visible: true });
+      }
+    });
+  }
+
+  // 统一管理回放守卫：切条目/切动作时先停掉旧的，避免双重播放（计划 T16）
+  let activeReplayStop = null;
+  function stopActiveReplay() {
+    if (activeReplayStop) {
+      try { activeReplayStop(); } catch (_) { /* 忽略 */ }
+      activeReplayStop = null;
+    }
+  }
+  function replayRange(startSec, endSec) {
+    const md = media();
+    if (!md || typeof startSec !== 'number') return;
+    stopActiveReplay();
+    md.currentTime = startSec;
+    md.play();
+    const onTime = () => {
+      if (typeof endSec === 'number' && md.currentTime >= endSec) {
+        md.pause();
+        md.removeEventListener('timeupdate', onTime);
+        if (activeReplayStop === stop) activeReplayStop = null;
+      }
+    };
+    const stop = () => {
+      md.removeEventListener('timeupdate', onTime);
+      md.pause();
+      if (activeReplayStop === stop) activeReplayStop = null;
+    };
+    activeReplayStop = stop;
+    md.addEventListener('timeupdate', onTime);
+  }
+
   // ── 复习（M3）──────────────────────────────────────────
   let reviewState = null;
 
@@ -645,7 +835,9 @@
     box.hidden = false;
     if (state) {
       const mins = Math.round((reviewState.remainingMs || 0) / 60000);
-      state.textContent = `剩余约 ${mins} 分钟 · 第 ${(reviewState.currentPosition || 0) + 1} 处`;
+      const phase = reviewState.status === 'paused' ? '已暂停'
+        : (reviewState.status === 'complete' ? '已结束' : '进行中');
+      state.textContent = `${phase} · 剩余约 ${mins} 分钟 · 第 ${(reviewState.currentPosition || 0) + 1} 处`;
     }
 
     body.innerHTML = '';
@@ -662,13 +854,9 @@
 
       const play = el('button', 'cet-btn-sm', '回听');
       play.onclick = () => {
-        const md = media();
-        if (!md || !sent.startSecondsonds) return;
-        md.currentTime = sent.startSecondsonds;
-        md.play();
-        const stop = sent.endSecondsonds;
-        const g = () => { if (md.currentTime >= stop) { md.pause(); md.removeEventListener('timeupdate', g); } };
-        md.addEventListener('timeupdate', g);
+        // 字段名是 startSeconds/endSeconds；起点允许为 0。
+        // 用 replayRange 统一管理守卫，避免多次点击叠加出双重播放。
+        replayRange(sent.startSeconds, sent.endSeconds);
       };
       row.appendChild(play);
 
@@ -700,10 +888,17 @@
     body.appendChild(list);
 
     // 控制
+    // 控制：按后端真实状态决定给「暂停」还是「继续」（F02）
     const ctrl = el('div', 'cet-review-ctrl');
-    const pause = el('button', 'cet-btn-sm', '暂停');
-    pause.onclick = () => reviewAction('pause');
-    ctrl.appendChild(pause);
+    if (reviewState.status === 'paused') {
+      const resume = el('button', 'cet-btn-sm', '继续复习');
+      resume.onclick = () => reviewAction('resume');
+      ctrl.appendChild(resume);
+    } else if (reviewState.status === 'active') {
+      const pause = el('button', 'cet-btn-sm', '暂停');
+      pause.onclick = () => reviewAction('pause');
+      ctrl.appendChild(pause);
+    }
 
     const end = el('button', 'cet-btn-sm', '结束复习');
     end.onclick = () => reviewAction('finish');
@@ -733,7 +928,8 @@
   // ── 恢复 ────────────────────────────────────────────────
   function save() {
     try {
-      sessionStorage.setItem('cet.state.v1', JSON.stringify({
+      // 用 localStorage：sessionStorage 关标签就没了，F03 要求「关标签重开」也能找回
+      localStorage.setItem('cet.state.v1', JSON.stringify({
         materialId: S.materialId,
         attemptId: S.attempt && S.attempt.attemptId,
         practiceId: S.practice && S.practice.practiceId,
@@ -756,9 +952,38 @@
       }
     } catch (_) { /* 恢复失败不阻塞主流程 */ }
 
+    // F03：恢复交卷结果（原来只恢复标记，刷新后右侧回到「未交卷」）
+    try {
+      const saved = JSON.parse(localStorage.getItem('cet.state.v1') || '{}');
+      if (saved.attemptId) {
+        const at = await api('GET', `/attempts/${saved.attemptId}`);
+        if (at && at.attemptId) {
+          S.attempt = at;
+          renderAttemptResult(at);
+          const st = $('#cet-attempt-state');
+          if (st) { st.textContent = `已交卷 · 得分 ${at.score}`; st.classList.add('done'); }
+        }
+      }
+    } catch (_) { /* 交卷恢复失败不阻塞 */ }
+
+    // F03：恢复带练（原来只恢复标记，刷新后带练面板消失）
+    try {
+      const saved = JSON.parse(localStorage.getItem('cet.state.v1') || '{}');
+      if (saved.practiceId) {
+        const pr = await api('GET', `/practices/${saved.practiceId}`);
+        if (pr && pr.practiceId) {
+          S.practice = pr;
+          renderPractice();
+          renderMarks();
+          bindPlaybackEvents();
+          flashHint('已恢复上次带练');
+        }
+      }
+    } catch (_) { /* 带练恢复失败不阻塞 */ }
+
     // 恢复复习会话（计划 T11：重启后恢复原会话和步骤）
     try {
-      const saved = JSON.parse(sessionStorage.getItem('cet.state.v1') || '{}');
+      const saved = JSON.parse(localStorage.getItem('cet.state.v1') || '{}');
       if (saved.reviewId) {
         const rv = await api('GET', `/reviews/${saved.reviewId}`);
         if (rv && rv.status && rv.status !== 'complete') {

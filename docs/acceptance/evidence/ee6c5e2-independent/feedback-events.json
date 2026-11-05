@@ -1,0 +1,13 @@
+{
+  "id": "practice-cb03bc94c82e",
+  "latest_feedback": null,
+  "effective_ms": 0,
+  "current_step_id": "84e2176b5fb7436ca311ad65dc649c61",
+  "raw_seconds": 24.101,
+  "events": [
+    {
+      "event_type": "local_action",
+      "payload_json": "{\"action\":\"slow\"}"
+    }
+  ]
+}

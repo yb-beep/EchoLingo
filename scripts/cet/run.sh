@@ -130,7 +130,12 @@ say "-- 导入材料（幂等，已存在则复用）--"
 # ── 启动服务 ──────────────────────────────────────────
 say ""
 say "-- 启动服务 --"
-./scripts/qa/start_cet.sh --mock
+# F07：默认用真实服务，不自动起 mock（mock 只在显式 --mock 时启动）
+if [ "${1:-}" = "--mock" ]; then
+  ./scripts/qa/start_cet.sh --mock
+else
+  ./scripts/qa/start_cet.sh
+fi
 rc=$?
 
 if [ $rc -eq 0 ]; then

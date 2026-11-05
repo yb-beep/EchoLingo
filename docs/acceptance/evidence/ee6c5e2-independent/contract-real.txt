@@ -1,0 +1,42 @@
+.F.F.sss..F
+=================================== FAILURES ===================================
+______________________ test_material_detail_has_sentences ______________________
+
+sentences = [{'endSec': 3.49, 'index': 1, 'materialId': 'cet6-202512-conv2', 'materialVersion': 'v1', ...}, {'endSec': 7.01, 'inde...rsion': 'v1', ...}, {'endSec': 16.5, 'index': 6, 'materialId': 'cet6-202512-conv2', 'materialVersion': 'v1', ...}, ...]
+
+    @pytest.mark.contract
+    def test_material_detail_has_sentences(sentences):
+        r = api("GET", f"/api/cet/materials/{MATERIAL_ID}", params={"version": _resolved_version()})
+        assert r.status_code == 200, r.text
+        body = r.json()
+>       assert "material" in body and "sentences" in body
+E       AssertionError: assert ('material' in {'audioSha256': '', 'audioUrl': '/output/v2_assets/2181/cet6-202512-conv2.mp3', 'developmentFixture': False, 'durationSec': 105.486, ...})
+
+tests/test_cet_contract.py:184: AssertionError
+__________________ test_material_version_mismatch_is_rejected __________________
+
+    @pytest.mark.contract
+    def test_material_version_mismatch_is_rejected():
+        r = api("GET", f"/api/cet/materials/{MATERIAL_ID}", params={"version": "bogus-v0"})
+>       assert r.status_code in (409, 422), f"版本不一致应被拒绝，实际 {r.status_code}：{r.text[:200]}"
+E       AssertionError: 版本不一致应被拒绝，实际 200：{"materialId":"cet6-202512-conv2","materialVersion":"sha256-a8ddff44a6d62a5002f4de63","id":"cet6-202512-conv2","version":"sha256-a8ddff44a6d62a5002f4de63","title":"2025年12月六级第一套 · Conversation Two","l
+E       assert 200 in (409, 422)
+E        +  where 200 = <Response [200]>.status_code
+
+tests/test_cet_contract.py:234: AssertionError
+__________________ test_attempt_returns_answers_and_evidence ___________________
+
+    @pytest.mark.flow
+    def test_attempt_returns_answers_and_evidence():
+        reset_mock()
+>       qs = api("GET", f"/api/cet/materials/{MATERIAL_ID}/questions").json()["items"]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'items'
+
+tests/test_cet_contract.py:318: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_cet_contract.py::test_material_detail_has_sentences - Asser...
+FAILED tests/test_cet_contract.py::test_material_version_mismatch_is_rejected
+FAILED tests/test_cet_contract.py::test_attempt_returns_answers_and_evidence
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 3 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+3 failed, 5 passed, 3 skipped in 2.17s

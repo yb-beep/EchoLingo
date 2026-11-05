@@ -45,6 +45,12 @@ def get_cet_questions(material_id: str):
     return cet_service.list_questions(material_id)
 
 
+@router.get("/attempts/{attempt_id}")
+def cet_get_attempt(attempt_id: str):
+    """取回交卷结果（刷新后恢复交卷状态用）。"""
+    return cet_service.get_attempt(attempt_id)
+
+
 @router.post("/attempts", status_code=201)
 def submit_cet_attempt(body: dict[str, Any] = Body(...)):
     return cet_service.submit_attempt(body)

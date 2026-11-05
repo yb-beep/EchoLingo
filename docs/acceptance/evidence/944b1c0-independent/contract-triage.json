@@ -1,0 +1,247 @@
+[
+  {
+    "test": "test_attempt_cannot_change_existing_answers",
+    "triage": "需统一重复提交语义：返回原记录还是显式拒绝变更",
+    "firstFailure": "AssertionError: 改动已提交作答应被拒绝，实际 201：{\"attemptId\":\"attempt-0775c1e92799\",\"unansweredCount\":0,\"materialId\":\"cet6-202512-conv2\",\"materialVersion\":\"sha256-a8ddff44a6d62a5002f4de63\",\"listeningSessionId\":\"listen-lock-64845-6423177\",\"score\":0,"
+  },
+  {
+    "test": "test_mark_create_and_list",
+    "triage": "固定 fixture 身份或定位策略冲突：先对齐实际版本、句子 ID 与回溯定义",
+    "firstFailure": "AssertionError: assert 'sha256-a8ddf...62a5002f4de63' == 'v1'"
+  },
+  {
+    "test": "test_mark_confirm_and_adjust",
+    "triage": "固定 fixture 身份或定位策略冲突：先对齐实际版本、句子 ID 与回溯定义",
+    "firstFailure": "StopIteration"
+  },
+  {
+    "test": "test_mark_confirm_invalid_sentence_rejected",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "AssertionError: 非法句子应被拒绝，实际 409"
+  },
+  {
+    "test": "test_practice_create_and_restore_same_id",
+    "triage": "固定 fixture 身份或定位策略冲突：先对齐实际版本、句子 ID 与回溯定义",
+    "firstFailure": "AssertionError: assert 'sha256-a8ddf...62a5002f4de63' == 'v1'"
+  },
+  {
+    "test": "test_feedback_leads_to_different_actions",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "KeyError: 'step'"
+  },
+  {
+    "test": "test_heard_feedback_hides_text_and_plays_original_speed",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "KeyError: 'step'"
+  },
+  {
+    "test": "test_stale_step_result_is_rejected",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "KeyError: 'step'"
+  },
+  {
+    "test": "test_local_help_works_without_model",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "AssertionError: 本地动作 replay 失败：{\"detail\":{\"code\":\"INVALID_LOCAL_ACTION\",\"message\":\"本地动作仅支持 replay、slow、chunk、explain，且需要 actionId。\"}}"
+  },
+  {
+    "test": "test_playback_events_dedupe_and_count_time",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"INVALID_EVENT\",\"message\":\"eventId 或事件类型无效。\",\"allowedTypes\":[\"activity_heartbeat\",\"feedback\",\"playback_end\",\"playback_interrupt\",\"playback_start\",\"transfer_answer\",\"visibility\"]}}"
+  },
+  {
+    "test": "test_finish_is_idempotent_and_latest_feedback_wins",
+    "triage": "异步查询/取消契约差异：定义一种真实可查询和可取消机制再验证",
+    "firstFailure": "AssertionError: 最终结果必须反映最新反馈 sound"
+  },
+  {
+    "test": "test_review_items_reflect_latest_feedback",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_session_binds_original_practice_id",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_skip_keeps_item_pending",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_pause_does_not_accumulate_time",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_slow_scenario_is_slow",
+    "triage": "测试环境适配：真实服务未支持 scenario=slow 注入",
+    "firstFailure": "AssertionError: 慢响应场景应明显变慢，实际 0.15s"
+  },
+  {
+    "test": "test_transfer_returns_real_candidates",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "KeyError: 'step'"
+  },
+  {
+    "test": "test_transfer_no_candidate_still_saves",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "KeyError: 'step'"
+  },
+  {
+    "test": "test_concurrent_duplicate_events_count_once",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "AssertionError: 并发重复事件应全部 200（幂等），实际 [422, 422, 422, 422, 422, 422, 422, 422]"
+  },
+  {
+    "test": "test_concurrent_attempts_create_one_record",
+    "triage": "已证实行为缺陷：同会话并发交卷生成多条记录",
+    "firstFailure": "AssertionError: 同一会话并发交卷应只有一个 attemptId，实际 {'attempt-dd274e340d1c', 'attempt-eb53edd2f91f', 'attempt-5adf43f79f99', 'attempt-74ea3e88fc11', 'attempt-59f6f6eb67a0', 'attempt-5b899b14ef43'}"
+  },
+  {
+    "test": "test_concurrent_stale_and_fresh_next_do_not_corrupt_state",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "KeyError: 'stepId'"
+  },
+  {
+    "test": "test_practice_status_enum",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_step_action_enum",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_status_enum_through_lifecycle",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_item_status_always_in_enum",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_playback_event_carries_required_fields",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "AssertionError: start 事件应被接受：{\"detail\":{\"code\":\"INVALID_EVENT\",\"message\":\"eventId 或事件类型无效。\",\"allowedTypes\":[\"activity_heartbeat\",\"feedback\",\"playback_end\",\"playback_interrupt\",\"playback_start\",\"transfer_answer\",\"visibility\"]}}"
+  },
+  {
+    "test": "test_model_request_bound_to_practice_and_step",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "AssertionError: 模型请求应带可追溯的 requestId（7.3 要求绑定请求）"
+  },
+  {
+    "test": "test_material_ref_press_time_confirmed_sentence_all_kept",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"ATTEMPT_REQUIRED\",\"message\":\"请先交卷，再确认回听句子。\"}}"
+  },
+  {
+    "test": "test_review_budget_caps_effective_time",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_can_finish_after_budget_exhausted",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_no_more_time_counted_after_budget_exhausted",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_caps_items_at_three",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_items_are_deterministically_ordered",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_mark_snaps_to_correct_sentence_for_all_sentences",
+    "triage": "固定 fixture 身份或定位策略冲突：先对齐实际版本、句子 ID 与回溯定义",
+    "firstFailure": "AssertionError: 32 处吸附错误（期望句, 按键秒, 实际句）：[('s01', 1.75, 'v2-2181-0'), ('s02', 5.28, 'v2-2181-1'), ('s03', 8.44, 'v2-2181-2'), ('s04', 10.62, 'v2-2181-3'), ('s05', 12.69, 'v2-2181-4'), ('s06', 15.61, 'v2-2181-5')]"
+  },
+  {
+    "test": "test_mark_snaps_to_boundary_belonging_sentence",
+    "triage": "固定 fixture 身份或定位策略冲突：先对齐实际版本、句子 ID 与回溯定义",
+    "firstFailure": "AssertionError: s03 的起点 7.28s 应吸到本句，实际吸到 v2-2181-1"
+  },
+  {
+    "test": "test_playback_under_threshold_not_counted",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"INVALID_EVENT\",\"message\":\"eventId 或事件类型无效。\",\"allowedTypes\":[\"activity_heartbeat\",\"feedback\",\"playback_end\",\"playback_interrupt\",\"playback_start\",\"transfer_answer\",\"visibility\"]}}"
+  },
+  {
+    "test": "test_playback_above_threshold_is_counted",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"INVALID_EVENT\",\"message\":\"eventId 或事件类型无效。\",\"allowedTypes\":[\"activity_heartbeat\",\"feedback\",\"playback_end\",\"playback_interrupt\",\"playback_start\",\"transfer_answer\",\"visibility\"]}}"
+  },
+  {
+    "test": "test_playback_threshold_reports_expected_duration",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "AssertionError: 响应应带 playThrough 说明门槛判定过程（便于前端与测试核对）"
+  },
+  {
+    "test": "test_marks_survive_relist_stable_ids",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: 确认句子不能丢"
+  },
+  {
+    "test": "test_ai_request_starts_pending_and_is_queryable",
+    "triage": "异步查询/取消契约差异：定义一种真实可查询和可取消机制再验证",
+    "firstFailure": "AssertionError: {\"detail\":\"Not Found\"}"
+  },
+  {
+    "test": "test_ai_request_can_be_cancelled",
+    "triage": "异步查询/取消契约差异：定义一种真实可查询和可取消机制再验证",
+    "firstFailure": "AssertionError: pending 应可取消：{\"detail\":\"Not Found\"}"
+  },
+  {
+    "test": "test_cancelled_request_late_result_is_rejected",
+    "triage": "异步查询/取消契约差异：定义一种真实可查询和可取消机制再验证",
+    "firstFailure": "KeyError: 'aiRequest'"
+  },
+  {
+    "test": "test_ai_failure_is_reported_with_code",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: 错误应带 code 供前端分支：{'detail': {'code': 'STALE_RESPONSE', 'message': '步骤或材料版本已变化，请刷新后重试。'}}"
+  },
+  {
+    "test": "test_ai_invalid_output_is_rejected_not_written",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "KeyError: 'stepCount'"
+  },
+  {
+    "test": "test_review_replace_swaps_in_an_unlisted_item",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_replace_keeps_provenance",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_review_replace_without_candidates_is_rejected",
+    "triage": "前置流程/错误协议需核对：缺步骤、版本或交卷导致下游未被真正验证",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}"
+  },
+  {
+    "test": "test_save_works_after_ai_failure",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "AssertionError: 模型失败后本地动作应仍可用，实际 422：{\"detail\":{\"code\":\"INVALID_LOCAL_ACTION\",\"message\":\"本地动作仅支持 replay、slow、chunk、explain，且需要 actionId。\"}}"
+  },
+  {
+    "test": "test_retry_after_ai_failure_works",
+    "triage": "请求或响应契约差异：字段包装、动作 ID、事件名与计时协议需统一",
+    "firstFailure": "KeyError: 'step'"
+  }
+]

@@ -442,7 +442,8 @@ def test_mark_create_and_list(sentences):
     mark = r.json()
     assert mark["pressedAtSec"] == pytest.approx(pressed, abs=0.01), "原始按键秒数必须原样保留"
     assert mark.get("suggestedSentenceId"), "应返回建议句子"
-    assert mark["materialVersion"] == MATERIAL_VERSION
+    # Mock 用固定版本；真实服务用内容哈希（N4）
+    assert mark["materialVersion"] == (MATERIAL_VERSION if IS_MOCK else _resolved_version())
 
     listing = api("GET", "/api/cet/marks", params={"materialId": MATERIAL_ID})
     assert listing.status_code == 200, listing.text
@@ -674,7 +675,7 @@ def test_practice_create_and_restore_same_id():
     practice = created.json()
     pid = practice["practiceId"]
     assert practice["sentenceId"] == mark["confirmedSentenceId"], "练习应绑定确认后的句子"
-    assert practice["materialVersion"] == MATERIAL_VERSION
+    assert practice["materialVersion"] == (MATERIAL_VERSION if IS_MOCK else _resolved_version())
 
     again = api("POST", "/api/cet/practices", json={"markId": mark["markId"]})
     assert again.status_code in (200, 201), again.text
@@ -817,11 +818,23 @@ def test_invalid_event_type_rejected():
 
 
 def _finish_practice(mark, feedback: str) -> dict:
-    pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
-    api("POST", f"/api/cet/practices/{pid}/next", json={"feedback": feedback})
-    r = api("POST", f"/api/cet/practices/{pid}/finish", json={"feedback": feedback})
-    assert r.status_code == 200, r.text
-    return r.json()
+    """建练习 → 反馈一次 → 保存。
+
+    N4：原实现不带 stepId/materialVersion 且忽略 next 的失败，
+    导致大量复习用例在入口就 409，测不到真正的复习行为。
+    这里改用 _next/_finish 辅助（自动带当前 stepId 与版本），
+    并在失败时直接报出真实原因，而不是静默继续。
+    """
+    created = api("POST", "/api/cet/practices", json={"markId": mark["markId"]})
+    assert created.status_code in (200, 201), created.text
+    pid = created.json()["practiceId"]
+
+    nxt = _next(pid, feedback=feedback)
+    assert nxt.status_code == 200, f"next 失败（前置条件不满足）：{nxt.status_code} {nxt.text[:200]}"
+
+    fin = _finish(pid, feedback=feedback)
+    assert fin.status_code == 200, f"finish 失败：{fin.status_code} {fin.text[:200]}"
+    return fin.json()
 
 
 def _make_mark_at(pressed: float) -> dict:

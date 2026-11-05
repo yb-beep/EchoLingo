@@ -233,6 +233,8 @@ def init_cet_schema(path: Path | None = None) -> None:
                     "UPDATE cet_reviews SET status='paused',pause_count=pause_count+1,updated_at=? "
                     "WHERE status='active'", (_now(),)
                 )
+                # N4：交卷幂等约束（建表之后再建索引）
+                _ensure_attempt_idempotency(conn)
             _initialized.add(target)
         finally:
             if token is not None:
@@ -439,6 +441,30 @@ def list_materials(level: str | None = None) -> list[dict[str, Any]]:
             item["id"] = biz
         materials.append(item)
     return [item for item in materials if level is None or item["level"] == level]
+
+
+def _ensure_attempt_idempotency(conn) -> None:
+    """N4：给「同一材料 + 听音会话」加唯一约束，并清理历史重复。
+
+    原实现靠 SELECT-then-INSERT 判断幂等，并发下 6 个请求能生成 6 条记录。
+    唯一索引把幂等交给数据库，并发也只有一个能成功。
+    """
+    try:
+        # 先清理历史重复（保留最早一条，避免建索引失败）
+        conn.execute(
+            "DELETE FROM cet_attempts WHERE rowid NOT IN ("
+            "  SELECT MIN(rowid) FROM cet_attempts "
+            "  GROUP BY material_id, listening_session_id"
+            ")"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS cet_attempts_session_uniq "
+            "ON cet_attempts(material_id, listening_session_id)"
+        )
+        conn.commit()
+    except Exception:  # noqa: BLE001
+        # 索引建不上不阻塞主流程，幂等退化为应用层判断
+        pass
 
 
 def find_material_by_lesson(lesson_id: int) -> dict[str, Any] | None:
@@ -727,10 +753,23 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
             (attempt_id, material_id, material["materialVersion"], str(body.get("listeningSessionId") or ""), score, graded, unknown, now),
         )
         if not inserted.rowcount:
-            existing = conn.execute("SELECT material_id FROM cet_attempts WHERE id=?", (attempt_id,)).fetchone()
-            if existing["material_id"] != material_id:
-                _error(409, "IDEMPOTENCY_CONFLICT", "attemptId 已用于另一份材料。")
-            return _attempt_payload(attempt_id)
+            # N4：唯一索引拦下了重复（并发下另一请求已写入）。
+            # 按 attemptId 查不到时，按「材料 + 会话」回查真实记录并返回它，
+            # 保证并发交卷只有一个 attemptId。
+            existing = conn.execute(
+                "SELECT id, material_id FROM cet_attempts WHERE id=?", (attempt_id,)
+            ).fetchone()
+            if existing:
+                if existing["material_id"] != material_id:
+                    _error(409, "IDEMPOTENCY_CONFLICT", "attemptId 已用于另一份材料。")
+                return _attempt_payload(existing["id"])
+            same_session = conn.execute(
+                "SELECT id FROM cet_attempts WHERE material_id=? AND listening_session_id=?",
+                (material_id, str(body.get("listeningSessionId") or "")),
+            ).fetchone()
+            if same_session:
+                return _attempt_payload(same_session["id"])
+            _error(409, "IDEMPOTENCY_CONFLICT", "交卷记录冲突，请重试。")
         conn.executemany(
             "INSERT INTO cet_attempt_answers(attempt_id,question_id,answer,correct_answer,status,is_correct,answer_source,evidence_sentence_id) "
             "VALUES(?,?,?,?,?,?,?,?)", answer_rows,
@@ -1356,6 +1395,14 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
             if previous["status"] == "succeeded":
                 return _practice_payload(practice_id)
             _error(409 if previous["status"] == "pending" else 502, "AI_REQUEST_NOT_RETRYABLE", "该请求已处理，请使用新的 requestId 重试。")
+        # N1：必须**先取写锁再校验**。
+        # 原实现在首次 SELECT 后没有取得写事务，两个并发请求都能通过校验；
+        # 第二个请求等锁后拿到新状态，却因 already_validated 跳过复查而被接受。
+        # 这里用一条写语句强制升级到 RESERVED 锁，后续 SELECT 看到的就是
+        # 「取得锁之后」的状态，两个同旧步骤请求最多一个能推进。
+        conn.execute(
+            "UPDATE cet_practices SET updated_at=updated_at WHERE id=?", (practice_id,)
+        )
         practice = _practice_row(conn, practice_id)
         if practice["status"] != "active":
             _error(409, "PRACTICE_COMPLETE", "练习已结束。")
@@ -1375,10 +1422,12 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
         # 不再提前 commit 回避锁冲突 —— 提前 commit 会破坏原子性：
         # 并发交错时被 409 拒绝的请求仍留下本次反馈。
         if action in {"replay", "slow"}:
+            # N1：不跳过校验。已持写锁，这里复查的是「锁后状态」，
+            # 并发交错时能正确拒绝过期请求。
             handled = _local_practice_action_conn(
                 conn, practice_id,
                 {**body, "actionId": request_id, "action": action},
-                already_validated=True,
+                already_validated=False,
             )
             conn.commit()
             return _practice_payload(practice_id)

@@ -511,13 +511,20 @@
     head.appendChild(el('strong', null, '卡点带练'));
     box.appendChild(head);
 
-    const fbRow = el('div', 'cet-feedback');
-    [['sound', '没听清'], ['meaning', '不懂意思'], ['heard', '听懂了']].forEach(([fb, label]) => {
-      const b = el('button', 'cet-btn', label);
-      b.onclick = () => sendFeedback(fb, label);
-      fbRow.appendChild(b);
-    });
-    box.appendChild(fbRow);
+    // N3：练习已完成时不再给反馈入口（否则点了必然报「练习已结束」）
+    const finished = S.practice.status === 'complete';
+    if (finished) {
+      const doneNote = el('div', 'cet-ai-note', '本轮已保存。可以点「今日复习」继续，或回到卡点列表。');
+      box.appendChild(doneNote);
+    } else {
+      const fbRow = el('div', 'cet-feedback');
+      [['sound', '没听清'], ['meaning', '不懂意思'], ['heard', '听懂了']].forEach(([fb, label]) => {
+        const b = el('button', 'cet-btn', label);
+        b.onclick = () => sendFeedback(fb, label);
+        fbRow.appendChild(b);
+      });
+      box.appendChild(fbRow);
+    }
 
     const out = el('div', 'cet-practice-out');
     out.id = 'cet-practice-out';
@@ -527,9 +534,11 @@
     // 原来刷新后解释正文/换句候选项都会消失。
     renderCurrentStepInto(out);
 
-    const saveBtn = el('button', 'cet-btn', '保存本轮');
-    saveBtn.onclick = finishPractice;
-    box.appendChild(saveBtn);
+    if (!finished) {
+      const saveBtn = el('button', 'cet-btn', '保存本轮');
+      saveBtn.onclick = finishPractice;
+      box.appendChild(saveBtn);
+    }
   }
 
   // 动作 → 中文说明（计划 §5：两类反馈要给合理不同的帮助）
@@ -540,6 +549,20 @@
     explain: '解释句意',
     transfer: '换句检验',
   };
+
+  // N2：冲突后从服务端拉取权威状态，让用户能直接继续
+  async function resyncPractice() {
+    if (!S.practice || !S.practice.practiceId) return;
+    try {
+      const pr = await api('GET', `/practices/${S.practice.practiceId}`);
+      if (pr && pr.practiceId) {
+        S.practice = pr;
+        renderPractice();
+        renderMarks();
+        save();
+      }
+    } catch (_) { /* 同步失败不阻塞，用户仍可手动刷新 */ }
+  }
 
   // S6：请求序号。同一练习的多个请求若在网络上乱序到达，
   // 只允许「最后一次发出」的响应落地，避免旧成功覆盖新步骤。
@@ -577,12 +600,17 @@
       if (waitingNote.parentNode) waitingNote.remove();
 
       // 跨练习/过期响应过滤：旧练习的结果不能覆盖当前界面（F01）
-      // S6：三重过滤 —— 练习身份、请求序号、发送时步骤。
-      // 序号保证只有「最后一次发出」的响应能落地；
-      // 步骤校验保证旧步骤的迟到成功不会覆盖新步骤。
+      // N2：不能只「丢弃旧响应」——那会把唯一能同步新步骤的成功回包也丢掉，
+      // 导致用户拿着旧 stepId 反复 409，只能刷新页面。
+      // 正确策略：任何成功回包都用来**同步权威状态**；只有「显示」才按序号取舍。
       if (!S.practice || S.practice.practiceId !== practiceAtSend) return;
+
+      // 无论是否最新，先同步服务端返回的真实状态（这是权威的）
+      S.practice = { ...S.practice, ...r, currentStepId: r.currentStepId || S.practice.currentStepId };
+      save();
+
+      // 只有最新一次请求才负责更新界面文案，避免旧回包闪回旧动作
       if (seq !== feedbackSeq) return;
-      if (S.practice.currentStepId && S.practice.currentStepId !== stepAtSend) return;
 
       S.practice = { ...S.practice, ...r, currentStepId: r.currentStepId || S.practice.currentStepId };
       const step = r.currentStep || r.step || {};
@@ -622,7 +650,10 @@
       if (out) {
         out.className = 'cet-practice-out error';
         if (err.code === 'STALE_RESPONSE') {
-          out.textContent = '这一步已过期，请刷新后重试';
+          // N2：冲突后主动拉取权威状态，让用户能继续，而不是要求刷新
+          out.textContent = '这一步已更新，正在同步…';
+          await resyncPractice();
+          out.textContent = '已同步到最新步骤，可以继续';
         } else if (err.status === 503) {
           out.textContent = '模型尚未配置；仍可使用回听、慢放、原文和保存。';
         } else {
@@ -811,9 +842,17 @@
         stepId: S.practice.currentStepId,
         materialVersion: S.materialVersion,
       });
-      S.practice = { ...S.practice, ...r };
-      flashHint('本轮已保存');
+      // N3：finish 返回 {practice, reviewItem}，必须合并 r.practice，
+      // 不能直接 spread r —— 否则 status 仍是 active，
+      // 页面继续显示反馈按钮，再点就得到「练习已结束」。
+      const merged = r && r.practice ? r.practice : r;
+      S.practice = { ...S.practice, ...(merged || {}) };
+      if (r && r.reviewItem) S.reviewItem = r.reviewItem;
+
+      const done = S.practice.status === 'complete';
+      flashHint(done ? '本轮已保存，已加入今日复习' : '本轮已保存');
       renderMarks();
+      renderPractice();     // 按完成态重绘：停用反馈入口
       save();
     } catch (err) {
       flashHint(`保存失败：${err.message}`, true);

@@ -1,0 +1,47 @@
+{
+  "rollback": {
+    "status": 409,
+    "before": {
+      "latestFeedback": "heard",
+      "revision": 5,
+      "history": 3,
+      "steps": 4,
+      "currentStepId": "b322becd23f7495eb4074f96f078ff7b"
+    },
+    "after": {
+      "latestFeedback": "heard",
+      "revision": 5,
+      "history": 3,
+      "steps": 4,
+      "currentStepId": "b322becd23f7495eb4074f96f078ff7b"
+    }
+  },
+  "concurrent": {
+    "before": {
+      "latestFeedback": "heard",
+      "revision": 5,
+      "history": 3,
+      "steps": 4,
+      "currentStepId": "b322becd23f7495eb4074f96f078ff7b"
+    },
+    "requests": [
+      {
+        "status": 200,
+        "stepId": "6eb8823fdbdf4ac1aea78f166c999557",
+        "revision": 6
+      },
+      {
+        "status": 200,
+        "stepId": "087c9a8030e84878ac02cbe980aa3b63",
+        "revision": 7
+      }
+    ],
+    "after": {
+      "latestFeedback": "sound",
+      "revision": 7,
+      "history": 5,
+      "steps": 6,
+      "currentStepId": "087c9a8030e84878ac02cbe980aa3b63"
+    }
+  }
+}

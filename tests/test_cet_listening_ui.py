@@ -285,3 +285,156 @@ def test_cet4_material_also_supported(page):
     assert state["sent"] == 32
     assert state["qs"] == 5
     assert page.evaluate("!!document.querySelector('#cet-toolbar')")
+
+
+# ── M2：反馈驱动带练 ─────────────────────────────────────
+
+def _to_practice(page):
+    """走到「带练已开始」的状态，返回 practiceId。
+
+    每个用例用独立会话：sessionStorage 里的 sessionId 决定 listeningSessionId，
+    不复用会拿到上一个用例已确认过的标记（表现为没有「确认这句」按钮）。
+    """
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.evaluate("sessionStorage.clear()")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(3500)
+    page.click("#cet-toggle-mode")
+    page.wait_for_timeout(400)
+    page.evaluate(f"{AUDIO}.play()")
+    page.wait_for_timeout(1200)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1800)
+    page.evaluate(f"{AUDIO}.pause()")
+
+    opts = page.query_selector_all(".cet-opt")
+    if opts:
+        opts[0].click()
+        page.wait_for_timeout(120)
+    page.click("#cet-submit")
+    page.wait_for_timeout(2800)
+
+    confirm = page.query_selector('button:has-text("确认这句")')
+    assert confirm, "应出现「确认这句」按钮"
+    confirm.click()
+    page.wait_for_timeout(2500)
+
+    start = page.query_selector('button:has-text("开始带练")')
+    assert start, "确认后应出现「开始带练」"
+    start.click()
+    page.wait_for_timeout(3000)
+    return page.evaluate("window.__cet.S.practice && window.__cet.S.practice.practiceId")
+
+
+def test_feedback_sound_triggers_slow_playback(page):
+    """「没听清」应触发慢放，且播放速度真的变化（计划 §5：本地动作不等 AI）。"""
+    assert _to_practice(page)
+    btn = page.query_selector('button:has-text("没听清")')
+    assert btn, "应有「没听清」按钮"
+    btn.click()
+    page.wait_for_timeout(3000)
+
+    out = page.evaluate("(document.querySelector('#cet-practice-out')||{}).textContent || ''")
+    assert "慢放" in out, f"「没听清」应触发慢放，实际提示：{out}"
+
+    rate = page.evaluate(f"{AUDIO}.playbackRate")
+    assert abs(rate - 0.75) < 0.01, f"播放速度应变 0.75，实际 {rate}"
+
+
+def test_feedback_meaning_degrades_gracefully_without_ai(page):
+    """「不懂意思」需要模型；未配置时应给可操作提示，不能白屏或静默失败。"""
+    assert _to_practice(page)
+    btn = page.query_selector('button:has-text("不懂意思")')
+    assert btn, "应有「不懂意思」按钮"
+    btn.click()
+    page.wait_for_timeout(4000)
+
+    out = page.evaluate("(document.querySelector('#cet-practice-out')||{}).textContent || ''")
+    # 配置了模型会给解释；没配置要给「仍可回听/慢放/保存」这类可操作提示
+    assert ("解释" in out) or ("模型" in out) or ("暂不" in out), \
+        f"「不懂意思」应给明确反馈，实际：{out}"
+    # 无论成败，回听与保存必须仍可用
+    assert page.evaluate("!!document.querySelector('#local-media-player')")
+
+
+def test_two_feedbacks_lead_to_different_actions(page):
+    """两类反馈必须产生不同动作（计划 §5 硬要求）。"""
+    assert _to_practice(page)
+
+    sound = page.query_selector('button:has-text("没听清")')
+    sound.click()
+    page.wait_for_timeout(2500)
+    out_sound = page.evaluate("(document.querySelector('#cet-practice-out')||{}).textContent || ''")
+
+    meaning = page.query_selector('button:has-text("不懂意思")')
+    meaning.click()
+    page.wait_for_timeout(3500)
+    out_meaning = page.evaluate("(document.querySelector('#cet-practice-out')||{}).textContent || ''")
+
+    assert out_sound != out_meaning, \
+        f"两类反馈应给不同帮助，实际相同：{out_sound!r}"
+
+
+# ── M3：复习 ─────────────────────────────────────────────
+
+def test_review_starts_and_lists_at_most_three(page):
+    """今日复习应能开始，最多三处（计划 §7 M3）。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+    page.evaluate("sessionStorage.clear()")
+    btn = page.query_selector("#cet-review-btn")
+    assert btn, "应有「今日复习」按钮"
+    btn.click()
+    page.wait_for_timeout(3000)
+
+    visible = page.evaluate("!document.getElementById('cet-review').hidden")
+    assert visible, "复习面板应出现"
+    rows = page.evaluate("document.querySelectorAll('.cet-review-row').length")
+    assert rows <= 3, f"首版最多三处，实际 {rows}"
+
+
+def test_review_skip_moves_to_next_without_counting_done(page):
+    """跳过应推进到下一处，且**不能**记为已完成（计划 §12/T12）。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+    page.click("#cet-review-btn")
+    page.wait_for_timeout(3000)
+
+    labels_before = page.evaluate(
+        "Array.from(document.querySelectorAll('.cet-review-label')).map(e=>e.textContent)"
+    )
+    if "进行中" not in labels_before:
+        pytest.skip("当前复习没有进行中的条目")
+
+    skip = page.query_selector('button:has-text("跳过")')
+    assert skip, "应有「跳过」按钮"
+    skip.click()
+    page.wait_for_timeout(2500)
+
+    labels_after = page.evaluate(
+        "Array.from(document.querySelectorAll('.cet-review-label')).map(e=>e.textContent)"
+    )
+    assert "已跳过" in labels_after, f"应出现「已跳过」，实际 {labels_after}"
+    assert labels_after.count("已完成") == labels_before.count("已完成"), \
+        "跳过不应增加「已完成」数量（跳过 ≠ 听懂）"
+    assert "进行中" in labels_after, "跳过后应自动推进到下一处"
+
+
+def test_review_pause_and_restore_after_reload(page):
+    """暂停后刷新应恢复同一复习会话（计划 T11）。"""
+    page.goto(f"{BASE}/workspace/{LESSON_ID}", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(3500)
+    page.click("#cet-review-btn")
+    page.wait_for_timeout(3000)
+
+    pause = page.query_selector('button:has-text("暂停")')
+    assert pause, "应有「暂停」按钮"
+    pause.click()
+    page.wait_for_timeout(2500)
+
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(4500)
+    restored = page.evaluate("!document.getElementById('cet-review').hidden")
+    assert restored, "刷新后应恢复复习面板"
+    rows = page.evaluate("document.querySelectorAll('.cet-review-row').length")
+    assert rows >= 1, f"恢复后应有条目，实际 {rows}"

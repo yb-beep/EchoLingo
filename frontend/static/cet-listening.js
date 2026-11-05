@@ -122,6 +122,14 @@
     // 题目面板：放在侧栏导航标签里（复用原侧栏）
     mountQuestionPanel();
 
+    // 今日复习按钮
+    const reviewBtn = el('button', 'cet-btn', '今日复习');
+    reviewBtn.id = 'cet-review-btn';
+    reviewBtn.onclick = startReview;
+    bar.appendChild(reviewBtn);
+
+    mountReviewPanel();
+
     // 恢复上次进度
     restore();
   }
@@ -294,9 +302,9 @@
     const sent = S.sentences.find((s) => s.sentenceId === sid);
     const md = media();
     if (!sent || !md) return;
-    md.currentTime = sent.startSec;
+    md.currentTime = sent.startSeconds;
     md.play();
-    const stopAt = sent.endSec;
+    const stopAt = sent.endSeconds;
     const guard = () => {
       if (md.currentTime >= stopAt) {
         md.pause();
@@ -471,10 +479,22 @@
     box.appendChild(saveBtn);
   }
 
+  // 动作 → 中文说明（计划 §5：两类反馈要给合理不同的帮助）
+  const ACTION_LABEL = {
+    replay: '原句回放',
+    slow: '慢放',
+    chunk: '短语分段',
+    explain: '解释句意',
+    transfer: '换句检验',
+  };
+
   async function sendFeedback(feedback, label) {
     if (!S.practice) return;
     const out = $('#cet-practice-out');
-    if (out) out.textContent = `反馈「${label}」处理中…`;
+    if (out) {
+      out.className = 'cet-practice-out';
+      out.textContent = `反馈「${label}」处理中…`;
+    }
     try {
       const r = await api('POST', `/practices/${S.practice.practiceId}/next`, {
         feedback,
@@ -482,20 +502,78 @@
         materialVersion: S.materialVersion,
       });
       S.practice = { ...S.practice, ...r, currentStepId: r.currentStepId || S.practice.currentStepId };
-      const step = r.step || {};
+      // 动作在 currentStep.action（不是 step.action）
+      const step = r.currentStep || r.step || {};
+      const action = step.action || r.currentAction || '';
       if (out) {
-        out.textContent = `反馈「${label}」→ 动作：${step.action || r.currentAction || '已更新'}`;
+        const name = ACTION_LABEL[action] || action || '已更新';
+        out.textContent = `反馈「${label}」→ ${name}`;
         out.classList.add('ok');
+      }
+      // 本地动作立刻执行，不等 AI（计划 §5：标记/暂停/慢放/原文显隐不等待 AI）
+      if (action === 'replay' || action === 'slow' || action === 'chunk') {
+        executeLocalAction(action, step);
+      }
+      if (action === 'explain') {
+        showExplainPending();
       }
       save();
     } catch (err) {
       if (out) {
-        out.textContent = err.code === 'STALE_RESPONSE'
-          ? '这一步已过期，请刷新后重试'
-          : `反馈失败：${err.message}`;
-        out.classList.add('error');
+        out.className = 'cet-practice-out error';
+        if (err.code === 'STALE_RESPONSE') {
+          out.textContent = '这一步已过期，请刷新后重试';
+        } else if (err.status === 503) {
+          out.textContent = '模型尚未配置；仍可使用回听、慢放、原文和保存。';
+        } else {
+          out.textContent = `反馈失败：${err.message}`;
+        }
       }
     }
+  }
+
+  // 执行本地动作：改播放速度、跳回句子起点、显隐原文
+  function executeLocalAction(action, step) {
+    const md = media();
+    const sid = (S.practice && S.practice.sentenceId) || null;
+    const sent = S.sentences.find((s) => s.sentenceId === sid);
+    if (!md || !sent) return;
+
+    md.currentTime = sent.startSeconds;
+    if (action === 'slow') {
+      md.playbackRate = 0.75;
+    } else if (action === 'replay') {
+      md.playbackRate = 1;
+    }
+    md.play();
+
+    // 到句末自动停
+    const stopAt = sent.endSeconds;
+    const guard = () => {
+      if (md.currentTime >= stopAt) {
+        md.pause();
+        md.removeEventListener('timeupdate', guard);
+      }
+    };
+    md.addEventListener('timeupdate', guard);
+
+    if (step && step.showText === false) {
+      // 「没听清」先不给原文，保留听力挑战（计划 §5）
+      flashHint('先只给声音，试试能不能听出来');
+    }
+  }
+
+  function showExplainPending() {
+    const out = $('#cet-practice-out');
+    if (!out) return;
+    const note = el('div', 'cet-ai-note', '正在生成解释…（3 秒后仍无结果可继续回听或保存）');
+    out.appendChild(note);
+    setTimeout(() => {
+      if (note.parentNode) {
+        note.textContent = '模型暂不可用；你仍可以回听、慢放、看原文或保存本轮。';
+        note.classList.add('warn');
+      }
+    }, 3000);
   }
 
   async function finishPractice() {
@@ -515,6 +593,143 @@
     }
   }
 
+  // ── 复习（M3）──────────────────────────────────────────
+  let reviewState = null;
+
+  function mountReviewPanel() {
+    const side = $('.side-column');
+    if (!side || $('#cet-review')) return;
+    const wrap = el('section', 'cet-panel');
+    wrap.id = 'cet-review';
+    wrap.hidden = true;
+    wrap.innerHTML = `
+      <div class="cet-panel-head">
+        <strong>今日复习</strong>
+        <span id="cet-review-state" class="cet-panel-state">未开始</span>
+      </div>
+      <div id="cet-review-body"></div>
+    `;
+    side.insertBefore(wrap, $('#cet-questions'));
+  }
+
+  async function startReview() {
+    try {
+      let rv = await api('POST', '/reviews', { maxItems: 3 });
+      // 新建的复习是 ready 状态，skip/complete 需要 active；
+      // 先 start 一次（幂等，已在 active 时不报错）
+      if (rv.status === 'ready') {
+        try {
+          rv = await api('POST', `/reviews/${rv.id}/actions`,
+            { action: 'start', actionId: uid('rv-start') });
+        } catch (_) { /* 已 active 时忽略 */ }
+      }
+      reviewState = rv;
+      renderReview();
+      save();
+      flashHint('复习已开始（最多三处）');
+    } catch (err) {
+      if (err.code === 'NO_REVIEW_ITEMS') {
+        flashHint('暂时没有待复习的卡点', true);
+      } else {
+        flashHint(`开始复习失败：${err.message}`, true);
+      }
+    }
+  }
+
+  function renderReview() {
+    const box = $('#cet-review');
+    const body = $('#cet-review-body');
+    const state = $('#cet-review-state');
+    if (!box || !body || !reviewState) return;
+
+    box.hidden = false;
+    if (state) {
+      const mins = Math.round((reviewState.remainingMs || 0) / 60000);
+      state.textContent = `剩余约 ${mins} 分钟 · 第 ${(reviewState.currentPosition || 0) + 1} 处`;
+    }
+
+    body.innerHTML = '';
+    const entries = reviewState.entries || [];
+
+    // 当前条目
+    const cur = entries.find((e) => e.status === 'current') || entries[0];
+    if (cur) {
+      const card = el('div', 'cet-review-card');
+      const sent = (cur.item && cur.item.sentence) || {};
+      card.appendChild(el('div', 'cet-review-sentence', sent.text || '(无句子)'));
+
+      const row = el('div', 'cet-review-actions');
+
+      const play = el('button', 'cet-btn-sm', '回听');
+      play.onclick = () => {
+        const md = media();
+        if (!md || !sent.startSecondsonds) return;
+        md.currentTime = sent.startSecondsonds;
+        md.play();
+        const stop = sent.endSecondsonds;
+        const g = () => { if (md.currentTime >= stop) { md.pause(); md.removeEventListener('timeupdate', g); } };
+        md.addEventListener('timeupdate', g);
+      };
+      row.appendChild(play);
+
+      const skip = el('button', 'cet-btn-sm', '跳过');
+      skip.onclick = () => reviewAction('skip', cur.practiceId);
+      row.appendChild(skip);
+
+      const done = el('button', 'cet-btn-sm', '这处练完了');
+      done.onclick = () => reviewAction('complete', cur.practiceId);
+      row.appendChild(done);
+
+      card.appendChild(row);
+      body.appendChild(card);
+    } else {
+      body.appendChild(el('div', 'cet-empty', '本次复习没有条目'));
+    }
+
+    // 全部条目进度
+    const list = el('div', 'cet-review-list');
+    entries.forEach((e, i) => {
+      const label = { current: '进行中', pending: '待复习', done: '已完成', skipped: '已跳过' }[e.status] || e.status;
+      const row = el('div', `cet-review-row cet-review-${e.status}`);
+      row.appendChild(el('span', 'cet-review-idx', `${i + 1}`));
+      row.appendChild(el('span', 'cet-review-label', label));
+      const t = (e.item && e.item.sentence && e.item.sentence.text) || '';
+      row.appendChild(el('span', 'cet-review-text', t.slice(0, 40)));
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+
+    // 控制
+    const ctrl = el('div', 'cet-review-ctrl');
+    const pause = el('button', 'cet-btn-sm', '暂停');
+    pause.onclick = () => reviewAction('pause');
+    ctrl.appendChild(pause);
+
+    const end = el('button', 'cet-btn-sm', '结束复习');
+    end.onclick = () => reviewAction('finish');
+    ctrl.appendChild(end);
+    body.appendChild(ctrl);
+  }
+
+  async function reviewAction(action, practiceId) {
+    if (!reviewState) return;
+    try {
+      // 后端要求 actionId 用于幂等去重（重复提交不重复计时）
+      const payload = { action, actionId: uid(`rv-${action}`) };
+      if (practiceId) payload.practiceId = practiceId;
+      const r = await api('POST', `/reviews/${reviewState.id}/actions`, payload);
+      reviewState = { ...reviewState, ...r };
+      renderReview();
+      save();
+    } catch (err) {
+      if (err.code === 'STALE_RESPONSE') {
+        flashHint('复习状态已变化，请刷新', true);
+      } else {
+        flashHint(`复习操作失败：${err.message}`, true);
+      }
+    }
+  }
+
   // ── 恢复 ────────────────────────────────────────────────
   function save() {
     try {
@@ -522,6 +737,7 @@
         materialId: S.materialId,
         attemptId: S.attempt && S.attempt.attemptId,
         practiceId: S.practice && S.practice.practiceId,
+        reviewId: reviewState && reviewState.id,
       }));
     } catch (_) { /* 隐私模式可能失败，不阻塞 */ }
   }
@@ -539,6 +755,20 @@
         flashHint(`已恢复 ${items.length} 个卡点标记`);
       }
     } catch (_) { /* 恢复失败不阻塞主流程 */ }
+
+    // 恢复复习会话（计划 T11：重启后恢复原会话和步骤）
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('cet.state.v1') || '{}');
+      if (saved.reviewId) {
+        const rv = await api('GET', `/reviews/${saved.reviewId}`);
+        if (rv && rv.status && rv.status !== 'complete') {
+          reviewState = rv;
+          mountReviewPanel();
+          renderReview();
+          flashHint('已恢复上次复习');
+        }
+      }
+    } catch (_) { /* 复习恢复失败不阻塞 */ }
   }
 
   // ── 初始化 ──────────────────────────────────────────────

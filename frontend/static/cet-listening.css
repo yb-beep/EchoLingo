@@ -215,3 +215,87 @@ body.cet-listening .learning-controls {
   .cet-toolbar { margin-left: 0; width: 100%; }
   .cet-mark-sentence { flex-basis: 100%; white-space: normal; }
 }
+
+/* ── 复习面板（M3）────────────────────────────────────── */
+.cet-review-card {
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: #fafbf9;
+}
+
+.cet-review-sentence {
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 9px;
+}
+
+.cet-review-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cet-review-list {
+  border-top: 1px dashed var(--line, #d9ded8);
+  padding-top: 9px;
+  margin-bottom: 9px;
+}
+
+.cet-review-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  background: #fff;
+}
+
+.cet-review-current { background: #eef4fc; border-left: 3px solid #276fbf; }
+.cet-review-done    { background: #eef8f1; border-left: 3px solid #2f8f4e; }
+.cet-review-skipped { background: #f6f6f6; border-left: 3px solid #bbb; color: #888; }
+.cet-review-pending { border-left: 3px solid #e08e0b; }
+
+.cet-review-idx {
+  width: 18px;
+  text-align: center;
+  color: var(--muted, #687069);
+  flex: none;
+}
+.cet-review-label {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: #eef2ed;
+  color: var(--muted, #687069);
+  flex: none;
+}
+.cet-review-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cet-review-ctrl {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* AI 等待提示 */
+.cet-ai-note {
+  font-size: 12px;
+  color: var(--muted, #687069);
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f6f7f4;
+}
+.cet-ai-note.warn {
+  background: #fff8e1;
+  color: #8a5a00;
+}

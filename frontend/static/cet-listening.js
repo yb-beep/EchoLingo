@@ -550,13 +550,42 @@
     transfer: '换句检验',
   };
 
+  // B01：单调状态合并。返回 null 表示回包比当前状态旧，应丢弃。
+  // 规则：同一练习 + revision 不得回退 + 已完成态不可退回进行中。
+  function mergePracticeState(current, incoming) {
+    if (!current) return incoming || null;
+    if (!incoming) return null;
+    if (incoming.practiceId && current.practiceId
+        && incoming.practiceId !== current.practiceId) {
+      return null;                                  // 跨练习，丢弃
+    }
+    const curRev = typeof current.revision === 'number' ? current.revision : -1;
+    const inRev = typeof incoming.revision === 'number' ? incoming.revision : -1;
+    if (inRev >= 0 && curRev >= 0 && inRev < curRev) {
+      return null;                                  // 旧状态，丢弃
+    }
+    // 已完成不能被旧回包退回进行中
+    if (current.status === 'complete' && incoming.status && incoming.status !== 'complete') {
+      return null;
+    }
+    return {
+      ...current,
+      ...incoming,
+      currentStepId: incoming.currentStepId || current.currentStepId,
+    };
+  }
+
   // N2：冲突后从服务端拉取权威状态，让用户能直接继续
   async function resyncPractice() {
     if (!S.practice || !S.practice.practiceId) return;
     try {
-      const pr = await api('GET', `/practices/${S.practice.practiceId}`);
-      if (pr && pr.practiceId) {
-        S.practice = pr;
+      const wantId = S.practice.practiceId;
+      const pr = await api('GET', `/practices/${wantId}`);
+      // B01：GET 回包也要核对身份与 revision，防止切换练习后旧查询覆盖新状态
+      if (pr && pr.practiceId === wantId) {
+        const merged = mergePracticeState(S.practice, pr);
+        if (merged === null) return;
+        S.practice = merged;
         renderPractice();
         renderMarks();
         save();
@@ -599,20 +628,25 @@
       clearTimeout(timer);
       if (waitingNote.parentNode) waitingNote.remove();
 
-      // 跨练习/过期响应过滤：旧练习的结果不能覆盖当前界面（F01）
-      // N2：不能只「丢弃旧响应」——那会把唯一能同步新步骤的成功回包也丢掉，
-      // 导致用户拿着旧 stepId 反复 409，只能刷新页面。
-      // 正确策略：任何成功回包都用来**同步权威状态**；只有「显示」才按序号取舍。
+      // B01：身份过滤 + **单调合并**。
+      // 一个成功响应只代表它生成时的服务状态，不保证到达时仍最新；
+      // 原来无条件 {...S.practice, ...r} 会让晚到的旧回包把新状态覆盖回去
+      //（实测：已推进到 explain 后，早先的 slow 回包到达，内存退回旧步骤，
+      //  接着点保存就 409）。
       if (!S.practice || S.practice.practiceId !== practiceAtSend) return;
 
-      // 无论是否最新，先同步服务端返回的真实状态（这是权威的）
-      S.practice = { ...S.practice, ...r, currentStepId: r.currentStepId || S.practice.currentStepId };
+      // 单调合并：只接受 revision 不小于当前的状态，绝不回退
+      const merged = mergePracticeState(S.practice, r);
+      if (merged === null) {
+        // 回包比当前状态旧：只同步「不影响步骤」的字段，不动 currentStepId/status
+        return;
+      }
+      S.practice = merged;
       save();
 
       // 只有最新一次请求才负责更新界面文案，避免旧回包闪回旧动作
       if (seq !== feedbackSeq) return;
 
-      S.practice = { ...S.practice, ...r, currentStepId: r.currentStepId || S.practice.currentStepId };
       const step = r.currentStep || r.step || {};
       const action = step.action || r.currentAction || '';
 

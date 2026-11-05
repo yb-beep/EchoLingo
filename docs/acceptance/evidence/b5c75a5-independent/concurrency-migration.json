@@ -1,0 +1,112 @@
+{
+  "same_step": [
+    {
+      "statuses": [
+        409,
+        200
+      ],
+      "revisionDelta": 1,
+      "historyDelta": 1
+    },
+    {
+      "statuses": [
+        200,
+        409
+      ],
+      "revisionDelta": 1,
+      "historyDelta": 1
+    },
+    {
+      "statuses": [
+        200,
+        409
+      ],
+      "revisionDelta": 1,
+      "historyDelta": 1
+    },
+    {
+      "statuses": [
+        409,
+        200
+      ],
+      "revisionDelta": 1,
+      "historyDelta": 1
+    },
+    {
+      "statuses": [
+        409,
+        200
+      ],
+      "revisionDelta": 1,
+      "historyDelta": 1
+    }
+  ],
+  "attempts": [
+    {
+      "status": 201,
+      "attemptId": "attempt-71d3e0bfecea"
+    },
+    {
+      "status": 201,
+      "attemptId": "attempt-71d3e0bfecea"
+    },
+    {
+      "status": 201,
+      "attemptId": "attempt-71d3e0bfecea"
+    },
+    {
+      "status": 201,
+      "attemptId": "attempt-71d3e0bfecea"
+    },
+    {
+      "status": 201,
+      "attemptId": "attempt-71d3e0bfecea"
+    },
+    {
+      "status": 201,
+      "attemptId": "attempt-71d3e0bfecea"
+    }
+  ],
+  "migration": [
+    {
+      "session": "",
+      "beforeAttempts": 2,
+      "beforeAnswers": 2,
+      "afterAttempts": [
+        [
+          "historical-a",
+          "m",
+          "v1",
+          ""
+        ]
+      ],
+      "afterAnswers": [
+        [
+          "historical-a",
+          "A"
+        ]
+      ],
+      "indexCreated": true
+    },
+    {
+      "session": "same-session",
+      "beforeAttempts": 2,
+      "beforeAnswers": 2,
+      "afterAttempts": [
+        [
+          "historical-a",
+          "m",
+          "v1",
+          "same-session"
+        ]
+      ],
+      "afterAnswers": [
+        [
+          "historical-a",
+          "A"
+        ]
+      ],
+      "indexCreated": true
+    }
+  ]
+}

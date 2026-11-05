@@ -100,6 +100,18 @@ def create_cet_practice(body: dict[str, Any] = Body(...)):
     return cet_service.create_practice(body)
 
 
+@router.get("/practices/{practice_id}/ai-status")
+def cet_ai_status(practice_id: str):
+    """B03：查询当前 AI 请求状态。"""
+    return cet_service.ai_request_status(practice_id)
+
+
+@router.post("/practices/{practice_id}/ai-cancel")
+def cet_ai_cancel(practice_id: str, body: dict[str, Any] = Body(default={})):
+    """B03：取消当前 AI 请求（幂等）。"""
+    return cet_service.cancel_ai_request(practice_id, body or {})
+
+
 @router.get("/practices/{practice_id}")
 def get_cet_practice(practice_id: str):
     return cet_service._practice_payload(practice_id)

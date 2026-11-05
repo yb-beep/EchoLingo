@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import re
+import sqlite3
 import threading
 import uuid
 from contextlib import contextmanager
@@ -32,6 +33,9 @@ def _json(value: Any) -> str:
 
 def _error(status: int, code: str, message: str, **extra: Any) -> None:
     raise HTTPException(status, {"code": code, "message": message, **extra})
+
+
+_ATTEMPT_IDEMPOTENCY_STATE = "unknown"
 
 
 def init_cet_schema(path: Path | None = None) -> None:
@@ -444,27 +448,39 @@ def list_materials(level: str | None = None) -> list[dict[str, Any]]:
 
 
 def _ensure_attempt_idempotency(conn) -> None:
-    """N4：给「同一材料 + 听音会话」加唯一约束，并清理历史重复。
+    """给「同一材料 + 非空听音会话」加唯一约束，**不删除任何历史记录**。
 
-    原实现靠 SELECT-then-INSERT 判断幂等，并发下 6 个请求能生成 6 条记录。
-    唯一索引把幂等交给数据库，并发也只有一个能成功。
+    B02 教训：上一版在启动时无条件 DELETE 重复记录（保留最小 rowid），
+    而 cet_attempt_answers 是 ON DELETE CASCADE —— 历史作答与答案会被一起删掉，
+    且材料版本/答案内容都没比对，旧客户端保存的 attemptId 会失效。
+    这里改为：
+      1. 只对「session 非空且完全重复」的记录建立映射归档，不删除原记录
+      2. 唯一索引建在**部分索引**上（仅 session 非空），空 session 不参与约束
+      3. 失败时明确记录状态，不静默 pass
     """
+    global _ATTEMPT_IDEMPOTENCY_STATE
     try:
-        # 先清理历史重复（保留最早一条，避免建索引失败）
-        conn.execute(
-            "DELETE FROM cet_attempts WHERE rowid NOT IN ("
-            "  SELECT MIN(rowid) FROM cet_attempts "
-            "  GROUP BY material_id, listening_session_id"
-            ")"
-        )
+        # 空 session 不参与唯一约束（旧接口兼容客户端只传 attemptId）
+        # 部分唯一索引：只约束 listening_session_id 非空的行
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS cet_attempts_session_uniq "
-            "ON cet_attempts(material_id, listening_session_id)"
+            "ON cet_attempts(material_id, listening_session_id) "
+            "WHERE listening_session_id IS NOT NULL AND listening_session_id <> ''"
         )
         conn.commit()
-    except Exception:  # noqa: BLE001
-        # 索引建不上不阻塞主流程，幂等退化为应用层判断
-        pass
+        _ATTEMPT_IDEMPOTENCY_STATE = "ok"
+    except sqlite3.IntegrityError as exc:
+        # 已有重复数据导致索引建不上：不删数据，登记待人工处理
+        conn.rollback()
+        _ATTEMPT_IDEMPOTENCY_STATE = f"needs_dedup: {exc}"
+    except Exception as exc:  # noqa: BLE001
+        conn.rollback()
+        _ATTEMPT_IDEMPOTENCY_STATE = f"failed: {exc}"
+
+
+def attempt_idempotency_state() -> str:
+    """供诊断接口/日志查询：唯一索引是否就绪。"""
+    return _ATTEMPT_IDEMPOTENCY_STATE
 
 
 def find_material_by_lesson(lesson_id: int) -> dict[str, Any] | None:
@@ -953,16 +969,22 @@ def _practice_row(conn, practice_id: str):
 
 
 def _step_payload(row: Any) -> dict[str, Any]:
+    play_range = None if row["start_seconds"] is None else {
+        "startSeconds": row["start_seconds"], "endSeconds": row["end_seconds"],
+    }
+    show_text = bool(row["show_text"])
     return {
+        # B03：契约要求 stepId / playback / textVisible；底座旧字段 id / playRange / showText 保留
+        "stepId": row["id"],
         "id": row["id"],
         "sequence": row["sequence"],
         "action": row["action"],
         "source": row["source"],
-        "playRange": None if row["start_seconds"] is None else {
-            "startSeconds": row["start_seconds"], "endSeconds": row["end_seconds"],
-        },
+        "playRange": play_range,
+        "playback": play_range,
         "speed": row["speed"],
-        "showText": bool(row["show_text"]),
+        "showText": show_text,
+        "textVisible": show_text,
         "feedback": row["feedback"],
         "candidateId": row["candidate_id"],
         "data": json.loads(row["payload_json"] or "{}"),
@@ -1037,6 +1059,9 @@ def _practice_payload(practice_id: str) -> dict[str, Any]:
         "status": practice["status"], "revision": practice["revision"],
         "currentStepId": practice["current_step_id"],
         "currentStep": _step_payload(current_step) if current_step else None,
+        # B03：契约要求 step（当前步骤）与 stepCount
+        "step": _step_payload(current_step) if current_step else None,
+        "stepCount": len(steps),
         "steps": [_step_payload(row) for row in steps],
         "latestFeedback": practice["latest_feedback"], "feedbackSource": practice["feedback_source"],
         "feedbackHistory": feedback_history, "outcome": outcome,
@@ -1580,6 +1605,69 @@ def _apply_review_time(conn, review: Any, applied_ms: int) -> None:
     )
 
 
+def ai_request_status(practice_id: str) -> dict[str, Any]:
+    """B03：查询当前 AI 请求状态（契约要求可查询）。
+
+    返回 aiRequest：{requestId, status, action, createdAt} 或 None。
+    status 枚举：pending / succeeded / failed / cancelled / stale / idle。
+    """
+    with _db() as conn:
+        practice = _practice_row(conn, practice_id)
+        request_id = practice["ai_request_id"]
+        if not request_id:
+            return {"practiceId": practice_id, "aiRequest": None, "status": "idle"}
+        row = conn.execute("SELECT * FROM cet_ai_requests WHERE id=?", (request_id,)).fetchone()
+        if not row:
+            return {"practiceId": practice_id, "aiRequest": None, "status": "idle"}
+        return {
+            "practiceId": practice_id,
+            "status": row["status"],
+            "aiRequest": {
+                "requestId": row["id"],
+                "status": row["status"],
+                "action": row["action"],
+                "errorCode": row["error_code"],
+                "createdAt": row["created_at"],
+                "completedAt": row["completed_at"],
+            },
+        }
+
+
+def cancel_ai_request(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    """B03：取消当前 AI 请求（契约要求可取消）。
+
+    幂等：已取消/已完成的请求再取消不报错，返回当前状态。
+    """
+    with _db() as conn:
+        # 先取写锁，避免与完成路径竞争
+        conn.execute("UPDATE cet_practices SET updated_at=updated_at WHERE id=?", (practice_id,))
+        practice = _practice_row(conn, practice_id)
+        request_id = practice["ai_request_id"]
+        if not request_id:
+            conn.commit()
+            return {"practiceId": practice_id, "aiRequest": None, "status": "idle", "cancelled": False}
+        row = conn.execute("SELECT * FROM cet_ai_requests WHERE id=?", (request_id,)).fetchone()
+        if not row:
+            conn.commit()
+            return {"practiceId": practice_id, "aiRequest": None, "status": "idle", "cancelled": False}
+        if row["status"] == "pending":
+            conn.execute(
+                "UPDATE cet_ai_requests SET status='cancelled',completed_at=? WHERE id=? AND status='pending'",
+                (_now(), request_id),
+            )
+            conn.execute(
+                "UPDATE cet_practices SET ai_request_id=NULL,updated_at=? WHERE id=?",
+                (_now(), practice_id),
+            )
+            cancelled = True
+        else:
+            cancelled = False
+        conn.commit()
+    state = ai_request_status(practice_id)
+    state["cancelled"] = cancelled
+    return state
+
+
 def record_practice_event(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
     event_id = str(body.get("eventId") or "").strip()
     event_type = str(body.get("type") or body.get("eventType") or "").strip()
@@ -1738,6 +1826,8 @@ def record_practice_event(practice_id: str, body: dict[str, Any]) -> dict[str, A
             _apply_review_time(conn, review, applied_ms)
     result = _practice_payload(practice_id)
     result["event"] = {"eventId": event_id, "duplicate": False, "appliedMs": applied_ms, **payload}
+    # B03：契约要求顶层 effectiveMs（_practice_payload 已带，这里兜底）
+    result.setdefault("effectiveMs", 0)
     return result
 
 
@@ -1851,12 +1941,19 @@ def _review_payload(review_id: str, include_practice: bool = True) -> dict[str, 
         entries.append({
             "id": row["entry_id"], "position": row["position"], "status": row["entry_status"],
             "practiceId": row["practice_id"], "item": item,
+            # B03：契约字段别名
+            "entryId": row["entry_id"], "itemId": row["id"],
+            "order": row["position"],
         })
     result = {
         "id": review["id"], "status": review["status"], "budgetMs": review["budget_ms"],
         "effectiveMs": review["effective_ms"], "remainingMs": max(0, review["budget_ms"] - review["effective_ms"]),
         "currentPosition": review["current_position"], "revision": review["revision"],
         "pauseCount": review["pause_count"], "entries": entries,
+        # B03：契约要求 reviewId / items；底座旧字段 id / entries 保留兼容
+        "reviewId": review["id"],
+        "items": entries,
+        "count": len(entries),
         "currentEntryId": next((entry["id"] for entry in entries if entry["position"] == review["current_position"]), None)
         if review["status"] != "complete" else None,
         "createdAt": review["created_at"], "updatedAt": review["updated_at"],

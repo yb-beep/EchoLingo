@@ -1,0 +1,303 @@
+.....sss...s.F....FF...FFFFF.F.FFFsFsFFF..FsssFFFFFFF...FFF.FFFFFFFF.FFF [ 88%]
+FFFFF.FF.                                                                [100%]
+=================================== FAILURES ===================================
+_________________ test_attempt_cannot_change_existing_answers __________________
+tests/test_cet_contract.py:417: in test_attempt_cannot_change_existing_answers
+    assert second.status_code in (400, 409, 422), (
+E   AssertionError: 改动已提交作答应被拒绝，实际 201：{"attemptId":"attempt-2bfa9f3a2e47","unansweredCount":0,"materialId":"cet6-202512-conv2","materialVersion":"sha256-a8ddff44a6d62a5002f4de63","listeningSessionId":"listen-lock-74443-7710573","score":0,
+E   assert 201 in (400, 409, 422)
+E    +  where 201 = <Response [201]>.status_code
+_________________________ test_mark_confirm_and_adjust _________________________
+tests/test_cet_contract.py:529: in test_mark_confirm_and_adjust
+    sug_idx = next(i for i, s in enumerate(sentences) if s["sentenceId"] == mark["suggestedSentenceId"])
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   StopIteration
+_________________ test_mark_confirm_invalid_sentence_rejected __________________
+tests/test_cet_contract.py:554: in test_mark_confirm_invalid_sentence_rejected
+    assert r.status_code in (400, 404, 422), f"非法句子应被拒绝，实际 {r.status_code}"
+E   AssertionError: 非法句子应被拒绝，实际 409
+E   assert 409 in (400, 404, 422)
+E    +  where 409 = <Response [409]>.status_code
+___________________ test_feedback_leads_to_different_actions ___________________
+tests/test_cet_contract.py:702: in test_feedback_leads_to_different_actions
+    step_sound = r_sound.json()["step"]
+                 ^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'step'
+___________ test_heard_feedback_hides_text_and_plays_original_speed ____________
+tests/test_cet_contract.py:727: in test_heard_feedback_hides_text_and_plays_original_speed
+    step = r.json()["step"]
+           ^^^^^^^^^^^^^^^^
+E   KeyError: 'step'
+______________________ test_stale_step_result_is_rejected ______________________
+tests/test_cet_contract.py:740: in test_stale_step_result_is_rejected
+    old_step_id = first["step"]["stepId"]
+                  ^^^^^^^^^^^^^
+E   KeyError: 'step'
+_____________________ test_local_help_works_without_model ______________________
+tests/test_cet_contract.py:762: in test_local_help_works_without_model
+    assert r.status_code == 200, f"本地动作 {action} 失败：{r.text[:200]}"
+E   AssertionError: 本地动作 replay 失败：{"detail":{"code":"INVALID_LOCAL_ACTION","message":"本地动作仅支持 replay、slow、chunk、explain，且需要 actionId。"}}
+E   assert 422 == 200
+E    +  where 422 = <Response [422]>.status_code
+__________________ test_playback_events_dedupe_and_count_time __________________
+tests/test_cet_contract.py:786: in test_playback_events_dedupe_and_count_time
+    assert first.status_code == 200, first.text
+E   AssertionError: {"detail":{"code":"INVALID_EVENT","message":"eventId 或事件类型无效。","allowedTypes":["activity_heartbeat","feedback","playback_end","playback_interrupt","playback_start","transfer_answer","visibility"]}}
+E   assert 422 == 200
+E    +  where 422 = <Response [422]>.status_code
+______________ test_finish_is_idempotent_and_latest_feedback_wins ______________
+tests/test_cet_contract.py:872: in test_finish_is_idempotent_and_latest_feedback_wins
+    assert r1.json().get("latestFeedback") == "sound", "最终结果必须反映最新反馈 sound"
+E   AssertionError: 最终结果必须反映最新反馈 sound
+E   assert None == 'sound'
+E    +  where None = <built-in method get of dict object at 0x1095fcd80>('latestFeedback')
+E    +    where <built-in method get of dict object at 0x1095fcd80> = {'practice': {'aiRequest': {'action': 'transfer', 'completedAt': '2026-11-05T14:08:34.198913+00:00', 'createdAt': '202...3', 'createdAt': '2026-11-05T11:27:21.755448+00:00', 'feedbackSource': 'user', 'id': 'item-a42523babf3c80020e3e', ...}}.get
+E    +      where {'practice': {'aiRequest': {'action': 'transfer', 'completedAt': '2026-11-05T14:08:34.198913+00:00', 'createdAt': '202...3', 'createdAt': '2026-11-05T11:27:21.755448+00:00', 'feedbackSource': 'user', 'id': 'item-a42523babf3c80020e3e', ...}} = json()
+E    +        where json = <Response [200]>.json
+________________ test_review_session_binds_original_practice_id ________________
+tests/test_cet_contract.py:897: in test_review_session_binds_original_practice_id
+    original_ids = {f["practiceId"] for f in finished}
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_cet_contract.py:897: in <setcomp>
+    original_ids = {f["practiceId"] for f in finished}
+                    ^^^^^^^^^^^^^^^
+E   KeyError: 'practiceId'
+_____________________ test_review_skip_keeps_item_pending ______________________
+tests/test_cet_contract.py:927: in test_review_skip_keeps_item_pending
+    rid = review["reviewId"]
+          ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'reviewId'
+__________________ test_review_pause_does_not_accumulate_time __________________
+tests/test_cet_contract.py:951: in test_review_pause_does_not_accumulate_time
+    rid = review["reviewId"]
+          ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'reviewId'
+__________________________ test_slow_scenario_is_slow __________________________
+tests/test_cet_contract.py:989: in test_slow_scenario_is_slow
+    assert elapsed >= 1.5, f"慢响应场景应明显变慢，实际 {elapsed:.2f}s"
+E   AssertionError: 慢响应场景应明显变慢，实际 0.15s
+E   assert 0.15462303161621094 >= 1.5
+____________________ test_transfer_returns_real_candidates _____________________
+tests/test_cet_contract.py:1020: in test_transfer_returns_real_candidates
+    step = r.json()["step"]
+           ^^^^^^^^^^^^^^^^
+E   KeyError: 'step'
+____________________ test_transfer_no_candidate_still_saves ____________________
+tests/test_cet_contract.py:1044: in test_transfer_no_candidate_still_saves
+    step = r.json()["step"]
+           ^^^^^^^^^^^^^^^^
+E   KeyError: 'step'
+_________________ test_concurrent_duplicate_events_count_once __________________
+tests/test_cet_contract.py:1082: in test_concurrent_duplicate_events_count_once
+    assert all(c == 200 for c in codes), f"并发重复事件应全部 200（幂等），实际 {codes}"
+E   AssertionError: 并发重复事件应全部 200（幂等），实际 [422, 422, 422, 422, 422, 422, 422, 422]
+E   assert False
+E    +  where False = all(<generator object test_concurrent_duplicate_events_count_once.<locals>.<genexpr> at 0x1094ccad0>)
+__________ test_concurrent_stale_and_fresh_next_do_not_corrupt_state ___________
+tests/test_cet_contract.py:1167: in test_concurrent_stale_and_fresh_next_do_not_corrupt_state
+    assert body["currentStepId"] == cur["stepId"], "currentStepId 必须与当前步骤一致"
+                                    ^^^^^^^^^^^^^
+E   KeyError: 'stepId'
+__________________________ test_practice_status_enum ___________________________
+tests/test_cet_contract.py:1283: in test_practice_status_enum
+    assert finished.status_code == 200, finished.text
+E   AssertionError: {"detail":{"code":"STALE_RESPONSE","message":"步骤或材料版本已变化，请刷新后重试。"}}
+E   assert 409 == 200
+E    +  where 409 = <Response [409]>.status_code
+____________________________ test_step_action_enum _____________________________
+tests/test_cet_contract.py:1295: in test_step_action_enum
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":{"code":"STALE_RESPONSE","message":"步骤或材料版本已变化，请刷新后重试。"}}
+E   assert 409 == 200
+E    +  where 409 = <Response [409]>.status_code
+__________________ test_review_status_enum_through_lifecycle ___________________
+tests/test_cet_contract.py:1317: in test_review_status_enum_through_lifecycle
+    rid = review["reviewId"]
+          ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'reviewId'
+____________________ test_review_item_status_always_in_enum ____________________
+tests/test_cet_contract.py:1337: in test_review_item_status_always_in_enum
+    rid = review["reviewId"]
+          ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'reviewId'
+_________________ test_playback_event_carries_required_fields __________________
+tests/test_cet_contract.py:1382: in test_playback_event_carries_required_fields
+    assert r.status_code == 200, f"{etype} 事件应被接受：{r.text[:200]}"
+E   AssertionError: start 事件应被接受：{"detail":{"code":"INVALID_EVENT","message":"eventId 或事件类型无效。","allowedTypes":["activity_heartbeat","feedback","playback_end","playback_interrupt","playback_start","transfer_answer","visibility"]}}
+E   assert 422 == 200
+E    +  where 422 = <Response [422]>.status_code
+________________ test_model_request_bound_to_practice_and_step _________________
+tests/test_cet_contract.py:1411: in test_model_request_bound_to_practice_and_step
+    assert req.get("requestId"), "模型请求应带可追溯的 requestId（7.3 要求绑定请求）"
+E   AssertionError: 模型请求应带可追溯的 requestId（7.3 要求绑定请求）
+E   assert None
+E    +  where None = <built-in method get of dict object at 0x1096dcd80>('requestId')
+E    +    where <built-in method get of dict object at 0x1096dcd80> = {}.get
+___________ test_material_ref_press_time_confirmed_sentence_all_kept ___________
+tests/test_cet_contract.py:1444: in test_material_ref_press_time_confirmed_sentence_all_kept
+    assert confirmed.status_code == 200, confirmed.text
+E   AssertionError: {"detail":{"code":"ATTEMPT_REQUIRED","message":"请先交卷，再确认回听句子。"}}
+E   assert 409 == 200
+E    +  where 409 = <Response [409]>.status_code
+____________________ test_review_budget_caps_effective_time ____________________
+tests/test_cet_contract.py:1546: in test_review_budget_caps_effective_time
+    rid = review["reviewId"]
+          ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'reviewId'
+________________ test_review_can_finish_after_budget_exhausted _________________
+tests/test_cet_contract.py:1568: in test_review_can_finish_after_budget_exhausted
+    rid = review["reviewId"]
+          ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'reviewId'
+___________ test_review_no_more_time_counted_after_budget_exhausted ____________
+tests/test_cet_contract.py:1594: in test_review_no_more_time_counted_after_budget_exhausted
+    rid = review["reviewId"]
+          ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'reviewId'
+_______________________ test_review_caps_items_at_three ________________________
+tests/test_cet_contract.py:1638: in test_review_caps_items_at_three
+    assert len(review["items"]) == 3, (
+               ^^^^^^^^^^^^^^^
+E   KeyError: 'items'
+_______________ test_review_items_are_deterministically_ordered ________________
+tests/test_cet_contract.py:1662: in test_review_items_are_deterministically_ordered
+    first_ids = [i["practiceId"] for i in first["items"]]
+                                          ^^^^^^^^^^^^^^
+E   KeyError: 'items'
+____________ test_mark_snaps_to_correct_sentence_for_all_sentences _____________
+tests/test_cet_contract.py:1691: in test_mark_snaps_to_correct_sentence_for_all_sentences
+    assert not wrong, (
+E   AssertionError: 32 处吸附错误（期望句, 按键秒, 实际句）：[('s01', 1.75, 'v2-2181-0'), ('s02', 5.28, 'v2-2181-1'), ('s03', 8.44, 'v2-2181-2'), ('s04', 10.62, 'v2-2181-3'), ('s05', 12.69, 'v2-2181-4'), ('s06', 15.61, 'v2-2181-5')]
+E   assert not [('s01', 1.75, 'v2-2181-0'), ('s02', 5.28, 'v2-2181-1'), ('s03', 8.44, 'v2-2181-2'), ('s04', 10.62, 'v2-2181-3'), ('s05', 12.69, 'v2-2181-4'), ('s06', 15.61, 'v2-2181-5'), ...]
+________________ test_mark_snaps_to_boundary_belonging_sentence ________________
+tests/test_cet_contract.py:1710: in test_mark_snaps_to_boundary_belonging_sentence
+    assert got == probe["sentenceId"], (
+E   AssertionError: s03 的起点 7.28s 应吸到本句，实际吸到 v2-2181-1
+E   assert 'v2-2181-1' == 's03'
+E     
+E     - s03
+E     + v2-2181-1
+__________________ test_playback_under_threshold_not_counted ___________________
+tests/test_cet_contract.py:1730: in test_playback_under_threshold_not_counted
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":{"code":"INVALID_EVENT","message":"eventId 或事件类型无效。","allowedTypes":["activity_heartbeat","feedback","playback_end","playback_interrupt","playback_start","transfer_answer","visibility"]}}
+E   assert 422 == 200
+E    +  where 422 = <Response [422]>.status_code
+___________________ test_playback_above_threshold_is_counted ___________________
+tests/test_cet_contract.py:1748: in test_playback_above_threshold_is_counted
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":{"code":"INVALID_EVENT","message":"eventId 或事件类型无效。","allowedTypes":["activity_heartbeat","feedback","playback_end","playback_interrupt","playback_start","transfer_answer","visibility"]}}
+E   assert 422 == 200
+E    +  where 422 = <Response [422]>.status_code
+______________ test_playback_threshold_reports_expected_duration _______________
+tests/test_cet_contract.py:1767: in test_playback_threshold_reports_expected_duration
+    assert pt, "响应应带 playThrough 说明门槛判定过程（便于前端与测试核对）"
+E   AssertionError: 响应应带 playThrough 说明门槛判定过程（便于前端与测试核对）
+E   assert None
+_____________________ test_marks_survive_relist_stable_ids _____________________
+tests/test_cet_contract.py:1811: in test_marks_survive_relist_stable_ids
+    assert a["confirmedSentenceId"] == mark["suggestedSentenceId"], "确认句子不能丢"
+E   AssertionError: 确认句子不能丢
+E   assert None == 'v2-2181-11'
+_______________ test_ai_request_starts_pending_and_is_queryable ________________
+tests/test_cet_contract.py:1858: in test_ai_request_starts_pending_and_is_queryable
+    assert st.status_code == 200, st.text
+E   AssertionError: {"detail":"Not Found"}
+E   assert 404 == 200
+E    +  where 404 = <Response [404]>.status_code
+_______________________ test_ai_request_can_be_cancelled _______________________
+tests/test_cet_contract.py:1881: in test_ai_request_can_be_cancelled
+    assert r.status_code == 200, f"pending 应可取消：{r.text[:200]}"
+E   AssertionError: pending 应可取消：{"detail":"Not Found"}
+E   assert 404 == 200
+E    +  where 404 = <Response [404]>.status_code
+________________ test_cancelled_request_late_result_is_rejected ________________
+tests/test_cet_contract.py:1919: in test_cancelled_request_late_result_is_rejected
+    assert st["aiRequest"]["status"] == "cancelled", (
+           ^^^^^^^^^^^^^^^
+E   KeyError: 'aiRequest'
+____________________ test_ai_failure_is_reported_with_code _____________________
+tests/test_cet_contract.py:1936: in test_ai_failure_is_reported_with_code
+    assert info.get("code"), f"错误应带 code 供前端分支：{body}"
+E   AssertionError: 错误应带 code 供前端分支：{'detail': {'code': 'STALE_RESPONSE', 'message': '步骤或材料版本已变化，请刷新后重试。'}}
+E   assert None
+E    +  where None = <built-in method get of dict object at 0x10e951e80>('code')
+E    +    where <built-in method get of dict object at 0x10e951e80> = {}.get
+________________ test_ai_invalid_output_is_rejected_not_written ________________
+tests/test_cet_contract.py:1960: in test_ai_invalid_output_is_rejected_not_written
+    assert after["stepCount"] == before["stepCount"], "无效输出不得新增步骤"
+           ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'stepCount'
+________________ test_review_replace_swaps_in_an_unlisted_item _________________
+tests/test_cet_contract.py:1976: in test_review_replace_swaps_in_an_unlisted_item
+    rid = review["reviewId"]
+          ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'reviewId'
+_____________________ test_review_replace_keeps_provenance _____________________
+tests/test_cet_contract.py:2004: in test_review_replace_keeps_provenance
+    rid = review["reviewId"]
+          ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'reviewId'
+______________ test_review_replace_without_candidates_is_rejected ______________
+tests/test_cet_contract.py:2025: in test_review_replace_without_candidates_is_rejected
+    rid = review["reviewId"]
+          ^^^^^^^^^^^^^^^^^^
+E   KeyError: 'reviewId'
+_______________________ test_save_works_after_ai_failure _______________________
+tests/test_cet_contract.py:2088: in test_save_works_after_ai_failure
+    assert local.status_code == 200, (
+E   AssertionError: 模型失败后本地动作应仍可用，实际 422：{"detail":{"code":"INVALID_LOCAL_ACTION","message":"本地动作仅支持 replay、slow、chunk、explain，且需要 actionId。"}}
+E   assert 422 == 200
+E    +  where 422 = <Response [422]>.status_code
+______________________ test_retry_after_ai_failure_works _______________________
+tests/test_cet_contract.py:2118: in test_retry_after_ai_failure_works
+    step = retry.json()["step"]
+           ^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'step'
+=========================== short test summary info ============================
+FAILED tests/test_cet_contract.py::test_attempt_cannot_change_existing_answers
+FAILED tests/test_cet_contract.py::test_mark_confirm_and_adjust - StopIteration
+FAILED tests/test_cet_contract.py::test_mark_confirm_invalid_sentence_rejected
+FAILED tests/test_cet_contract.py::test_feedback_leads_to_different_actions
+FAILED tests/test_cet_contract.py::test_heard_feedback_hides_text_and_plays_original_speed
+FAILED tests/test_cet_contract.py::test_stale_step_result_is_rejected - KeyEr...
+FAILED tests/test_cet_contract.py::test_local_help_works_without_model - Asse...
+FAILED tests/test_cet_contract.py::test_playback_events_dedupe_and_count_time
+FAILED tests/test_cet_contract.py::test_finish_is_idempotent_and_latest_feedback_wins
+FAILED tests/test_cet_contract.py::test_review_session_binds_original_practice_id
+FAILED tests/test_cet_contract.py::test_review_skip_keeps_item_pending - KeyE...
+FAILED tests/test_cet_contract.py::test_review_pause_does_not_accumulate_time
+FAILED tests/test_cet_contract.py::test_slow_scenario_is_slow - AssertionErro...
+FAILED tests/test_cet_contract.py::test_transfer_returns_real_candidates - Ke...
+FAILED tests/test_cet_contract.py::test_transfer_no_candidate_still_saves - K...
+FAILED tests/test_cet_contract.py::test_concurrent_duplicate_events_count_once
+FAILED tests/test_cet_contract.py::test_concurrent_stale_and_fresh_next_do_not_corrupt_state
+FAILED tests/test_cet_contract.py::test_practice_status_enum - AssertionError...
+FAILED tests/test_cet_contract.py::test_step_action_enum - AssertionError: {"...
+FAILED tests/test_cet_contract.py::test_review_status_enum_through_lifecycle
+FAILED tests/test_cet_contract.py::test_review_item_status_always_in_enum - K...
+FAILED tests/test_cet_contract.py::test_playback_event_carries_required_fields
+FAILED tests/test_cet_contract.py::test_model_request_bound_to_practice_and_step
+FAILED tests/test_cet_contract.py::test_material_ref_press_time_confirmed_sentence_all_kept
+FAILED tests/test_cet_contract.py::test_review_budget_caps_effective_time - K...
+FAILED tests/test_cet_contract.py::test_review_can_finish_after_budget_exhausted
+FAILED tests/test_cet_contract.py::test_review_no_more_time_counted_after_budget_exhausted
+FAILED tests/test_cet_contract.py::test_review_caps_items_at_three - KeyError...
+FAILED tests/test_cet_contract.py::test_review_items_are_deterministically_ordered
+FAILED tests/test_cet_contract.py::test_mark_snaps_to_correct_sentence_for_all_sentences
+FAILED tests/test_cet_contract.py::test_mark_snaps_to_boundary_belonging_sentence
+FAILED tests/test_cet_contract.py::test_playback_under_threshold_not_counted
+FAILED tests/test_cet_contract.py::test_playback_above_threshold_is_counted
+FAILED tests/test_cet_contract.py::test_playback_threshold_reports_expected_duration
+FAILED tests/test_cet_contract.py::test_marks_survive_relist_stable_ids - Ass...
+FAILED tests/test_cet_contract.py::test_ai_request_starts_pending_and_is_queryable
+FAILED tests/test_cet_contract.py::test_ai_request_can_be_cancelled - Asserti...
+FAILED tests/test_cet_contract.py::test_cancelled_request_late_result_is_rejected
+FAILED tests/test_cet_contract.py::test_ai_failure_is_reported_with_code - As...
+FAILED tests/test_cet_contract.py::test_ai_invalid_output_is_rejected_not_written
+FAILED tests/test_cet_contract.py::test_review_replace_swaps_in_an_unlisted_item
+FAILED tests/test_cet_contract.py::test_review_replace_keeps_provenance - Key...
+FAILED tests/test_cet_contract.py::test_review_replace_without_candidates_is_rejected
+FAILED tests/test_cet_contract.py::test_save_works_after_ai_failure - Asserti...
+FAILED tests/test_cet_contract.py::test_retry_after_ai_failure_works - KeyErr...
+45 failed, 27 passed, 9 skipped in 20.62s

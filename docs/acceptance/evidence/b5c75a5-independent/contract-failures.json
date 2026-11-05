@@ -1,0 +1,227 @@
+[
+  {
+    "test": "test_attempt_cannot_change_existing_answers",
+    "firstFailure": "AssertionError: 改动已提交作答应被拒绝，实际 201：{\"attemptId\":\"attempt-2bfa9f3a2e47\",\"unansweredCount\":0,\"materialId\":\"cet6-202512-conv2\",\"materialVersion\":\"sha256-a8ddff44a6d62a5002f4de63\",\"listeningSessionId\":\"listen-lock-74443-7710573\",\"score\":0,",
+    "initialTriage": "其余业务语义或可追溯字段需核对"
+  },
+  {
+    "test": "test_mark_confirm_and_adjust",
+    "firstFailure": "StopIteration",
+    "initialTriage": "fixture 身份/回溯策略不一致"
+  },
+  {
+    "test": "test_mark_confirm_invalid_sentence_rejected",
+    "firstFailure": "AssertionError: 非法句子应被拒绝，实际 409",
+    "initialTriage": "步骤/版本/交卷前置或错误协议需核对"
+  },
+  {
+    "test": "test_feedback_leads_to_different_actions",
+    "firstFailure": "KeyError: 'step'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_heard_feedback_hides_text_and_plays_original_speed",
+    "firstFailure": "KeyError: 'step'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_stale_step_result_is_rejected",
+    "firstFailure": "KeyError: 'step'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_local_help_works_without_model",
+    "firstFailure": "AssertionError: 本地动作 replay 失败：{\"detail\":{\"code\":\"INVALID_LOCAL_ACTION\",\"message\":\"本地动作仅支持 replay、slow、chunk、explain，且需要 actionId。\"}}",
+    "initialTriage": "本地动作请求缺 actionId"
+  },
+  {
+    "test": "test_playback_events_dedupe_and_count_time",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"INVALID_EVENT\",\"message\":\"eventId 或事件类型无效。\",\"allowedTypes\":[\"activity_heartbeat\",\"feedback\",\"playback_end\",\"playback_interrupt\",\"playback_start\",\"transfer_answer\",\"visibility\"]}}",
+    "initialTriage": "事件协议不一致"
+  },
+  {
+    "test": "test_finish_is_idempotent_and_latest_feedback_wins",
+    "firstFailure": "AssertionError: 最终结果必须反映最新反馈 sound",
+    "initialTriage": "其余业务语义或可追溯字段需核对"
+  },
+  {
+    "test": "test_review_session_binds_original_practice_id",
+    "firstFailure": "KeyError: 'practiceId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_review_skip_keeps_item_pending",
+    "firstFailure": "KeyError: 'reviewId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_review_pause_does_not_accumulate_time",
+    "firstFailure": "KeyError: 'reviewId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_slow_scenario_is_slow",
+    "firstFailure": "AssertionError: 慢响应场景应明显变慢，实际 0.15s",
+    "initialTriage": "真实环境不支持测试场景注入"
+  },
+  {
+    "test": "test_transfer_returns_real_candidates",
+    "firstFailure": "KeyError: 'step'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_transfer_no_candidate_still_saves",
+    "firstFailure": "KeyError: 'step'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_concurrent_duplicate_events_count_once",
+    "firstFailure": "AssertionError: 并发重复事件应全部 200（幂等），实际 [422, 422, 422, 422, 422, 422, 422, 422]",
+    "initialTriage": "事件协议不一致"
+  },
+  {
+    "test": "test_concurrent_stale_and_fresh_next_do_not_corrupt_state",
+    "firstFailure": "KeyError: 'stepId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_practice_status_enum",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}",
+    "initialTriage": "步骤/版本/交卷前置或错误协议需核对"
+  },
+  {
+    "test": "test_step_action_enum",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"STALE_RESPONSE\",\"message\":\"步骤或材料版本已变化，请刷新后重试。\"}}",
+    "initialTriage": "步骤/版本/交卷前置或错误协议需核对"
+  },
+  {
+    "test": "test_review_status_enum_through_lifecycle",
+    "firstFailure": "KeyError: 'reviewId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_review_item_status_always_in_enum",
+    "firstFailure": "KeyError: 'reviewId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_playback_event_carries_required_fields",
+    "firstFailure": "AssertionError: start 事件应被接受：{\"detail\":{\"code\":\"INVALID_EVENT\",\"message\":\"eventId 或事件类型无效。\",\"allowedTypes\":[\"activity_heartbeat\",\"feedback\",\"playback_end\",\"playback_interrupt\",\"playback_start\",\"transfer_answer\",\"visibility\"]}}",
+    "initialTriage": "事件协议不一致"
+  },
+  {
+    "test": "test_model_request_bound_to_practice_and_step",
+    "firstFailure": "AssertionError: 模型请求应带可追溯的 requestId（7.3 要求绑定请求）",
+    "initialTriage": "其余业务语义或可追溯字段需核对"
+  },
+  {
+    "test": "test_material_ref_press_time_confirmed_sentence_all_kept",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"ATTEMPT_REQUIRED\",\"message\":\"请先交卷，再确认回听句子。\"}}",
+    "initialTriage": "步骤/版本/交卷前置或错误协议需核对"
+  },
+  {
+    "test": "test_review_budget_caps_effective_time",
+    "firstFailure": "KeyError: 'reviewId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_review_can_finish_after_budget_exhausted",
+    "firstFailure": "KeyError: 'reviewId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_review_no_more_time_counted_after_budget_exhausted",
+    "firstFailure": "KeyError: 'reviewId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_review_caps_items_at_three",
+    "firstFailure": "KeyError: 'items'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_review_items_are_deterministically_ordered",
+    "firstFailure": "KeyError: 'items'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_mark_snaps_to_correct_sentence_for_all_sentences",
+    "firstFailure": "AssertionError: 32 处吸附错误（期望句, 按键秒, 实际句）：[('s01', 1.75, 'v2-2181-0'), ('s02', 5.28, 'v2-2181-1'), ('s03', 8.44, 'v2-2181-2'), ('s04', 10.62, 'v2-2181-3'), ('s05', 12.69, 'v2-2181-4'), ('s06', 15.61, 'v2-2181-5')]",
+    "initialTriage": "fixture 身份/回溯策略不一致"
+  },
+  {
+    "test": "test_mark_snaps_to_boundary_belonging_sentence",
+    "firstFailure": "AssertionError: s03 的起点 7.28s 应吸到本句，实际吸到 v2-2181-1",
+    "initialTriage": "fixture 身份/回溯策略不一致"
+  },
+  {
+    "test": "test_playback_under_threshold_not_counted",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"INVALID_EVENT\",\"message\":\"eventId 或事件类型无效。\",\"allowedTypes\":[\"activity_heartbeat\",\"feedback\",\"playback_end\",\"playback_interrupt\",\"playback_start\",\"transfer_answer\",\"visibility\"]}}",
+    "initialTriage": "事件协议不一致"
+  },
+  {
+    "test": "test_playback_above_threshold_is_counted",
+    "firstFailure": "AssertionError: {\"detail\":{\"code\":\"INVALID_EVENT\",\"message\":\"eventId 或事件类型无效。\",\"allowedTypes\":[\"activity_heartbeat\",\"feedback\",\"playback_end\",\"playback_interrupt\",\"playback_start\",\"transfer_answer\",\"visibility\"]}}",
+    "initialTriage": "事件协议不一致"
+  },
+  {
+    "test": "test_playback_threshold_reports_expected_duration",
+    "firstFailure": "AssertionError: 响应应带 playThrough 说明门槛判定过程（便于前端与测试核对）",
+    "initialTriage": "其余业务语义或可追溯字段需核对"
+  },
+  {
+    "test": "test_marks_survive_relist_stable_ids",
+    "firstFailure": "AssertionError: 确认句子不能丢",
+    "initialTriage": "步骤/版本/交卷前置或错误协议需核对"
+  },
+  {
+    "test": "test_ai_request_starts_pending_and_is_queryable",
+    "firstFailure": "AssertionError: {\"detail\":\"Not Found\"}",
+    "initialTriage": "异步查询/取消路由缺失"
+  },
+  {
+    "test": "test_ai_request_can_be_cancelled",
+    "firstFailure": "AssertionError: pending 应可取消：{\"detail\":\"Not Found\"}",
+    "initialTriage": "异步查询/取消路由缺失"
+  },
+  {
+    "test": "test_cancelled_request_late_result_is_rejected",
+    "firstFailure": "KeyError: 'aiRequest'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_ai_failure_is_reported_with_code",
+    "firstFailure": "AssertionError: 错误应带 code 供前端分支：{'detail': {'code': 'STALE_RESPONSE', 'message': '步骤或材料版本已变化，请刷新后重试。'}}",
+    "initialTriage": "步骤/版本/交卷前置或错误协议需核对"
+  },
+  {
+    "test": "test_ai_invalid_output_is_rejected_not_written",
+    "firstFailure": "KeyError: 'stepCount'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_review_replace_swaps_in_an_unlisted_item",
+    "firstFailure": "KeyError: 'reviewId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_review_replace_keeps_provenance",
+    "firstFailure": "KeyError: 'reviewId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_review_replace_without_candidates_is_rejected",
+    "firstFailure": "KeyError: 'reviewId'",
+    "initialTriage": "响应字段或包装不一致"
+  },
+  {
+    "test": "test_save_works_after_ai_failure",
+    "firstFailure": "AssertionError: 模型失败后本地动作应仍可用，实际 422：{\"detail\":{\"code\":\"INVALID_LOCAL_ACTION\",\"message\":\"本地动作仅支持 replay、slow、chunk、explain，且需要 actionId。\"}}",
+    "initialTriage": "本地动作请求缺 actionId"
+  },
+  {
+    "test": "test_retry_after_ai_failure_works",
+    "firstFailure": "KeyError: 'step'",
+    "initialTriage": "响应字段或包装不一致"
+  }
+]

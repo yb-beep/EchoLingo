@@ -1,7 +1,8 @@
 """Lead 完整用户流程：选级别→打开材料→播放→逐句→查词收藏→返回→恢复位置"""
 from playwright.sync_api import sync_playwright
 import json
-BASE="http://127.0.0.1:5186"
+import os
+BASE=os.environ.get("TRIAL_BASE","http://127.0.0.1:5190")
 steps=[]
 def rec(name, ok, actual): steps.append({"step":name,"pass":ok,"actual":actual}); print(f"  [{'PASS' if ok else 'FAIL'}] {name}: {actual}")
 

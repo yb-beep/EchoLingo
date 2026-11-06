@@ -1,10 +1,15 @@
 <!doctype html>
+{#- CET 上下文兜底：本模板也会被「导出 HTML」路径（v2_intensive_export）渲染，
+    那条路径只传 lesson_id。缺省时退回通用模式语义，不让模板因 Undefined 报错。-#}
+{%- set cet_on = cet_on | default(false) -%}
+{%- set cet_features = cet_features | default({}) -%}
+{%- set cet_copy = cet_copy | default({}) -%}
 <html lang="zh-CN">
 <head>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎧</text></svg>">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>逐句精读 - EchoLingo</title>
+  <title>{% if cet_on %}逐句精听 - EchoLingo{% else %}逐句精读 - EchoLingo{% endif %}</title>
   <style>
     :root {
       --paper: #f4f1e8;
@@ -580,10 +585,10 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="back-link" href="/workspace/{{ lesson_id }}">← 返回课程</a>
+    <a class="back-link" href="/workspace/{{ lesson_id }}">← 返回听力材料</a>
     <div class="title-block">
-      <div class="eyebrow">Phase B · 逐句精学</div>
-      <h1 id="lesson-title">逐句精读</h1>
+      <div class="eyebrow">{% if cet_on %}听力原文 · 逐句精听{% else %}Phase B · 逐句精学{% endif %}</div>
+      <h1 id="lesson-title">{% if cet_on %}逐句精听{% else %}逐句精读{% endif %}</h1>
     </div>
     <div id="study-progress" class="study-progress">正在载入文档…</div>
   </header>
@@ -616,8 +621,8 @@
     <section class="sentence-column" aria-label="逐句精学">
       <div class="column-intro">
         <div>
-          <h2>句子精学工坊</h2>
-          <p>展开句子进入 v1 精学结构：音标、重点词汇、口语表达与情景造句。</p>
+          <h2>{% if cet_on %}逐句精听{% else %}句子精学工坊{% endif %}</h2>
+          <p>{% if cet_on %}展开句子看音标与重点词汇，可逐句回听原声；{% if cet_features.scenario_sentence %}情景造句{% else %}口语输出练习已收束，专注听懂与词汇。{% endif %}{% else %}展开句子进入 v1 精学结构：音标、重点词汇、口语表达与情景造句。{% endif %}</p>
         </div>
         <div class="column-actions">
           <div class="view-switch" aria-label="句子视图">
@@ -651,11 +656,29 @@
   <div id="intensive-youtube-host" aria-hidden="true"></div>
   <aside id="intensive-word-card" class="word-card" role="dialog" aria-label="重点词汇卡片" aria-live="polite" tabindex="-1"></aside>
 
+  <script>
+    // 集中开关（唯一来源：cet_mode.template_context()），不另写第二套 if (cetMode)
+    window.__CET_BOOT__ = {
+      enabled: {{ cet_on | tojson }},
+      features: {{ cet_features | tojson }},
+      copy: {{ cet_copy | tojson }},
+      lessonId: {{ lesson_id }},
+    };
+  </script>
   <script src="/static/elt_credits.js?v=20260809-1"></script>
-<script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits){eltCredits.annotate();}});</script>
+<script>document.addEventListener("DOMContentLoaded",function(){
+  // 积分/计费入口在 CET 模式收束：不扫描费率，避免对未启用的计费模块发请求。
+  var boot = window.__CET_BOOT__ || {};
+  if (boot.enabled && boot.features && boot.features.credits_account === false) return;
+  if(window.eltCredits){window.eltCredits.annotate();}
+});</script>
 <script src="/static/natural-tts.js?v=20260809-1"></script>
   <script>
     const LESSON_ID = {{ lesson_id }};
+    const CET_ON = window.__CET_BOOT__.enabled;
+    const CET_FEATURES = window.__CET_BOOT__.features || {};
+    const CET_COPY = window.__CET_BOOT__.copy || {};
+    function cetFeature(key) { return Boolean(CET_FEATURES[key]); }
     const targetSentenceParam = new URLSearchParams(window.location.search).get('sentence_key');
     const targetSentenceKey = targetSentenceParam === null ? null : Number(targetSentenceParam);
     let intensiveDocument = {lesson: {}, sentences: []};
@@ -913,6 +936,7 @@
               </div>
             </section>
 
+            {% if cet_features.ielts_reuse %}
             <section class="v1-module" data-v1-module="oral-expression">
               <div class="v1-module-head"><h3>③ 口语表达解析</h3><span class="v1-module-kicker">雅思复用</span></div>
               <div class="v1-module-body">
@@ -920,7 +944,9 @@
                 <div data-oral-result="${sentence.key}">${oral ? renderOralAnalysis(oral, sentence.key) : '<div class="filter-note">识别句式、表达功能、雅思复用场景和迁移模板。</div>'}</div>
               </div>
             </section>
+            {% endif %}
 
+            {% if cet_features.scenario_sentence %}
             <section class="v1-module" data-v1-module="practice">
               <div class="v1-module-head"><h3>④ 情景造句</h3><span class="v1-module-kicker">输出练习</span></div>
               <div class="v1-module-body">
@@ -937,6 +963,7 @@
                 <div class="practice-history-panel" data-practice-history="${sentence.key}" hidden></div>
               </div>
             </section>
+            {% endif %}
 
           </div>
         </div>
@@ -1565,12 +1592,14 @@
       return `<div class="oral-modules">
         <div class="oral-module"><span class="oral-module-label">A · 句式识别</span>${escapeHtml(data.pattern_name || '基础简单句')} · ${escapeHtml(data.cefr_level || 'B1')}</div>
         <div class="oral-module"><span class="oral-module-label">B · 表达功能</span>${escapeHtml(data.function_cn || '暂无说明')}</div>
-        <div class="oral-module"><span class="oral-module-label">C · 雅思复用</span>${escapeHtml(data.ielts_reuse || '暂无说明')}</div>
+        {% if cet_features.ielts_reuse %}<div class="oral-module"><span class="oral-module-label">C · 雅思复用</span>${escapeHtml(data.ielts_reuse || '暂无说明')}</div>{% endif %}
         <div class="oral-module"><span class="oral-module-label">D · 迁移模板</span><code class="oral-template">${templateText ? linkifyEnglish(templateText, key) : '暂无模板'}</code>${templateText ? `<button class="practice-sentence-speak" type="button" data-speak-example="${encodeURIComponent(templateText)}" aria-label="朗读模板">🔊 朗读</button>` : ''}${exampleText ? `<div style="margin-top:6px">${linkifyEnglish(exampleText, key)} <button class="practice-sentence-speak" type="button" data-speak-example="${encodeURIComponent(exampleText)}" aria-label="朗读示例">🔊 朗读</button></div>` : ''}</div>
       </div>`;
     }
 
     async function generateOralAnalysis(key, force = false) {
+      // ielts_reuse 收束时该区块整块不渲染；这里兜底防止旧链接/脚本触发模型调用。
+      if (!cetFeature('ielts_reuse')) return null;
       const sentence = sentenceByKey(key);
       const result = document.querySelector(`[data-oral-result="${key}"]`);
       if (!sentence || !result) return null;
@@ -1604,6 +1633,8 @@
     }
 
     async function generatePracticeHint(key) {
+      // scenario_sentence 收束时该区块整块不渲染；兜底不发起模型调用。
+      if (!cetFeature('scenario_sentence')) return '';
       const sentence = sentenceByKey(key);
       const result = document.querySelector(`[data-practice-hint="${key}"]`);
       const button = document.querySelector(`[data-generate-hint="${key}"]`);
@@ -1664,6 +1695,7 @@
     }
 
     async function submitPractice(key) {
+      if (!cetFeature('scenario_sentence')) return;
       const sentence = sentenceByKey(key);
       const input = document.querySelector(`[data-practice-input="${key}"]`);
       const result = document.querySelector(`[data-practice-result="${key}"]`);
@@ -1886,7 +1918,7 @@
       const rows = [
         ['词性', data.pos], ['语域', data.register], ['基本义', data.basic_meaning],
         ['语境义', data.contextual_meaning], ['英文释义', data.en_definition], ['用法', data.usage],
-        ['雅思提示', data.ielts_note],
+        {% if cet_features.ielts_reuse %}['雅思提示', data.ielts_note],{% endif %}
       ].filter(row => row[1]);
       const lists = [
         ['常见搭配', data.collocations], ['近义词辨析', data.synonyms], ['例句', data.examples],

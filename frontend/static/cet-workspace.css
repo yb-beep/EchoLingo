@@ -1,0 +1,250 @@
+/* 四六级听力底座 · 工作区增量样式（cet-workspace.css）
+ *
+ * 原则（任务书 §4 P3）：
+ *   - 沿用现有播放器、布局和视觉，不重做设计系统
+ *   - 只做「纯音频页面的空间收束」和「CET 文案/状态」的增量覆盖
+ *   - 所有规则都以 body[data-cet-mode="on"] 或 .cet-* 前缀限定，
+ *     ELT_CET_MODE=0 退回通用模式时本文件不产生任何视觉影响
+ *
+ * 依赖：workspace.html 在 <body> 上写 data-cet-mode / data-lesson-mode
+ */
+
+/* ── 1. 纯音频：减轻大块视频占位 ──────────────────────────── */
+/* 原 #youtube-player 固定 16:9 + min-height 300px，纯音频时是一整块黑。
+   只改「本地音频」这一态，视频/YouTube 仍用原样式。 */
+body[data-cet-mode="on"] #youtube-player.local-audio {
+  aspect-ratio: auto;
+  min-height: 96px;
+  max-height: none;
+  background: linear-gradient(180deg, #f2f6f2 0%, #eaf0ea 100%);
+  border: 1px solid var(--line);
+}
+
+body[data-cet-mode="on"] #youtube-player.local-audio audio {
+  width: 100%;
+  height: 54px;
+  background: transparent;
+}
+
+/* 音频态下 video-card 内边距收紧，把高度让给原文 */
+body[data-cet-mode="on"] .video-card:has(#youtube-player.local-audio) {
+  padding: 6px;
+}
+
+/* 没有任何媒体时不要留一块空黑框 */
+body[data-cet-mode="on"] #youtube-player:empty {
+  display: none;
+}
+body[data-cet-mode="on"] .video-card:has(#youtube-player:empty) {
+  display: none;
+}
+
+/* ── 2. 学习状态区：CET 专用信息条 ────────────────────────── */
+.cet-study-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cet-study-bar[hidden] { display: none; }
+
+.cet-study-bar .cet-study-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.cet-study-bar .cet-study-item strong {
+  color: var(--ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cet-study-bar .cet-study-item.cet-muted strong { color: var(--muted); font-weight: 600; }
+
+.cet-study-bar .cet-study-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.cet-study-bar button {
+  min-height: 28px;
+  padding: 3px 10px;
+  font-size: 12px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--brand-dark);
+  cursor: pointer;
+}
+
+.cet-study-bar button:hover:not(:disabled) { background: #e6ede6; }
+.cet-study-bar button:disabled { opacity: .5; cursor: default; }
+
+/* 恢复进度提示：只在真的恢复了位置时出现，几秒后淡出 */
+.cet-resume-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--brand-light);
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 650;
+  animation: cet-resume-fade 6s ease forwards;
+}
+
+@keyframes cet-resume-fade {
+  0%, 72% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ── 3. 收藏面板（P3：保留材料身份与可跳转性）─────────────── */
+.cet-fav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  overscroll-behavior: contain;
+}
+
+.cet-fav-group-title {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.cet-fav-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-alt);
+}
+
+.cet-fav-item.cet-fav-item--sentence { background: #fbfaf3; border-color: #e8e0c4; }
+
+.cet-fav-body { flex: 1 1 auto; min-width: 0; }
+
+.cet-fav-text {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.cet-fav-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cet-fav-meta .cet-fav-warn { color: var(--danger); }
+
+.cet-fav-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cet-fav-actions button {
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--brand-dark);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cet-fav-actions button:hover:not(:disabled) { background: #eef3ee; }
+.cet-fav-actions button:disabled { opacity: .5; cursor: default; }
+.cet-fav-actions .cet-fav-remove { color: var(--danger); border-color: #edd4d0; }
+
+.cet-fav-empty {
+  padding: 16px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.cet-fav-status {
+  padding: 0 12px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.cet-fav-status.cet-fav-status--error { color: var(--danger); }
+
+/* 收藏跳转时高亮目标句，让用户看见「确实回到了原句」 */
+@keyframes cet-fav-target-flash {
+  0%, 100% { box-shadow: none; }
+  30% { box-shadow: 0 0 0 3px rgba(47, 111, 94, .35); }
+}
+
+.cet-fav-target-flash { animation: cet-fav-target-flash 1.6s ease; }
+
+/* ── 4. 收束后的空态（不出现空壳按钮）────────────────────── */
+.cet-retired-note {
+  padding: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  background: var(--surface-alt);
+  margin: 10px 12px;
+}
+
+/* ── 5. 窄窗口（T14）────────────────────────────────────── */
+@media (max-width: 1100px) {
+  body[data-cet-mode="on"] .cet-fav-list { max-height: none; }
+  body[data-cet-mode="on"] .cet-study-bar { font-size: 12px; }
+}
+
+@media (max-width: 720px) {
+  body[data-cet-mode="on"] .cet-study-bar {
+    gap: 6px 10px;
+    padding: 7px 10px;
+  }
+  body[data-cet-mode="on"] .cet-study-bar .cet-study-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  body[data-cet-mode="on"] .cet-fav-item { flex-wrap: wrap; }
+  body[data-cet-mode="on"] .cet-fav-actions {
+    flex-direction: row;
+    width: 100%;
+  }
+}

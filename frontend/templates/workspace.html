@@ -1,10 +1,10 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎧</text></svg>">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Video Workspace - EchoLingo</title>
+  <title>{{ cet_copy.workspace_title }} - EchoLingo</title>
   <style>
     :root {
       --bg: #f6f7f4;
@@ -1617,8 +1617,9 @@
       <span class="home-link-arrow" aria-hidden="true">←</span>
       <span class="home-link-label">首页</span>
     </a>
-    <h1 id="video-title">视频加载中…</h1>
-    <span id="status-badge" class="status-badge">字幕生成中</span>
+    <h1 id="video-title">{% if cet_on %}材料加载中…{% else %}视频加载中…{% endif %}</h1>
+    {#- 首屏不得预设「字幕生成中」：真实状态由 updateStatusBadge() 依据接口数据写入 -#}
+    <span id="status-badge" class="status-badge">—</span>
     <button id="tts-cancel-btn" type="button" style="display:none; border:1px solid #fca5a5; color:#a33b2f; background:none; border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; white-space:nowrap;" onclick="cancelReadingTts()">取消生成音频</button>
     <a id="credit-badge" href="/account" title="积分余额（点击查看详情）" style="display:none; border:1px solid #dde5d6; background:#f8f9f7; color:#33502b; border-radius:6px; padding:3px 10px; font-size:12px; text-decoration:none; white-space:nowrap; font-variant-numeric:tabular-nums;"></a>
     <a id="login-btn" href="/login" style="display:none; border:1px solid #4f6ef7; color:#4f6ef7; border-radius:6px; padding:3px 10px; font-size:12px; text-decoration:none; white-space:nowrap;">登录</a>
@@ -1680,9 +1681,9 @@
             </button>
           </span>
         </div>
-        <div id="current-subtitle">字幕正在后台加载…</div>
+        <div id="current-subtitle">{% if cet_on %}原文加载中…{% else %}字幕正在后台加载…{% endif %}</div>
         <div id="subtitle-translation"></div>
-        <div class="subtitle-meta" id="subtitle-meta">字幕就绪前可正常播放视频。</div>
+        <div class="subtitle-meta" id="subtitle-meta">{% if cet_on %}可先播放音频；逐句原文就绪后自动对齐。{% else %}字幕就绪前可正常播放视频。{% endif %}</div>
         <div class="sentence-tools">
           <div id="vocab-chips" class="vocab-chips"></div>
         </div>
@@ -1698,17 +1699,18 @@
     </section>
 
     <aside class="side-column" aria-label="learning workspace">
-      <div class="sidebar-workspace-tabs" role="tablist" aria-label="学习工具">
+      <div class="sidebar-workspace-tabs" role="tablist" aria-label="学习工具"{% if cet_on %} data-cet-tabs="2"{% endif %}>
         <button class="sidebar-workspace-tab" type="button" role="tab" data-sidebar-target="outline"
                 aria-controls="content-outline-panel" aria-selected="true" tabindex="0">
-          导航<span class="sidebar-tab-status" aria-hidden="true"></span>
+          {% if cet_on %}句段导航{% else %}导航{% endif %}<span class="sidebar-tab-status" aria-hidden="true"></span>
         </button>
         <button class="sidebar-workspace-tab" type="button" role="tab" data-sidebar-target="collection"
                 aria-controls="reading-phase-b" aria-selected="false" tabindex="-1">
           收藏<span class="sidebar-tab-status" aria-hidden="true"></span>
         </button>
+        {#- CET 模式收束泛用 AI 聊天（cet_features.ai_chat_general）：DOM 保留、不展示、不初始化 -#}
         <button class="sidebar-workspace-tab" type="button" role="tab" data-sidebar-target="ai"
-                aria-controls="ai-companion-panel" aria-selected="false" tabindex="-1">
+                aria-controls="ai-companion-panel" aria-selected="false" tabindex="-1"{% if not cet_features.ai_chat_general %} hidden{% endif %}>
           AI 伴读<span class="sidebar-tab-status" aria-hidden="true"></span>
         </button>
       </div>
@@ -1716,12 +1718,12 @@
       <section id="content-outline-panel" class="timeline-card" data-sidebar-panel="outline">
         <div class="panel-head">
           <h2>内容大纲</h2>
-          <span class="panel-note">按主题跳转。用 A/B 按钮选取讨论区间。</span>
-          <button id="generate-outline-summary" class="outline-generate-btn" type="button" onclick="requestDocumentOutline()">AI 总结结构</button>
+          <span class="panel-note">{% if cet_on %}按句段跳转，点句段可定位到对应原声。{% else %}按主题跳转。用 A/B 按钮选取讨论区间。{% endif %}</span>
+          <button id="generate-outline-summary" class="outline-generate-btn" type="button" onclick="requestDocumentOutline()"{% if not cet_features.outline_generation %} hidden{% endif %}>AI 总结结构</button>
         </div>
         <div id="document-summary" class="document-summary" hidden></div>
         <div id="subtitle-timeline">
-          <div class="empty-state">正在生成内容大纲…</div>
+          <div class="empty-state">{% if cet_on %}原文就绪后在这里生成句段导航。{% else %}正在生成内容大纲…{% endif %}</div>
         </div>
       </section>
 
@@ -1752,7 +1754,7 @@
       </section>
 
       <section id="ai-companion-panel" class="chat-card chat-panel sidebar-panel-inactive"
-               data-sidebar-panel="ai" aria-hidden="true">
+               data-sidebar-panel="ai" aria-hidden="true"{% if not cet_features.ai_chat_general %} hidden{% endif %}>
         <div class="panel-head">
           <div class="ai-panel-heading">
             <h2>AI 学伴</h2>
@@ -1823,15 +1825,39 @@
     </div>
   </div>
 </div>
+{#- CET 底座适配层：集中开关快照注入，供 cet-player.js / cet-favorites.js 读取。
+    必须早于任何使用它的脚本（含计费注解门控）。-#}
+<script>
+window.__CET_BOOT__ = {
+  enabled: {{ cet_on | tojson }},
+  features: {{ cet_features | tojson }},
+  copy: {{ cet_copy | tojson }},
+  lessonId: {{ lesson_id }},
+};
+</script>
 <script src="/static/elt_credits.js?v=20260809-1"></script>
-<script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits){eltCredits.annotate();}});</script>
+<script>document.addEventListener("DOMContentLoaded",function(){
+  // 积分/计费入口在 CET 模式收束（cet_features.credits_account）：不扫描费率，
+  // 避免对未启用的计费模块发起请求。计费能力本身与鉴权不变，只是不展示。
+  var boot = window.__CET_BOOT__ || {};
+  if (boot.enabled && boot.features && boot.features.credits_account === false) return;
+  if(window.eltCredits){eltCredits.annotate();}
+});</script>
 <script src="/static/natural-tts.js?v=20260814-1"></script>
 <!-- 四六级卡点训练：独立模块，不改原有导航与样式（计划 §1） -->
 <link rel="stylesheet" href="/static/cet-listening.css?v=20261105-c8">
 <script src="/static/cet-listening.js?v=20261105-c8"></script>
 <script src="/static/voice-input.js?v=20260715-1"></script>
+<link rel="stylesheet" href="/static/cet-workspace.css?v=20261105-p1">
+<script src="/static/cet-player.js?v=20261105-p1" defer></script>
+<script src="/static/cet-favorites.js?v=20261105-p1" defer></script>
 <script>
 const LESSON_ID = {{ lesson_id }};
+// 集中开关（唯一来源：window.__CET_BOOT__ ← cet_mode.template_context()）
+const CET_BOOT = window.__CET_BOOT__ || {enabled: false, features: {}, copy: {}, lessonId: LESSON_ID};
+const CET_ON = Boolean(CET_BOOT.enabled);
+const CET_FEATURES = CET_BOOT.features || {};
+function cetFeature(key) { return Boolean(CET_FEATURES[key]); }
 let lessonData = null;
 let segments = [];
 let sentenceUnits = [];
@@ -1882,6 +1908,8 @@ let pendingReadingPlaybackRange = null;
 let readingPlaybackRequestId = 0;
 const sentenceTranslations = {};
 let subtitleModeInitialized = false;
+// /subtitles 是否已成功回来过：首屏徽标在它之前只能显示「—」，不能断言「无原文」
+let subtitlesLoaded = false;
 const SIDEBAR_ACTIVE_PANEL_KEY = 'english-tool:sidebar-active-panel';
 const SIDEBAR_PANEL_KEYS = ['outline', 'collection', 'ai'];
 let activeSidebarPanel = 'outline';
@@ -1927,8 +1955,19 @@ function setSidebarPanelStatus(panelKey, status = '') {
   tab.setAttribute('aria-label', `${tab.textContent.trim()}${labels[visibleStatus] ? `，${labels[visibleStatus]}` : ''}`);
 }
 
+function sidebarTabKeys() {
+  // CET 模式下泛用 AI 聊天已收束：对应标签不参与初始选中与键盘循环，
+  // 否则会出现「选中了一个不可见面板」的空白侧栏。
+  return [...document.querySelectorAll('.sidebar-workspace-tab[data-sidebar-target]')]
+    .filter(tab => !tab.hidden)
+    .map(tab => tab.dataset.sidebarTarget);
+}
+
 function setActiveSidebarPanel(panelKey, {persist = true, focus = false} = {}) {
-  if (!SIDEBAR_PANEL_KEYS.includes(panelKey)) panelKey = 'outline';
+  const allowed = sidebarTabKeys();
+  if (!SIDEBAR_PANEL_KEYS.includes(panelKey) || !allowed.includes(panelKey)) {
+    panelKey = allowed[0] || 'outline';
+  }
   activeSidebarPanel = panelKey;
   document.querySelectorAll('[data-sidebar-panel]').forEach(panel => {
     const active = panel.dataset.sidebarPanel === panelKey;
@@ -1948,10 +1987,11 @@ function setActiveSidebarPanel(panelKey, {persist = true, focus = false} = {}) {
 }
 
 function initSidebarWorkspaceTabs() {
-  const tabs = [...document.querySelectorAll('.sidebar-workspace-tab[data-sidebar-target]')];
+  const tabs = [...document.querySelectorAll('.sidebar-workspace-tab[data-sidebar-target]')].filter(tab => !tab.hidden);
   if (!tabs.length) return;
   let initialPanel = 'outline';
   try { initialPanel = localStorage.getItem(SIDEBAR_ACTIVE_PANEL_KEY) || 'outline'; } catch (_) {}
+  if (!tabs.some(tab => tab.dataset.sidebarTarget === initialPanel)) initialPanel = tabs[0].dataset.sidebarTarget;
   setActiveSidebarPanel(initialPanel, {persist: false});
   tabs.forEach((tab, index) => {
     tab.addEventListener('click', () => setActiveSidebarPanel(tab.dataset.sidebarTarget));
@@ -2193,11 +2233,17 @@ function toggleChatVoice() {
 
 window.addEventListener('DOMContentLoaded', async () => {
   initSidebarWorkspaceTabs();
-  initChatVoiceInput();
-  initCitationDelegation();
-  loadCachedDocumentOutline();
+  // CET 模式收束：泛用 AI 聊天（ai_chat_general）不初始化语音输入，也不拉会话/历史，
+  // 避免对已收起的模块发起后台请求。DOM 保留，切回通用模式即恢复。
+  if (cetFeature('ai_chat_general')) {
+    initChatVoiceInput();
+    initCitationDelegation();
+  }
+  // 大纲生成（outline_generation）收束时不再自动请求 /outline-summary，
+  // 句段导航改由本地 buildOutlineSections() 从原文直接生成。
+  if (cetFeature('outline_generation')) loadCachedDocumentOutline();
   await refreshLesson();
-  await loadChatSessions();
+  if (cetFeature('ai_chat_general')) await loadChatSessions();
   if (activeStudyMode !== 'reading' || lessonData?.video_id) {
     initPlayer({allowReading: true});
   }
@@ -2232,7 +2278,10 @@ function applyStudyMode() {
   document.querySelector('.learning-controls').hidden = isReading;
   document.querySelector('.subtitle-card').hidden = isReading;
   document.getElementById('reading-phase-a').hidden = !isReading;
-  document.getElementById('reading-phase-b').hidden = !isReading;
+  // 收藏面板是底座核心能力（word_favorites / sentence_favorites），
+  // 纯听力材料没有阅读模式，不能因此把收藏也一起藏掉。
+  const collectionPanel = document.getElementById('reading-phase-b');
+  if (collectionPanel) collectionPanel.hidden = !isReading && !CET_ON;
   const switchEl = document.getElementById('study-mode-switch');
   if (switchEl) {
     switchEl.hidden = availableStudyModes.length < 2;
@@ -2471,6 +2520,7 @@ async function loadSubtitles({render = activeStudyMode !== 'reading'} = {}) {
   if (!resp.ok) return;
   const data = await resp.json();
   segments = data.segments || [];
+  subtitlesLoaded = true;
   sentenceUnits = data.sentence_units || buildSentenceUnits(segments);
   outlineSections = buildOutlineSections(sentenceUnits);
   renderOutline();
@@ -2577,9 +2627,22 @@ async function syncHighlightedWordsAfterRender() {
   } catch (_) {}
 }
 
+// 阅读模式是否真的可用：以 status 返回的 available_modes / lesson_mode 为准，
+// 不靠 409 之后重试判断（D-WS-2：listening 课每次轮询都打 /reading 拿 409）。
+function readingModeAvailable() {
+  return availableStudyModes.includes('reading');
+}
+
 async function loadReadingLesson({render = activeStudyMode === 'reading'} = {}) {
   const root = document.getElementById('reading-passage');
   const shouldRender = () => render && activeStudyMode === 'reading';
+  // 纯听力材料没有 reading blocks，接口按设计 409；CET 模式下直接不请求。
+  if (!readingModeAvailable()) {
+    if (root && shouldRender()) {
+      root.innerHTML = '<div class="empty-state">这份材料是听力音频，没有独立阅读正文。用上方原文与逐句回听即可。</div>';
+    }
+    return;
+  }
   if (root && !readingBlocks.length && shouldRender()) {
     root.innerHTML = '<div class="empty-state">正在加载阅读内容…</div>';
   }
@@ -2641,10 +2704,31 @@ function startPolling() {
 
 function updateStatusBadge(status) {
   const badge = document.getElementById('status-badge');
+  if (!badge) return;
   const value = status || 'pending';
-  const labelMap = {reading: '阅读模式', ready: '字幕就绪', pending: '字幕生成中', failed: '字幕失败'};
-  badge.textContent = labelMap[value] || `字幕 ${value}`;
-  badge.className = `status-badge ${value === 'ready' || value === 'reading' ? 'ready' : value === 'failed' ? 'failed' : ''}`;
+  // CET 模式：徽标只陈述「事实」，不预设「正在生成」。
+  // 有原文时直接说就绪；无原文说「无原文」；只有通用模式（阅读课 TTS 等）才用生成语义。
+  const hasTranscript = Array.isArray(segments) && segments.length > 0;
+  const cetLabels = {
+    reading: '阅读模式',
+    ready: hasTranscript ? `原文就绪 · ${segments.length} 句` : '原文就绪',
+    pending: hasTranscript ? '原文已就绪' : '原文加载中',
+    failed: hasTranscript ? '原文可用（生成记录失败）' : '原文生成失败',
+    // unavailable = 导入时就确定没有时间轴（仅音频材料）。独立终态：
+    // 不轮询、不弹错，也不能说成「生成中」。
+    unavailable: hasTranscript ? `原文就绪 · ${segments.length} 句` : '暂无逐句定位',
+  };
+  const genericLabels = {
+    reading: '阅读模式', ready: '字幕就绪', pending: '字幕生成中',
+    failed: '字幕失败', unavailable: '暂无逐句定位',
+  };
+  const labelMap = CET_ON ? cetLabels : genericLabels;
+  const ready = value === 'ready' || value === 'reading' || (CET_ON && hasTranscript);
+  let label = labelMap[value] || (CET_ON ? '—' : `字幕 ${value}`);
+  // 首屏在 /subtitles 回来之前是「未知」，不能断言「无原文」
+  if (CET_ON && !subtitlesLoaded) label = '—';
+  badge.textContent = label;
+  badge.className = `status-badge ${ready ? 'ready' : value === 'failed' ? 'failed' : ''}`;
   const cancelBtn = document.getElementById('tts-cancel-btn');
   if (cancelBtn) {
     // 仅 Reading 课 TTS 生成中（已声明生成音频、成品未落盘）时可取消
@@ -2684,25 +2768,53 @@ function initPlayer({allowReading = false} = {}) {
   initYouTube();
 }
 
+// 已经挂载的播放器元素是否还能直接复用。
+// initPlayer() 会被 DOMContentLoaded 和 loadStatus() 各调一次；如果每次都
+// 重建 <audio>，正在播放/刚拖到的位置会被清零（真实缺陷：进度恢复后又被
+// 重建冲掉，播放中途也会「跳回开头」）。
+function reusableLocalMedia() {
+  if (!localMedia || !localMedia.isConnected) return false;
+  if (!lessonData || !lessonData.media_url) return false;
+  const currentSrc = localMedia.getAttribute('src') || '';
+  return currentSrc === lessonData.media_url;
+}
+
 function initLocalMedia() {
   const container = document.getElementById('youtube-player');
   const kind = lessonData.media_kind || lessonData.source_type || '';
   const isAudio = kind === 'local_audio' || /\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(lessonData.media_url || '');
   container.classList.toggle('local-audio', isAudio);
+
+  if (reusableLocalMedia()) {
+    // 同一材料的播放器已就绪：只补齐缺失的事件绑定，不重建元素
+    bindLocalMediaEvents(localMedia);
+    onPlaybackRateChange();
+    return;
+  }
+
   container.innerHTML = isAudio
     ? `<audio id="local-media-player" src="${escapeHtml(lessonData.media_url)}" controls preload="metadata"></audio>`
     : `<video id="local-media-player" src="${escapeHtml(lessonData.media_url)}" controls playsinline preload="metadata"></video>`;
   localMedia = document.getElementById('local-media-player');
-  localMedia.addEventListener('timeupdate', () => {
+  bindLocalMediaEvents(localMedia);
+}
+
+// 事件绑定幂等：同一个元素只绑一次，重建元素后才重新绑。
+function bindLocalMediaEvents(el) {
+  if (!el || el.dataset.wsBound === '1') return;
+  el.dataset.wsBound = '1';
+  el.addEventListener('timeupdate', () => {
     if (Date.now() < suppressTimeSyncUntil) return;
-    updateActiveByTime(localMedia.currentTime || 0);
+    updateActiveByTime(el.currentTime || 0);
   });
-  localMedia.addEventListener('loadedmetadata', () => {
-    if (Number.isFinite(localMedia.duration) && localMedia.duration > 0) {
-      currentTime = localMedia.currentTime || 0;
+  el.addEventListener('loadedmetadata', () => {
+    if (Number.isFinite(el.duration) && el.duration > 0) {
+      currentTime = el.currentTime || 0;
       updateActiveByTime(currentTime);
     }
     onPlaybackRateChange();
+    // 元数据前挂起的跳转（进度恢复 / 收藏跳原句）在这里落地
+    applyPendingSeek();
   });
 }
 
@@ -2771,15 +2883,43 @@ function readPlayerTime() {
   }
 }
 
+// 播放器元数据未就绪时设置 currentTime 会被浏览器丢弃（seek 不生效，
+// 也不触发 seeked）。用户/适配层在 metadata 之前跳转是常见情况（进度恢复、
+// 收藏跳原句），所以这里记下目标，metadata 就绪后补一次。
+let pendingSeekSeconds = null;
+
+function applyPendingSeek() {
+  if (pendingSeekSeconds == null || !localMedia) return;
+  const target = pendingSeekSeconds;
+  pendingSeekSeconds = null;
+  if (localMedia.readyState < 1) {
+    pendingSeekSeconds = target;   // 还没 metadata，继续等
+    return;
+  }
+  const duration = Number(localMedia.duration || 0);
+  const clamped = duration > 0 ? Math.max(0, Math.min(target, duration - 0.05)) : Math.max(0, target);
+  localMedia.currentTime = clamped;
+  currentTime = clamped;
+  updateActiveByTime(clamped);
+}
+
 function seekTo(seconds) {
   suppressTimeSyncUntil = Date.now() + 1200;
+  const target = Number(seconds) || 0;
   if (localMedia) {
-    localMedia.currentTime = seconds || 0;
+    if (localMedia.readyState < 1) {
+      // 元数据未就绪：先记下，loadedmetadata 时补
+      pendingSeekSeconds = target;
+    } else {
+      const duration = Number(localMedia.duration || 0);
+      const clamped = duration > 0 ? Math.max(0, Math.min(target, duration - 0.05)) : Math.max(0, target);
+      localMedia.currentTime = clamped;
+    }
   }
   if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
-    ytPlayer.seekTo(seconds || 0, true);
+    ytPlayer.seekTo(target, true);
   }
-  updateActiveByTime(seconds || 0);
+  updateActiveByTime(target);
 }
 
 function onPlaybackRateChange() {
@@ -2908,9 +3048,16 @@ function makeSectionTitle(index, bucket) {
 function renderOutline() {
   const container = document.getElementById('subtitle-timeline');
   if (!outlineSections.length) {
-    const message = lessonData && lessonData.subtitle_status === 'failed'
-      ? '未找到字幕。'
-      : '字幕就绪后自动生成内容大纲，期间可正常观看视频。';
+    const failed = lessonData && lessonData.subtitle_status === 'failed';
+    let message;
+    if (failed) {
+      message = CET_ON ? '这份材料没有可用原文。' : '未找到字幕。';
+    } else if (CET_ON) {
+      // CET 模式：不暗示后台正在生成。有原文就会有句段导航，没有就是没有。
+      message = segments.length ? '句段导航生成中…' : '这份材料暂无原文，只有音频可直接播放。';
+    } else {
+      message = '字幕就绪后自动生成内容大纲，期间可正常观看视频。';
+    }
     container.innerHTML = `<div class="empty-state">${message}</div>`;
     return;
   }
@@ -2918,16 +3065,20 @@ function renderOutline() {
   container.innerHTML = outlineSections.map((section, idx) => {
     const selected = isInSelectedRange(idx) ? ' selected' : '';
     const active = idx === activeSectionIdx ? ' active' : '';
+    // A/B 讨论区间只服务于「按区间提问」的 AI 聊天；CET 模式收束该模块时不显示。
+    const rangeActions = cetFeature('ai_chat_general')
+      ? `<span class="outline-actions">
+        <button class="mark-btn ${rangeStartIdx === idx ? 'active' : ''}" onclick="setRangeStart(event, ${idx})" title="设为讨论区间起点">A</button>
+        <button class="mark-btn ${rangeEndIdx === idx ? 'active' : ''}" onclick="setRangeEnd(event, ${idx})" title="设为讨论区间终点">B</button>
+      </span>`
+      : '';
     return `<div class="outline-section${active}${selected}" data-idx="${idx}" onclick="onOutlineJump(${idx})">
       <span class="outline-time">${formatTime(section.start)} – ${formatTime(section.end)}</span>
       <span class="outline-body">
         <span class="outline-title">${escapeHtml(section.title)}</span>
         <span class="outline-preview">${escapeHtml(section.preview)}</span>
       </span>
-      <span class="outline-actions">
-        <button class="mark-btn ${rangeStartIdx === idx ? 'active' : ''}" onclick="setRangeStart(event, ${idx})" title="设为讨论区间起点">A</button>
-        <button class="mark-btn ${rangeEndIdx === idx ? 'active' : ''}" onclick="setRangeEnd(event, ${idx})" title="设为讨论区间终点">B</button>
-      </span>
+      ${rangeActions}
     </div>`;
   }).join('');
 }
@@ -2954,6 +3105,10 @@ function formatOutlineProgress() {
     ? Math.max(0, Math.floor((Date.now() - outlinePollStartedAt) / 1000))
     : 0;
   const elapsedLabel = elapsedSeconds > 0 ? ` · ${elapsedSeconds} 秒` : '';
+  // CET 模式下 outline_generation 已收束，这条文案只在通用模式（真实发起生成）时出现。
+  if (CET_ON) {
+    return `<div class="document-summary-progress">正在整理句段导航${elapsedLabel}，可继续播放。</div>`;
+  }
   return `<div class="document-summary-progress">AI 正在生成章节导航${elapsedLabel}，可切换到收藏或 AI 伴读继续学习。</div>`;
 }
 
@@ -2991,6 +3146,9 @@ async function loadCachedDocumentOutline() {
 }
 
 async function requestDocumentOutline(force = false) {
+  // outline_generation 收束时按钮本身已 hidden；这里再兜一层，
+  // 防止通过旧链接/脚本调用触发后台生成。
+  if (!cetFeature('outline_generation')) return;
   const button = document.getElementById('generate-outline-summary');
   const root = document.getElementById('document-summary');
   if (button) {
@@ -3948,11 +4106,23 @@ function updateCurrentSubtitle() {
     return;
   }
   if (!sentenceUnits.length) {
-    textEl.textContent = lessonData && lessonData.subtitle_status === 'failed'
-      ? '该视频暂无可用字幕。'
-      : '字幕正在后台加载…';
-    posEl.textContent = lessonData ? `字幕${lessonData.subtitle_status === 'ready' ? '就绪' : lessonData.subtitle_status === 'failed' ? '失败' : '生成中'}` : '等待中';
-    metaEl.textContent = '学习数据加载期间可正常播放视频。';
+    // 终态（unavailable / failed）不能说成「加载中」：那正是任务书 §4 P3
+    // 禁止的「学习页初始状态假称字幕生成中」。
+    // unavailable = 导入时就没有时间轴（仅音频材料），是正常终态，不是错误。
+    const st = lessonData && lessonData.subtitle_status;
+    if (st === 'unavailable') {
+      textEl.textContent = '本材料暂无逐句定位（导入时未提供时间轴）。';
+      posEl.textContent = '无时间轴';
+      metaEl.textContent = '可整段播放与拖动进度；如需逐句精听，请导入带时间轴的字幕（SRT）。';
+    } else if (st === 'failed') {
+      textEl.textContent = CET_ON ? '本材料没有可用的逐句原文。' : '该视频暂无可用字幕。';
+      posEl.textContent = '无原文';
+      metaEl.textContent = '音频仍可正常播放。';
+    } else {
+      textEl.textContent = CET_ON ? '原文加载中…' : '字幕正在后台加载…';
+      posEl.textContent = lessonData ? (CET_ON ? '原文加载中' : '字幕生成中') : '等待中';
+      metaEl.textContent = CET_ON ? '加载期间可正常播放音频。' : '学习数据加载期间可正常播放视频。';
+    }
     chipsEl.innerHTML = '';
     saveBtn.disabled = true;
     prevBtn.disabled = true;
@@ -5077,7 +5247,64 @@ document.addEventListener('click', () => {
   const pop = document.getElementById('user-menu-pop');
   if (pop) pop.style.display = 'none';
 });
-initAuthBadge();
+
+// ── P5 接入契约：把工作区真实状态暴露给独立模块 ─────────────────────
+// cet-listening.js（队友卡点模块）与 cet-player.js / cet-favorites.js（底座适配层）
+// 都通过 window.__ws 读取，不直接摸页面私有变量。字段只增不改，见
+// docs/cet-base/队友接入说明.md。
+window.__ws = {
+  lessonId: LESSON_ID,
+  cetOn: CET_ON,
+  features: CET_FEATURES,
+  // 当前材料身份（由 status 接口回填，切换材料后自动跟着变）
+  get lesson() { return lessonData; },
+  get title() { return lessonData?.title || ''; },
+  get mediaUrl() { return lessonData?.media_url || ''; },
+  get mediaKind() { return lessonData?.media_kind || ''; },
+  get duration() { return Number(lessonData?.duration || 0); },
+  get mode() { return activeStudyMode; },
+  get availableModes() { return availableStudyModes.slice(); },
+  // 句子索引：{index, start, end, text, segment_ids}
+  get sentences() { return sentenceUnits.map(unit => ({...unit})); },
+  get segments() { return segments.map(item => ({...item})); },
+  get activeSentenceIndex() { return activeSentenceIdx; },
+  get activeSentence() {
+    const unit = activeSentenceIdx >= 0 ? sentenceUnits[activeSentenceIdx] : null;
+    return unit ? {...unit} : null;
+  },
+  get currentTime() { return readPlayerTime(); },
+  // 播放器获取方式（DOM id 固定为 local-media-player；YouTube 走 ytPlayer）
+  get audio() { return document.getElementById('local-media-player'); },
+  get player() { return localMedia || ytPlayer || null; },
+  // 控制入口：seek/play/pause/倍速，统一走已有实现，避免第二套播放状态
+  seek: seconds => seekTo(seconds),
+  play: () => playMediaPlayback(),
+  pause: () => {
+    if (localMedia && typeof localMedia.pause === 'function') localMedia.pause();
+    if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
+      try { ytPlayer.pauseVideo(); } catch (_) {}
+    }
+  },
+  setRate: rate => {
+    const select = document.getElementById('playback-rate');
+    if (select) select.value = String(rate);
+    onPlaybackRateChange();
+    return Number(rate) || 1;
+  },
+  getRate: () => (localMedia ? localMedia.playbackRate : Number(document.getElementById('playback-rate')?.value || 1)),
+  jumpSentence: delta => jumpSentence(delta),
+  // 进度（学习位置恢复）
+  refreshLesson: () => refreshLesson(),
+};
+
+// 积分/账号入口（cet_features.credits_account）在 CET 模式收束：
+// 不请求积分余额，避免无谓 4xx；但**不跳过鉴权**，服务端安全配置不变。
+if (!cetFeature('credits_account')) {
+  const creditBadge = document.getElementById('credit-badge');
+  if (creditBadge) creditBadge.hidden = true;
+} else {
+  initAuthBadge();
+}
 </script>
 </body>
 </html>

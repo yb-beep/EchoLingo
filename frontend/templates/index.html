@@ -2066,22 +2066,24 @@
 <div class="container">
   <header class="workshop-masthead">
     <div>
-      <span class="eyebrow">Vocabulary atelier</span>
+      {# P4-2：CET 模式的 eyebrow / CTA 一律经 cet_copy 取（中文四六级口径，别写死）；
+         通用分支沿用本模板既有写法保留原文，ELT_CET_MODE=0 渲染结果不变。 #}
+      <span class="eyebrow">{% if cet_on %}{{ cet_copy.fix2_vocab_eyebrow }}{% else %}Vocabulary atelier{% endif %}</span>
       {% if cet_on %}
       <h2>{{ cet_copy.vocab_heading }}</h2>
-      <p>从听力材料里收藏的生词，按真实语境自评熟悉度，再决定是否展开词卡。</p>
+      <p>从听力材料里收藏的单词，按真实语境自评熟悉度，再决定是否展开词卡。</p>
       {% else %}
       <h2>词汇记忆工坊</h2>
       <p>从真实语境判断熟悉度，再决定是否展开词卡或主动造句。</p>
       {% endif %}
     </div>
-    <button class="primary" type="button" onclick="focusNextVocabCard()">继续词汇练习 →</button>
+    <button class="primary" type="button" onclick="focusNextVocabCard()">{% if cet_on %}{{ cet_copy.fix2_vocab_continue_cta }}{% else %}继续词汇练习 →{% endif %}</button>
   </header>
   {% if cet_on %}
-  {# 我的收藏 = 词汇收藏 + 句子收藏，共用一个导航项（任务书 §3.2） #}
-  <nav class="workshop-tabs cet-favorites-tabs" aria-label="我的收藏">
-    <button class="active" type="button" data-cet-favorites-pane="vocab" onclick="cetSetFavoritesPane('vocab')">词汇收藏</button>
-    <button type="button" data-cet-favorites-pane="sentences" onclick="cetSetFavoritesPane('sentences')">句子收藏</button>
+  {# 我的收藏 = 收藏单词 + 收藏句子，共用一个导航项（任务书 §3.2 / P4-1 统一口径） #}
+  <nav class="workshop-tabs cet-favorites-tabs" aria-label="{{ cet_copy.favorites_heading }}">
+    <button class="active" type="button" data-cet-favorites-pane="vocab" onclick="cetSetFavoritesPane('vocab')">{{ cet_copy.fix2_favorites_pane_vocab }}</button>
+    <button type="button" data-cet-favorites-pane="sentences" onclick="cetSetFavoritesPane('sentences')">{{ cet_copy.fix2_favorites_pane_sentences }}</button>
   </nav>
   {% else %}
   <nav class="workshop-tabs" aria-label="词汇记忆工坊子页">
@@ -2268,7 +2270,8 @@
 <div class="container">
   <header class="sentence-library-masthead">
     <div>
-      <span class="eyebrow">句子精听</span>
+      {# P4-2：「句子精听」经 cet_copy 取（CET 模式中文四六级口径，通用模式取原值） #}
+      <span class="eyebrow">{{ cet_copy.fix2_sentences_eyebrow }}</span>
       <h2>{% if cet_on %}{{ cet_copy.sentences_heading }}{% else %}句子库{% endif %}</h2>
       <p>在收藏句中直接播放、隐藏原文并记录是否听懂。</p>
     </div>
@@ -2277,9 +2280,9 @@
     </div>
   </header>
   {% if cet_on %}
-  <nav class="workshop-tabs cet-favorites-tabs" aria-label="我的收藏">
-    <button type="button" data-cet-favorites-pane="vocab" onclick="cetSetFavoritesPane('vocab')">词汇收藏</button>
-    <button class="active" type="button" data-cet-favorites-pane="sentences" onclick="cetSetFavoritesPane('sentences')">句子收藏</button>
+  <nav class="workshop-tabs cet-favorites-tabs" aria-label="{{ cet_copy.favorites_heading }}">
+    <button type="button" data-cet-favorites-pane="vocab" onclick="cetSetFavoritesPane('vocab')">{{ cet_copy.fix2_favorites_pane_vocab }}</button>
+    <button class="active" type="button" data-cet-favorites-pane="sentences" onclick="cetSetFavoritesPane('sentences')">{{ cet_copy.fix2_favorites_pane_sentences }}</button>
   </nav>
   {% endif %}
 
@@ -2373,7 +2376,9 @@
       <div class="resource-section" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>✅ 词表启用与优先级</h4>
         <p style="font-size: 14px; color: var(--muted); margin-bottom: 12px;">
-          勾选要在学习中高亮的词表（内置词表、我的生词本和你上传的词表都在这里）。多个词表命中同一单词时按优先级取色，用 ▲▼ 调整顺序。基础词过滤（COCA 前 2000、已掌握词）始终生效，无需勾选。
+          {# P4-1：CET 模式下这张词表叫「我的收藏」（与收藏页同一口径），
+             不再出现「生词本」这第二种叫法；通用模式保留原文。 #}
+          {% if cet_on %}勾选要在学习中高亮的词表（内置词表、{{ cet_copy.fix2_my_collections_wordlist }}和你上传的词表都在这里）。{% else %}勾选要在学习中高亮的词表（内置词表、我的生词本和你上传的词表都在这里）。{% endif %}多个词表命中同一单词时按优先级取色，用 ▲▼ 调整顺序。基础词过滤（COCA 前 2000、已掌握词）始终生效，无需勾选。
         </p>
         <div id="wordlist-config-list" style="display:flex;flex-wrap:wrap;gap:8px;">
           <div style="font-size:13px;color:var(--muted);">切换到学习资源时加载…</div>
@@ -2478,10 +2483,53 @@
 <!-- ══════════════════════════════════════════════
      JAVASCRIPT
 ══════════════════════════════════════════════ -->
+{# P4-3：积分/账号已收束（credits_account=False），CET 模式不再加载积分计费助手脚本。
+   该脚本的计费请求调用点已统一改走本页的 billableFetch() 薄封装：
+   有 eltCredits 时行为完全等价，没有时退化为普通 fetch（仍带 Idempotency-Key），
+   不会 ReferenceError。通用模式 credits_account=True → 原样输出，字节级不变。 #}
+{% if cet_features.credits_account %}
 <script src="/static/elt_credits.js?v=20260809-1"></script>
 <script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits && window.CET && CET.feature('credits_account')){eltCredits.annotate();}});</script>
+{% endif %}
+{# P4-3：natural-tts.js 按**使用它的收藏功能**条件加载（P1-6「按对应 feature 条件加载」）。
+   word_favorites = 收藏词卡 🔊 发音；sentence_favorites = 句子收藏兜底朗读。
+   两者 CET 均 kept=True → CET 默认输出；通用模式两者都 True → 字节级不变；
+   显式关掉两个 feature 才不输出。 #}
+{% if cet_features.word_favorites or cet_features.sentence_favorites %}
 <script src="/static/natural-tts.js?v=20260809-1"></script>
+{% endif %}
 <script>
+// ── 计费请求薄封装（P4-3 配套）────────────────────────────
+// CET 模式不再加载积分计费助手脚本（credits_account 已收束），但页面仍保留
+// 少量「次级 AI 操作」（词卡解析、练习批改等）。直接把 eltCredits.billableFetch
+// 裸调用留在 CET 页面 = ReferenceError，所以统一走这个封装：
+//   · 有 eltCredits（通用模式 / 显式开启 credits_account）→ 行为**完全等价**，
+//     包括 Idempotency-Key、402/409 结构化错误处理；
+//   · 无 eltCredits（CET 模式）→ 退化为普通 fetch，但**仍自动带 Idempotency-Key**，
+//     保证计费激活的部署（多用户/云端）下不会因缺 key 被后端 400。
+// 后端 billing_active()=False 时（单用户/公开库）该 header 被忽略，无副作用。
+function _cetNewIdempotencyKey() {
+  try {
+    if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch (_e) { /* 非安全上下文（http+非 localhost）没有 randomUUID */ }
+  return String(Date.now()) + Math.random().toString(16).slice(2);
+}
+
+function billableFetch(opType, url, options) {
+  if (window.eltCredits && typeof eltCredits.billableFetch === 'function') {
+    return eltCredits.billableFetch(opType, url, options);
+  }
+  const opts = Object.assign({}, options || {});
+  const headers = Object.assign({}, opts.headers || {});
+  if (opts.body && !headers['Content-Type'] && !(opts.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+  headers['Idempotency-Key'] = opts.idempotencyKey || _cetNewIdempotencyKey();
+  delete opts.idempotencyKey;
+  opts.headers = headers;
+  return fetch(url, opts);
+}
+
 // ── Tab Routing ───────────────────────────────
 let _vocabLoaded = false;
 let _sentencesLoaded = false;
@@ -2700,7 +2748,15 @@ async function loadWordlistConfigUI() {
     _wlSelectableConfigs = configs.filter(wlIsSelectable).map(cfg => ({
       ...cfg,
       key: wlConfigKey(cfg),
-      name: cfg.name || wlConfigKey(cfg),
+      // P4-1 统一口径：后端 `_virtual_wordlist_configs` 里这张词表叫「我的生词本」，
+      // 而「我的收藏」页里同一个东西叫「词汇收藏」。CET 模式下统一显示为
+      // cet_copy 的「我的收藏」，避免又出现第二个名字（后端不动，只改展示层）。
+      name: (wlConfigKey(cfg) === 'my_vocab' && CET.enabled())
+        ? CET.copy('fix2_my_collections_wordlist', cfg.name || '我的生词本')
+        : (cfg.name || wlConfigKey(cfg)),
+      tag: (wlConfigKey(cfg) === 'my_vocab' && CET.enabled())
+        ? CET.copy('fix2_my_collections_wordlist', cfg.tag || '生词本')
+        : cfg.tag,
       cssColor: wlCssColor(cfg),
     }));
     const availableKeys = _wlSelectableConfigs.map(c => c.key);
@@ -3374,9 +3430,7 @@ async function uploadReadingFile(file) {
     form.append('file', file);
     form.append('tts', document.getElementById('text-tts').checked ? 'true' : 'false');
     // Task 8：tts 勾选时 reading_tts 计费要求幂等键（per-click 稳定 UUID）
-    const resp = window.eltCredits
-      ? await eltCredits.billableFetch('reading_tts', '/api/v2/lessons/reading/upload', {method: 'POST', body: form})
-      : await fetch('/api/v2/lessons/reading/upload', {method: 'POST', body: form});
+    const resp = await billableFetch('reading_tts', '/api/v2/lessons/reading/upload', {method: 'POST', body: form});
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || '无法导入 Reading 文件');
     const workspaceUrl = data.workspace_url || (data.job_id ? await pollReadingUpload(data.job_id) : '');
@@ -3463,9 +3517,7 @@ async function startGeneration() {
             }),
           };
           // tts 勾选时 reading_tts 计费要求幂等键（billableFetch 自动附带）
-          const r = window.eltCredits
-            ? await eltCredits.billableFetch('reading_tts', '/api/v2/lessons/start', startPayload)
-            : await fetch('/api/v2/lessons/start', startPayload);
+          const r = await billableFetch('reading_tts', '/api/v2/lessons/start', startPayload);
           const data = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(data.detail || '无法开始 Reading');
           const workspaceUrl = data.workspace_url || (data.job_id ? await pollReadingUpload(data.job_id) : '');
@@ -3639,16 +3691,11 @@ async function startGeneration() {
         translate: true,
         tts: document.getElementById('text-tts').checked,
       };
-      const resp = window.eltCredits
-        ? await eltCredits.billableFetch('reading_tts', '/api/v2/lessons/start', {
-            method: 'POST',
-            body: JSON.stringify(payload)
-          })
-        : await fetch('/api/v2/lessons/start', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-          });
+      const resp = await billableFetch('reading_tts', '/api/v2/lessons/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || '无法开始课程');
       finishInlineProgress('完成，正在打开工作台…');
@@ -4936,7 +4983,7 @@ async function toggleSentenceRetellRecording(sentenceId) {
       const form = new FormData();
       form.append('audio', new Blob(chunks, {type:recorder.mimeType || 'audio/webm'}), 'retelling.webm');
       try {
-        const response = await eltCredits.billableFetch('retell_transcribe', '/api/transcribe', {method:'POST', body:form});
+        const response = await billableFetch('retell_transcribe', '/api/transcribe', {method:'POST', body:form});
         const data = await response.json();
         if (!response.ok || !data.text) throw new Error(data.error || '识别失败，请重试');
         if (Number(_sentenceRetellOpenId) !== Number(sentenceId)) return;
@@ -4961,7 +5008,7 @@ async function analyzeSentenceRetell(sentenceId) {
   if (!sentence || !_sentenceRetellTranscript) return;
   setSentenceRetellStatus('AI 正在对比复述与原句…');
   try {
-    const response = await eltCredits.billableFetch('listening_retell', '/api/listening-retell-analysis', {
+    const response = await billableFetch('listening_retell', '/api/listening-retell-analysis', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({english:sentence.text, retelling:_sentenceRetellTranscript}),
     });
@@ -5116,7 +5163,7 @@ function applySentenceAnalysisPayload(sentence, data) {
 }
 
 async function requestSentencePatternScenario(sentence, regenerate=false) {
-  const response = await eltCredits.billableFetch('sentence_scenario', `/api/v2/lessons/sentence-review/${sentence.id}/pattern/scenario`, {
+  const response = await billableFetch('sentence_scenario', `/api/v2/lessons/sentence-review/${sentence.id}/pattern/scenario`, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({regenerate:Boolean(regenerate)}),
   });
@@ -5127,7 +5174,7 @@ async function requestSentencePatternScenario(sentence, regenerate=false) {
 
 async function requestSentenceAnalysis(sentence, force=false) {
   if (!await ensureAiAvailability()) { showNoKeyToast(); throw new Error('AI 服务未配置'); }
-  const response = await eltCredits.billableFetch('oral_analysis', '/api/oral-analysis', {
+  const response = await billableFetch('oral_analysis', '/api/oral-analysis', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({english:sentence.text, sentence_id:Number(sentence.id), persist:true, force:Boolean(force)}),
   });
@@ -5218,7 +5265,7 @@ async function submitSentencePatternPractice(sentenceId) {
   resultEl.classList.add('visible');
   resultEl.innerHTML = '<span style="color:var(--muted)">正在批改表达…</span>';
   try {
-    const response = await eltCredits.billableFetch('practice_evaluation', '/api/practice', {
+    const response = await billableFetch('practice_evaluation', '/api/practice', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         practice_type:'pattern', hint_cn:sentence._pattern_hint_visible ? sentencePatternScenario(sentence) : '', english:sentence.text,
@@ -5248,7 +5295,7 @@ async function submitSentencePatternExample(sentenceId) {
   resultEl.classList.add('visible');
   resultEl.innerHTML = '<span style="color:var(--muted)">正在生成新的参考表达…</span>';
   try {
-    const response = await eltCredits.billableFetch('practice_example', '/api/practice', {
+    const response = await billableFetch('practice_example', '/api/practice', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         practice_type:'pattern', action:'example', mode:'example',
@@ -5579,7 +5626,14 @@ function renderWordlistFilters(wordlists) {
   wordlists
     .filter(wl => wl.type !== 'exclude')
     .filter(wl => cetVocabFilterAllowed(wl.key))
-    .forEach(wl => _addFilterBtn(group, wl.key, wl.tag));
+    // P4-1：收藏页筛选按钮同样不出现「生词本」这个第二种叫法
+    .forEach(wl => _addFilterBtn(
+      group,
+      wl.key,
+      (wl.key === 'my_vocab' && CET.enabled())
+        ? CET.copy('fix2_my_collections_wordlist', wl.tag || '生词本')
+        : wl.tag,
+    ));
 }
 
 function addUserTags(wordlists) {
@@ -5635,6 +5689,54 @@ async function initVocab() {
   renderVocabList();
   updateHeaderStat('vocab');
   initStoryWords();
+  // P4-1：历史上只进了本课、没进复习本的词，加载时补同步一次
+  await cetSyncLessonCollections();
+}
+
+// ── P4-1：「我的收藏」加载时补同步本课收藏 ──────────────────
+// 问题：工作区「☆ 收藏」写 v2_lesson_words（本课收藏），而「我的收藏 ·
+// 收藏单词」读 word_review_items（复习本），返修前两条路径互不相通 ——
+// 用户收藏了却看不到。包1 负责「今后收藏成功后自动 activate」，
+// 本函数负责把**历史遗留**数据补上。
+//
+// 方案选择：**加载时自动补一次**，不加「同步按钮」。理由：
+//   1. 任务书的痛点是「用户无法理解为什么收藏了却在『我的收藏』里看不到」——
+//      让用户再点一次按钮，等于把内部数据分叉的认知负担转嫁给用户；
+//   2. 服务端端点幂等（INSERT ... ON CONFLICT + count 的 CASE 保护），
+//      重复调用不重复计数，自动补无副作用（详见交付说明的幂等依据）；
+//   3. 端点只处理「本课已收藏 ∩ 复习本没有」的差集，正常情况返回 0，
+//      代价是每次进入收藏页一次轻量 POST。
+// 通用模式不执行（ELT_CET_MODE=0 时「复习本」概念与入口都不同，行为保持不变）。
+let _cetCollectionsSynced = false;
+async function cetSyncLessonCollections(force = false) {
+  if (!(window.CET && typeof CET.enabled === 'function' && CET.enabled())) return 0;
+  if (_cetCollectionsSynced && !force) return 0;
+  _cetCollectionsSynced = true;
+  try {
+    const resp = await fetch('/api/vocab-review/sync-collections', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({}),
+    });
+    if (!resp.ok) return 0;
+    const data = await resp.json().catch(() => ({}));
+    const synced = Number(data.synced || 0);
+    if (synced > 0) {
+      // 补同步后重新拉一次词表，让新补进来的词立刻出现在「我的收藏」
+      const fresh = await fetch('/vocab-log?include_archived=1&include_mastered=1', {cache:'no-store'});
+      if (fresh.ok) {
+        vocabData = await fresh.json();
+        await loadVocabWordlistMembership(Object.keys(vocabData).filter(word => !word.startsWith('__')));
+        const entries = Object.entries(vocabData).filter(([w])=>!w.startsWith('__'));
+        renderTodayPanel(entries);
+        renderVocabList();
+        updateHeaderStat('vocab');
+      }
+    }
+    return synced;
+  } catch (_) {
+    return 0; // 补同步失败不影响收藏页正常使用
+  }
 }
 
 async function loadHomeReviewNote() {
@@ -6213,7 +6315,7 @@ async function generateVocabAnalysis(event, word) {
   button.textContent = 'AI 正在生成解析…';
   if (status) status.textContent = '';
   try {
-    const response = await eltCredits.billableFetch('word_analysis', '/analyze-word', {
+    const response = await billableFetch('word_analysis', '/analyze-word', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         word,
@@ -6762,7 +6864,7 @@ async function generateStory(forceNew=false) {
   try {
     const _themeRaw=(document.getElementById('story-theme-sel')||{}).value||'';
     const _theme=_themeRaw==='__custom__'?(document.getElementById('story-theme-custom')||{}).value||'':_themeRaw;
-    const resp=await eltCredits.billableFetch('vocab_story', '/api/vocab-story',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({words:[..._storyWordSet],learner_level:(document.getElementById('story-level-sel')||{}).value||'B1',theme:_theme,force_new:forceNew})});
+    const resp=await billableFetch('vocab_story', '/api/vocab-story',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({words:[..._storyWordSet],learner_level:(document.getElementById('story-level-sel')||{}).value||'B1',theme:_theme,force_new:forceNew})});
     const raw=await resp.text();
     let data; try { data=JSON.parse(raw); } catch(_) { throw new Error('服务器返回非 JSON 响应，请检查 AI Key 配置'); }
     if (!resp.ok) throw new Error(data?.detail || data?.error || resp.statusText);
@@ -6998,7 +7100,7 @@ async function translateStorySelection() {
   if (!selected) return;
   setStorySelectionResult('正在使用混元翻译…');
   try {
-    const response = await eltCredits.billableFetch('story_translation', '/api/story-translate', {
+    const response = await billableFetch('story_translation', '/api/story-translate', {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:selected}),
     });
     const data = await response.json().catch(() => ({}));
@@ -7076,7 +7178,7 @@ async function sendStoryChatMessage() {
   button.disabled = true;
   const pending = appendStoryChatMessage('assistant', 'AI 正在结合故事语境思考…');
   try {
-    const response = await eltCredits.billableFetch('story_chat', '/api/story-chat', {
+    const response = await billableFetch('story_chat', '/api/story-chat', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({story, selection:_storyChatSelection, message, history:priorHistory}),
     });
@@ -7337,7 +7439,7 @@ async function genVocabHint(word) {
   hintEl.textContent='生成中…'; hintEl.classList.remove('placeholder');
   if (hintBtn) { hintBtn.disabled=true; hintBtn.textContent='生成中…'; }
   try {
-    const data=await eltCredits.billableFetch('practice_hint', '/api/hint',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({english:example,vocab:[word],pattern_template:''})}).then(r=>r.json());
+    const data=await billableFetch('practice_hint', '/api/hint',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({english:example,vocab:[word],pattern_template:''})}).then(r=>r.json());
     hintEl.textContent=data.hint||'生成失败';
     if (vocabData[word] && data.hint) {
       vocabData[word].used_hint = true;
@@ -7370,7 +7472,7 @@ async function submitVocabPractice(word) {
   if (!answer) return;
   resEl.classList.add('visible'); resEl.innerHTML='<span style="color:var(--muted)">正在批改你的表达…</span>';
   try {
-    const response=await eltCredits.billableFetch('practice_evaluation', '/api/practice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const response=await billableFetch('practice_evaluation', '/api/practice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       practice_type:entry.target_type==='phrase'?'phrase':'word',
       action:'correct',hint_cn,english:example,source_context:example,vocab:[word],
       target:word,meaning:an.basic_meaning||'',
@@ -7396,7 +7498,7 @@ async function submitVocabPracticeExample(word) {
   resEl.classList.add('visible');
   resEl.innerHTML='<span style="color:var(--muted)">正在生成新的参考表达…</span>';
   try {
-    const response=await eltCredits.billableFetch('practice_example', '/api/practice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const response=await billableFetch('practice_example', '/api/practice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       practice_type:entry.target_type==='phrase'?'phrase':'word',
       action:'example',mode:'example',hint_cn:entry._active_hint||'',
       english:context.sentence||(an.examples||[])[0]||'',
@@ -7485,7 +7587,7 @@ async function translateAiSentence(button, encodedText) {
   const slot = button.closest('.ai-sentence-actions')?.nextElementSibling;
   button.disabled = true;
   try {
-    const response = await eltCredits.billableFetch('story_translation', '/api/story-translate', {
+    const response = await billableFetch('story_translation', '/api/story-translate', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({text}),
     });
@@ -8832,9 +8934,7 @@ function pollBaiduPanImport(jobId) {
               }),
             };
             // tts 勾选时 reading_tts 计费要求幂等键（billableFetch 自动附带）
-            const r = window.eltCredits
-              ? await eltCredits.billableFetch('reading_tts', '/api/v2/lessons/start', startPayload)
-              : await fetch('/api/v2/lessons/start', startPayload);
+            const r = await billableFetch('reading_tts', '/api/v2/lessons/start', startPayload);
             const data = await r.json().catch(() => ({}));
             if (!r.ok) throw new Error(data.detail || '无法开始 Reading');
             const workspaceUrl = data.workspace_url || (data.job_id ? await pollReadingUpload(data.job_id) : '');

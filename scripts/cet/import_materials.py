@@ -76,7 +76,13 @@ MATERIALS = {
 
 
 def _sentences(material_id: str) -> list[dict]:
-    """读取句子时间轴。支持多种来源格式。"""
+    """读取句子时间轴。支持多种来源格式。
+
+    P3-2：读完后统一走 `cet_import.clean_sentences()` 清洗行首说话人标记
+    （`/ W:` / `W:` / `M:` / `Q:` 等），与界面导入**同一份规则**。
+    六级真题第 22 条原文末尾粘着 `…will happen? / W: What?`，
+    不清洗就会在精听页多出一条以 `/ W:` 开头的「句子」。
+    """
     path = MEDIA / f"{material_id}.sentences.source.json"
     if not path.is_file():
         raise SystemExit(f"缺少句子时间轴：{path}")
@@ -92,7 +98,18 @@ def _sentences(material_id: str) -> list[dict]:
         if start is None or end is None:
             continue
         out.append({"start": float(start), "end": float(end), "text": str(text)})
-    return out
+    cleaned, markers = cet_import.clean_sentences(out)
+    if markers:
+        print(
+            f"  · 清洗 {len(markers)} 处说话人标记（"
+            + "、".join(sorted({m["marker"] for m in markers}))
+            + "）",
+            flush=True,
+        )
+    return [
+        {"start": item["start"], "end": item["end"], "text": item["text"]}
+        for item in cleaned
+    ]
 
 
 def _questions(material_id: str) -> list[dict]:

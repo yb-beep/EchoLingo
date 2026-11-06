@@ -380,6 +380,231 @@ def split_plain_text(raw_text: str) -> list[str]:
     return paragraphs
 
 
+# ── 说话人标记清洗（P3-2）────────────────────────────────────
+#
+# 真题原文（尤其仓库句子 JSON）常把**下一位说话人的整句**粘在上一条末尾，
+# 形如 `…what do you think will happen? / W: What?`。按标点再切句后，
+# 精听页就出现一条以 `/` 或 `W:` 开头的「句子」——它不是内容，是没清洗的标记。
+#
+# 清洗规则（三条，只认这些形态，不做语义猜测）：
+#   1. 斜杠形态 ` / W: `（`/` + 单个大写字母 + 冒号）**无论在句中还是行首**都算标记，
+#      并且它是**句界**：标记之后是另一个人的独立句子。
+#   2. 裸形态 `W: ` **只在文本开头**算标记（`^[A-Z]:`）。句中裸 `X:` 不动，
+#      避免把 `Ratio A: 3`、`Note: …` 这类正常文本剥掉。
+#   3. 行首孤立的 `/ ` 也算残留标记前缀，剥掉。
+#
+# 为什么只认**单个大写字母**：`Note:` / `OK:` / `Section:` 都是多字母，
+# 不能当说话人标记。用户上传的规范 SRT 若没有这些形态，文本**逐字不变**
+# （`test_import_srt_stored_verbatim_not_resegmented` 守着这条）。
+#
+# 标记**不丢**：拆分结果里的 `speaker`/`marker` 随导入结果返回，
+# 并由 `_write_segments` 落 sidecar `speaker_markers.json`
+# （`v2_subtitle_segments` 没有 speaker 列，冻结约定 §3 禁止新增列）。
+
+# 斜杠形态标记：`/ W:` / `/M:`（前面必须是行首或空白，避免误伤 `and/or`）
+_SPEAKER_SLASH_RE = re.compile(r"(?:^|(?<=\s))(?P<marker>/\s*(?P<label>[A-Z]):)\s*")
+# 行首裸形态标记：`W: `
+_SPEAKER_BARE_RE = re.compile(r"^(?P<marker>(?P<label>[A-Z]):)\s*")
+# 行首孤立斜杠残留
+_SPEAKER_STRAY_SLASH_RE = re.compile(r"^/\s*")
+
+# 一条原始条目最多拆出多少句（防止畸形文本把一条拆成上百句）
+_MAX_SPEAKER_PARTS = 32
+# 清洗报告里最多回显多少条原始文本（避免响应体被超长文本撑爆）
+_MAX_MARKER_REPORT = 200
+
+
+def split_speaker_markers(text: str) -> list[dict[str, str]]:
+    """把一条字幕文本按说话人标记拆成若干句，并剥掉标记本身。
+
+    返回 `[{"text": 清洗后文本, "speaker": 标记字母或 "", "marker": 原始标记串或 ""}]`。
+    `speaker`/`marker` 指**本句前面**那个标记（首句无标记时为空串）。
+    没有任何标记时返回单元素列表，`text` 与输入**逐字相同**（只做了空白归一）。
+    """
+    raw = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not raw:
+        return []
+
+    parts: list[dict[str, str]] = []
+    cursor = 0
+    speaker = ""
+    marker = ""
+    for match in _SPEAKER_SLASH_RE.finditer(raw):
+        if len(parts) >= _MAX_SPEAKER_PARTS:
+            break
+        body = raw[cursor:match.start()].strip()
+        if body:
+            parts.append({"text": body, "speaker": speaker, "marker": marker})
+        speaker = match.group("label")
+        marker = re.sub(r"\s+", " ", match.group("marker")).strip()
+        cursor = match.end()
+    tail = raw[cursor:].strip()
+    if tail and len(parts) < _MAX_SPEAKER_PARTS:
+        parts.append({"text": tail, "speaker": speaker, "marker": marker})
+
+    if not parts:
+        return []
+
+    # 每句开头再剥一次「行首裸标记」与「孤立斜杠」（斜杠形态已在上面切成句界）
+    for part in parts:
+        body = part["text"]
+        for _ in range(4):  # 防御：`/ W: M: xxx` 这种多重前缀
+            bare = _SPEAKER_BARE_RE.match(body)
+            if bare:
+                if not part["marker"]:
+                    part["marker"] = bare.group("marker")
+                    part["speaker"] = bare.group("label")
+                body = body[bare.end():].lstrip()
+                continue
+            stray = _SPEAKER_STRAY_SLASH_RE.match(body)
+            if stray:
+                if not part["marker"]:
+                    part["marker"] = "/"
+                body = body[stray.end():].lstrip()
+                continue
+            break
+        part["text"] = body
+
+    cleaned = [part for part in parts if part["text"]]
+    return cleaned
+
+
+def _split_entry_by_speakers(
+    entry: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """把一条时间轴条目按说话人标记拆成多条，时间轴按字符比例插值。
+
+    返回 `(entries, markers)`。没有标记时原样返回**同一个**条目对象
+    （不复制、不改动，保证「无标记时行为与现在完全一致」）。
+    """
+    parts = split_speaker_markers(str(entry.get("text") or ""))
+    if len(parts) <= 1 and not (parts and parts[0]["marker"]):
+        return [entry], []
+
+    start = float(entry.get("start") or 0)
+    end = float(entry.get("end") or 0)
+    total_chars = sum(max(1, len(part["text"])) for part in parts) or 1
+    duration = max(0.0, end - start)
+
+    out: list[dict[str, Any]] = []
+    cursor = start
+    for position, part in enumerate(parts):
+        if position == len(parts) - 1:
+            part_end = end
+        else:
+            share = max(1, len(part["text"])) / total_chars
+            part_end = cursor + duration * share
+        # 极小条目（<0.1s）也要保证 end > start，否则会被 validate_entries 拒
+        if part_end <= cursor:
+            part_end = min(end, cursor + 0.01) if end > cursor else cursor + 0.01
+        out.append({
+            "index": entry.get("index"),
+            "line": entry.get("line") or 0,
+            "start": round(cursor, 4),
+            "end": round(part_end, 4),
+            "text": part["text"],
+        })
+        cursor = part_end
+
+    markers = [
+        {
+            "text": str(entry.get("text") or ""),
+            "speaker": part["speaker"],
+            "marker": part["marker"],
+            "cleanedText": part["text"],
+        }
+        for part in parts
+        if part["marker"]
+    ]
+    return out, markers
+
+
+def _apply_speaker_cleaning(
+    entries: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """对整份条目做说话人清洗；重新编号并汇总标记报告。
+
+    **标记回声去重**（P3-2 的关键一步）：
+    仓库句子 JSON 的 `text` 字段是 `ref` 派生的，会把**下一位说话人的整句**
+    粘在上一条末尾（第 22 条 `…will happen? / W: What?`），而下一条自己
+    就带着那句 `What?`（第 23 条）。只做拆分会让 `What?` 出现两次、
+    句子数从 32 变 33——那正是要修的「精听页比文档多一句」。
+    所以：拆分出的尾巴若与**下一条**的文本逐字相同（归一后），
+    说明它是回声而非新内容 → 丢弃尾巴，但标记仍记进报告（信息不丢）。
+    比对是**逐字相等**，不是模糊匹配，不会误删真实内容。
+    """
+    cleaned: list[dict[str, Any]] = []
+    report: list[dict[str, Any]] = []
+    total = len(entries)
+    for position, entry in enumerate(entries):
+        pieces, markers = _split_entry_by_speakers(entry)
+        report.extend(markers)
+
+        if len(pieces) > 1:
+            next_text = ""
+            if position + 1 < total:
+                next_text = _normalize_for_compare(str(entries[position + 1].get("text") or ""))
+            kept = [pieces[0]]
+            for piece in pieces[1:]:
+                if next_text and _normalize_for_compare(piece["text"]) == next_text:
+                    continue  # 回声：下一条自己带着这句
+                kept.append(piece)
+            if len(kept) < len(pieces):
+                # 丢掉的尾巴不占时间轴：把它的时长还给保留的最后一条
+                kept[-1] = {**kept[-1], "end": pieces[-1]["end"]}
+            pieces = kept
+
+        cleaned.extend(pieces)
+    for position, entry in enumerate(cleaned):
+        entry["index"] = position + 1
+    return cleaned, report
+
+
+def _normalize_for_compare(text: str) -> str:
+    """去空白 + 小写，只用于「是不是同一句」的逐字比对。"""
+    return re.sub(r"\s+", " ", str(text or "")).strip().lower()
+
+
+
+def clean_speaker_markers(text: str) -> tuple[str, list[str]]:
+    """单条文本的清洗便捷入口：返回 `(清洗后文本, 提取到的标记串列表)`。
+
+    纯文本原文导入用它剥掉行首标记（纯文本不拆句，保持「一段一行」语义）。
+    """
+    parts = split_speaker_markers(text)
+    if not parts:
+        return "", []
+    joined = " ".join(part["text"] for part in parts).strip()
+    markers = [part["marker"] for part in parts if part["marker"]]
+    return joined, markers
+
+
+def clean_sentences(
+    sentences: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """公开的整份清洗入口（P3-2）：`(清洗后句子, 标记报告)`。
+
+    `scripts/cet/import_materials.py` 的固定样例导入走自己的 JSON 读取路径
+    （不经过 `prepare_subtitle`），需要同一份清洗规则时调这里 —— 保证
+    「脚本导入」与「界面导入」的清洗行为**完全一致**，不出现两套规则。
+
+    入参每条需含 `start`/`end`/`text`；返回的每条同结构且已重新编号。
+    无标记时原样返回（条目对象不被改写）。
+    """
+    entries = [
+        {
+            "index": int(item.get("index") or position + 1),
+            "line": int(item.get("line") or 0),
+            "start": float(item.get("start") or 0),
+            "end": float(item.get("end") or 0),
+            "text": str(item.get("text") or ""),
+        }
+        for position, item in enumerate(sentences)
+    ]
+    cleaned, report = _apply_speaker_cleaning(entries)
+    return cleaned, report
+
+
 # ── 校验 ────────────────────────────────────────────────────
 
 
@@ -490,18 +715,46 @@ def prepare_subtitle(
         "errors": [],
         "sentenceCount": 0,
         "durationSec": None,
+        # P3-2：说话人标记清洗报告。无标记时为空列表（行为不变）
+        "speakerMarkers": [],
+        "speakerMarkerCount": 0,
     }
 
     if fmt == "text":
-        paragraphs = split_plain_text(raw_text)
+        # P3-2：纯文本必须**先按行清洗再分段**。
+        # 为什么不能先 `split_plain_text` 再清洗：那个函数会把没有空行的
+        # 连续多行合并成一段（「段内合并空白」），合并后 `M: xxx` 不再位于
+        # 段首，`^[A-Z]:` 规则就匹配不到，标记会留在段中间。
+        # 先按行剥标记，再交给 `split_plain_text` 保持原有分段语义不变。
+        cleaned_lines: list[str] = []
+        marker_report: list[dict[str, Any]] = []
+        normalized = str(raw_text or "").lstrip("\ufeff")
+        for raw_line in normalized.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            if not line:
+                cleaned_lines.append("")   # 保留空行 = 保留原分段边界
+                continue
+            cleaned_text, markers = clean_speaker_markers(line)
+            cleaned_lines.append(cleaned_text)
+            for marker in markers:
+                marker_report.append({
+                    "text": line,
+                    "speaker": marker.lstrip("/ ").rstrip(":"),
+                    "marker": marker,
+                    "cleanedText": cleaned_text,
+                })
+
+        paragraphs = split_plain_text("\n".join(cleaned_lines))
         if not paragraphs:
             result["errors"] = [{
                 "index": 0, "line": 0, "reason": "empty_text",
-                "message": "文本文件没有可导入的内容",
+                "message": "文本文件没有可导入的内容（剥掉说话人标记后为空）",
             }]
             return result
         result["paragraphs"] = paragraphs
         result["sentenceCount"] = len(paragraphs)
+        result["speakerMarkers"] = marker_report[:_MAX_MARKER_REPORT]
+        result["speakerMarkerCount"] = len(marker_report)
         return result
 
     if fmt == "json":
@@ -509,6 +762,15 @@ def prepare_subtitle(
         result["durationSec"] = declared
     else:
         entries, errors = parse_srt(raw_text)
+
+    # P3-2：先清洗说话人标记，再校验时间轴。
+    # 顺序很重要：清洗会按字符比例**重新分配**被拆条目的时间轴，
+    # 如果先校验再清洗，校验看到的 end/start 与最终落库的不是同一份数据。
+    # 清洗是幂等的（无标记条目原样返回同一对象），所以对无标记字幕没有副作用。
+    if entries and not errors:
+        entries, marker_report = _apply_speaker_cleaning(entries)
+        result["speakerMarkers"] = marker_report[:_MAX_MARKER_REPORT]
+        result["speakerMarkerCount"] = len(marker_report)
 
     # 解析错误与时间轴校验错误**一起报**，不要解析阶段一有错就跳过校验：
     # 用户一次能看到全部问题，不必改一条试一次。
@@ -712,6 +974,62 @@ def _audio_probe(audio_bytes: bytes, filename: str) -> tuple[float | None, str]:
 
 # ── 导入主流程 ──────────────────────────────────────────────
 
+# 说话人标记的 sidecar 文件名。放在课程资产目录下
+# （`output/v2_assets/<lesson_id>/speaker_markers.json`），与媒体同目录。
+# 为什么用 sidecar 而不是新列：冻结约定 §3 明确「不新增表、不新增列」，
+# 而任务书 P3-2 又要求「保留在元数据里不丢」。sidecar 两者都满足：
+# 不改 schema，且随课程资产一起留存、可被后续页面/导出读取。
+SPEAKER_MARKERS_FILENAME = "speaker_markers.json"
+
+
+def speaker_markers_path(lesson_id: int) -> Path | None:
+    """说话人标记 sidecar 的绝对路径（课程资产目录）；解析不出返回 None。"""
+    try:
+        from webapp.services import v2_lessons as lesson_service
+        from webapp.storage import user_assets
+
+        target = user_assets.user_output_subdir(
+            "v2_assets", str(lesson_id),
+            fallback=Path(lesson_service.OUTPUT_DIR) / "v2_assets" / str(lesson_id),
+            create=False,
+        )
+        return Path(target) / SPEAKER_MARKERS_FILENAME
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _write_speaker_markers(lesson_id: int, markers: list[dict[str, Any]]) -> None:
+    """把清洗掉的说话人标记写 sidecar（信息不丢）。失败不影响导入。"""
+    if not markers:
+        return
+    path = speaker_markers_path(lesson_id)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {"lessonId": int(lesson_id), "count": len(markers), "markers": markers},
+                ensure_ascii=False, indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def read_speaker_markers(lesson_id: int) -> list[dict[str, Any]]:
+    """读回 sidecar（供接口/测试核对「标记没丢」）；不存在返回空列表。"""
+    path = speaker_markers_path(lesson_id)
+    if path is None or not path.is_file():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    markers = payload.get("markers") if isinstance(payload, dict) else None
+    return markers if isinstance(markers, list) else []
+
 
 def _write_segments(lesson_id: int, segments: list[dict[str, Any]]) -> None:
     """写字幕 + 重建阅读分段（与既有媒体导入管线同构）。"""
@@ -910,6 +1228,7 @@ def import_local_material(
     # ── 3. 校验字幕（用真实音频时长做上界）──
     subtitle_info: dict[str, Any] = {
         "format": "", "timed": False, "sentenceCount": 0, "errors": [],
+        "speakerMarkerCount": 0,
     }
     prepared: dict[str, Any] | None = None
     if subtitle_bytes is not None:
@@ -929,6 +1248,8 @@ def import_local_material(
                 "timed": prepared["timed"],
                 "sentenceCount": prepared["sentenceCount"],
                 "errors": prepared["errors"],
+                # P3-2：清洗掉的说话人标记数量（标记本身写 sidecar，不丢）
+                "speakerMarkerCount": int(prepared.get("speakerMarkerCount") or 0),
             }
 
     if subtitle_info["errors"]:
@@ -1068,6 +1389,16 @@ def _create_new_material(
             # 仅音频
             finalize_lesson_status(lesson_id, has_timeline=False)
             warnings.append("仅导入了音频；暂无逐句定位（无时间轴），逐句回听不可用。")
+
+        # P3-2：清洗掉的说话人标记写 sidecar（不新增列，信息不丢）
+        if prepared:
+            markers = prepared.get("speakerMarkers") or []
+            _write_speaker_markers(lesson_id, markers)
+            if markers:
+                warnings.append(
+                    f"已清洗 {len(markers)} 处行首说话人标记（如「/ W:」），"
+                    f"标记原文保留在课程元数据 speaker_markers.json。"
+                )
     except ImportValidationError:
         if lesson_id is not None:
             _rollback_lesson(lesson_id)

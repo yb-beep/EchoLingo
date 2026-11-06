@@ -50,11 +50,21 @@ FIXTURES = HERE / "fixtures" / "cet"
 SCENARIOS = ("normal", "empty", "slow", "error")
 
 # AI 请求状态机（任务书 7.2 末句：「异步模型操作需要可查询状态或可取消的实现」）
-#   idle → pending → complete
-#                  → failed     （超时/上游错误；errorCode 说明原因）
-#                  → cancelled  （用户主动取消）
-#                  → invalid    （模型输出不符合契约，B 需处理「模型输出无效」）
-AI_STATES = ("idle", "pending", "complete", "failed", "cancelled", "invalid")
+#
+# D03：**AI 请求状态与练习状态是两套枚举，不得混用**（冻结约定 §2）。
+#   练习状态：active / complete
+#   AI 请求：idle / pending / succeeded / failed / cancelled / stale
+# 早期 Mock 用 complete 表示「AI 请求成功」，与练习完成态同名但不同对象，
+# 会让前端与测试无法区分「这次模型调用成功了」和「这个练习做完了」。
+# 现统一为 succeeded；complete 只出现在练习/复习对象上。
+AI_STATES = ("idle", "pending", "succeeded", "failed", "cancelled", "stale")
+# 旧名 → 契约名（历史 Mock 数据/状态归一化，避免旧枚举混入新契约）
+AI_STATE_ALIASES = {"complete": "succeeded", "invalid": "failed"}
+
+
+def ai_state(value: str) -> str:
+    """把历史状态名归一化为契约枚举。"""
+    return AI_STATE_ALIASES.get(str(value or ""), str(value or ""))
 SLOW_DELAY_SEC = float(os.environ.get("CET_MOCK_SLOW_SEC", "2.5"))
 
 # 本地音频路径：音频不入库，通过环境变量或默认本地目录映射。
@@ -575,17 +585,29 @@ def list_marks(material_id: str = Query(..., alias="materialId")):
 # ────────────────────────── 练习 ──────────────────────────
 
 
+def _playback(start: float, end: float, speed: float) -> dict:
+    """D03：playback 同时给契约键与旧键（冻结约定 §3 双键返回）。
+
+    前端仍在读 startSeconds/endSeconds，一次切换风险大；
+    双键并存是过渡方案，新代码用 startSec/endSec。
+    Mock 必须与真实后端一致，否则前端在两者间切换会踩空。
+    """
+    return {
+        "startSec": start,
+        "endSec": end,
+        "startSeconds": start,
+        "endSeconds": end,
+        "speed": speed,
+    }
+
+
 def _first_step(practice: dict, sentence: dict) -> dict:
     return {
         "stepId": new_id("step"),
         "practiceId": practice["practiceId"],
         "action": "replay",
         "source": "confirmed_sentence",
-        "playback": {
-            "startSec": sentence["startSec"],
-            "endSec": sentence["endSec"],
-            "speed": 1.0,
-        },
+        "playback": _playback(sentence["startSec"], sentence["endSec"], 1.0),
         "textVisible": False,
         "feedback": None,
         "candidateRef": None,
@@ -679,22 +701,30 @@ def practice_event(practice_id: str, payload: dict = Body(...)):
             }
 
     etype = str(payload.get("type") or "")
-    # C04：契约统一后事件名有两套写法，Mock 与真实后端都必须接受：
-    #   短名 start / end / interrupt（早期契约）
-    #   全名 playback_start / playback_end / playback_interrupt（现契约）
-    # 只接受 7.3 定义的三种播放事件（含全名），其余一律拒绝。
-    # 不能把 visibility/feedback 等混进来 —— 那会让非法类型（如 pause）被误放行。
+    # D03：事件完整集合是**七种**（冻结约定 §1），不是三种。
+    #   playback_start / playback_end / playback_interrupt  → 播放类，带计时
+    #   visibility          → 前后台切换，前端依赖（后台计时靠它）
+    #   activity_heartbeat  → 前台心跳
+    #   feedback            → 反馈落库
+    #   transfer_answer     → 换句作答，前端依赖
+    # 短名 start / end / interrupt 作为 playback_* 的**别名**接受，
+    # 但新代码发全名。归一化后一律用全名，避免两套写法各自判断。
     _EVENT_ALIASES = {
-        "start": "start", "playback_start": "start",
-        "end": "end", "playback_end": "end",
-        "interrupt": "interrupt", "playback_interrupt": "interrupt",
+        "start": "playback_start", "playback_start": "playback_start",
+        "end": "playback_end", "playback_end": "playback_end",
+        "interrupt": "playback_interrupt", "playback_interrupt": "playback_interrupt",
+        "visibility": "visibility",
+        "activity_heartbeat": "activity_heartbeat",
+        "feedback": "feedback",
+        "transfer_answer": "transfer_answer",
     }
     if etype not in _EVENT_ALIASES:
         raise ScenarioFailure(
             "INVALID_EVENT", 422,
-            f"事件类型无效：{etype}（应为 start/playback_start 等）"
+            f"事件类型无效：{etype}（应为 playback_start/playback_end/playback_interrupt"
+            f"/visibility/activity_heartbeat/feedback/transfer_answer）"
         )
-    # 归一化：后续逻辑统一用短名判断，否则 playback_end 匹配不到 end
+    # 归一化：后续逻辑统一用全名判断（与真实后端一致）
     etype = _EVENT_ALIASES[etype]
     material_version = payload.get("materialVersion")
     if material_version and material_version != practice["materialVersion"]:
@@ -714,12 +744,25 @@ def practice_event(practice_id: str, payload: dict = Body(...)):
         raise ScenarioFailure("INVALID_EVENT", 422, "playedMs 必须是非负数字")
     visible = payload.get("visible", True)
 
-    # 只有「前台 + 可见 + 有播放量」才计入有效学习时长；
-    # AI 等待、后台、暂停由前端不打 end 事件或 visible=false 表示。
-    # 播完门槛（任务书 7.2 明确要求）：
-    # 只有「实际播放时长」达到该步骤音频时长的这个比例，才算一次有效播放。
-    # 否则用户快速点一下跳过也会被计成学习时间，时长统计就失去意义。
+    # D03：前台/后台判定与真实后端保持一致 —— 看**最近一次 visibility 事件**，
+    # 而不是本次请求体里的 visible 字段（真实后端忽略该字段，实测）。
+    # 早期 Mock 用请求体 visible，导致「同一份测试在 Mock 与真实环境结论相反」。
+    last_visibility = next(
+        (
+            ev for ev in reversed(list(STATE["practiceEvents"].values()))
+            if ev.get("practiceId") == practice_id and ev.get("type") == "visibility"
+        ),
+        None,
+    )
+    if last_visibility is not None:
+        visible = bool(last_visibility.get("visible", True))
+
+    # 播完门槛：与真实后端同一口径 ——
+    # 「是否完整播了一遍」由 playedToEnd 单独表达（end 的 audioTime 接近步骤终点），
+    # 有效时长则**按实际前台播放量如实计入**，不做 80% 比例截断。
+    # 早期 Mock 用 80% 门槛并把它与「是否计时」绑在一起，与真实后端不一致。
     PLAY_THROUGH_RATIO = 0.8
+    PLAY_END_TOLERANCE_SEC = 0.25
 
     def _step_audio_ms(step_id: Optional[str]) -> Optional[int]:
         """取该步骤应播音频的时长（毫秒）。取不到就返回 None（不做门槛判定）。"""
@@ -732,45 +775,121 @@ def practice_event(practice_id: str, payload: dict = Body(...)):
                 return int(max(0.0, float(end) - float(start)) * 1000)
         return None
 
+    def _step_range_ms(step_id: Optional[str]) -> tuple[float, float] | None:
+        for st in practice["steps"]:
+            if st["stepId"] != step_id:
+                continue
+            pb = st.get("playback") or {}
+            start, end = pb.get("startSec"), pb.get("endSec")
+            if isinstance(start, (int, float)) and isinstance(end, (int, float)):
+                return float(start), float(end)
+        return None
+
     with _STATE_LOCK:
         counted = 0
         played = float(played_ms or 0)
         expected_ms = _step_audio_ms(step_id) or _step_audio_ms(practice["currentStepId"])
-        played_through = (
-            expected_ms is None
-            or expected_ms <= 0
-            or played >= expected_ms * PLAY_THROUGH_RATIO
-        )
-        if etype in ("end", "interrupt") and visible and played > 0 and played_through:
+        # D03：与真实后端同一口径 ——
+        #   playedToEnd 看 end 的 audioTime 是否接近步骤终点；
+        #   有效时长按实际前台播放量如实计入（不做 80% 比例截断）。
+        is_playback_event = etype.startswith("playback_")
+        audio_time = payload.get("audioTime")
+        if audio_time is None:
+            audio_time = payload.get("audioSec")
+        played_through = False
+        if is_playback_event and etype in ("playback_end", "playback_interrupt"):
+            bounds = _step_range_ms(step_id) or _step_range_ms(practice["currentStepId"])
+            if bounds is not None and isinstance(audio_time, (int, float)):
+                _start_sec, end_sec = bounds
+                played_through = (
+                    end_sec - PLAY_END_TOLERANCE_SEC <= float(audio_time) <= end_sec + 0.7
+                )
+            elif expected_ms is not None and expected_ms > 0:
+                # 没有音频时间时退回比例口径，避免旧客户端完全不判
+                played_through = played >= expected_ms * PLAY_THROUGH_RATIO
+        if etype in ("playback_end", "playback_interrupt") and visible and played > 0:
+            counted = int(played)
+            practice["effectiveMs"] += counted
+        # activity_heartbeat 同样按前台心跳累计（与真实后端一致）
+        elif etype == "activity_heartbeat" and visible and played > 0:
             counted = int(played)
             practice["effectiveMs"] += counted
 
-            STATE["practiceEvents"][event_id] = {
-                "eventId": event_id,
-                "practiceId": practice_id,
-                "stepId": step_id,
-                "type": etype,
-                "playedMs": played_ms,
-                "countedMs": counted,
-                "visible": visible,
-                "audioSec": payload.get("audioSec"),
-                "speed": payload.get("speed"),
-                "materialVersion": material_version,
-                "receivedAt": now_iso(),
-            }
+        # D03：复习会话的计时靠「对当前条目的练习发事件」，与真实后端一致。
+        # 只有复习处于 active 且前台时才累计，并按预算截断。
+        if counted:
+            active_review = next(
+                (
+                    rv for rv in STATE["reviews"].values()
+                    if rv.get("status") == "active"
+                    and any(i.get("practiceId") == practice_id for i in rv.get("items", []))
+                ),
+                None,
+            )
+            if active_review is not None:
+                remaining = max(0, active_review["budgetMs"] - active_review["effectiveMs"])
+                accepted = min(counted, remaining)
+                active_review["effectiveMs"] += accepted
+                active_review["remainingMs"] = max(
+                    0, active_review["budgetMs"] - active_review["effectiveMs"]
+                )
+                if active_review["effectiveMs"] >= active_review["budgetMs"]:
+                    active_review["status"] = "complete"
+
+        STATE["practiceEvents"][event_id] = {
+            "eventId": event_id,
+            "practiceId": practice_id,
+            "stepId": step_id,
+            "type": etype,
+            "playedMs": played_ms,
+            "countedMs": counted,
+            "visible": visible,
+            "audioSec": payload.get("audioSec"),
+            "speed": payload.get("speed"),
+            "materialVersion": material_version,
+            "receivedAt": now_iso(),
+        }
+        if etype == "visibility":
+            # 前后台切换：前端依赖它做后台计时判定，必须真的落库
+            STATE["practiceEvents"][event_id]["visible"] = bool(visible)
+        elif etype == "activity_heartbeat":
+            STATE["practiceEvents"][event_id]["elapsedMs"] = payload.get("elapsedMs")
+        elif etype == "feedback":
+            STATE["practiceEvents"][event_id]["feedback"] = payload.get("feedback")
+        elif etype == "transfer_answer":
+            STATE["practiceEvents"][event_id]["answer"] = payload.get("answer")
         practice["updatedAt"] = now_iso()
+        # D03：Mock 与真实后端的事件回执形状必须一致，否则前端在两者间切换会踩空。
+        # 真实后端返回 event{eventId, duplicate, appliedMs, playedToEnd, startEventId}；
+        # 这里按同一语义输出（playedToEnd = 是否达到播完门槛）。
+        is_playback_end = etype in ("playback_end", "playback_interrupt")
+        event_payload = {
+            "eventId": event_id,
+            "duplicate": False,
+            "appliedMs": counted,
+            "type": etype,
+        }
+        if is_playback_event:
+            event_payload["playedToEnd"] = bool(played_through) if is_playback_end else False
         return {
             "ok": True,
             "idempotent": False,
             "eventId": event_id,
+            "type": etype,
             "countedMs": counted,
             "effectiveMs": practice["effectiveMs"],
-            "playThrough": {
-                "playedMs": int(played),
-                "expectedMs": expected_ms,
-                "ratio": PLAY_THROUGH_RATIO,
-                "passed": played_through,
-            },
+            "event": event_payload,
+            # 只有播放类事件才有播完门槛；业务事件（visibility 等）不参与计时判定
+            "playThrough": (
+                {
+                    "playedMs": int(played),
+                    "expectedMs": expected_ms,
+                    "ratio": PLAY_THROUGH_RATIO,
+                    "passed": played_through,
+                }
+                if is_playback_event
+                else None
+            ),
             "developmentFixture": True,
         }
 
@@ -877,7 +996,7 @@ def practice_next(practice_id: str, payload: dict = Body(...)):
 
     playback, text_visible, payload_extra, candidate_ref = None, False, {}, None
     if action == "slow":
-        playback = {"startSec": sentence["startSec"], "endSec": sentence["endSec"], "speed": 0.75}
+        playback = _playback(sentence["startSec"], sentence["endSec"], 0.75)
     elif action == "explain":
         text_visible = True
         payload_extra = {
@@ -887,7 +1006,7 @@ def practice_next(practice_id: str, payload: dict = Body(...)):
             )
         }
     elif action == "transfer":
-        playback = {"startSec": sentence["startSec"], "endSec": sentence["endSec"], "speed": 1.0}
+        playback = _playback(sentence["startSec"], sentence["endSec"], 1.0)
         text_visible = False
         # 换句检查：候选引用走 candidateRef 字段（契约第 7 节 PracticeStep 有这一项）。
         # 结构是 C 提议的形状，字段名待 B 确认，见 transfer_candidates.json。
@@ -903,7 +1022,7 @@ def practice_next(practice_id: str, payload: dict = Body(...)):
             "noCandidate": not case["items"],
         }
     else:
-        playback = {"startSec": sentence["startSec"], "endSec": sentence["endSec"], "speed": 1.0}
+        playback = _playback(sentence["startSec"], sentence["endSec"], 1.0)
 
     step = {
         "stepId": new_id("step"),
@@ -921,15 +1040,16 @@ def practice_next(practice_id: str, payload: dict = Body(...)):
     practice["steps"].append(step)
     practice["currentStepId"] = step["stepId"]
     practice["feedbackHistory"].append(feedback)
+    # D03：AI 请求成功用 succeeded（练习完成态才用 complete），两者不得混用
     practice["aiRequest"] = {
-        "status": "complete", "requestId": request_id, "errorCode": None,
+        "status": "succeeded", "requestId": request_id, "errorCode": None,
         "finishedAt": now_iso(),
     }
     practice["updatedAt"] = now_iso()
     return {
         "practiceId": practice_id,
         "step": step,
-        "modelRequest": {"requestId": request_id, "status": "complete"},
+        "modelRequest": {"requestId": request_id, "status": "succeeded"},
         "developmentFixture": True,
         "modelOutputIsFixture": True,
     }
@@ -1020,18 +1140,12 @@ def practice_local(practice_id: str, payload: dict = Body(...)):
         words = text.split()
         half = max(1, len(words) // 2)
         chunks = [" ".join(words[:half]), " ".join(words[half:])] if len(words) > 1 else [text]
-        playback = {
-            "startSec": sentence["startSec"],
-            "endSec": sentence["endSec"],
-            "speed": 0.85,
-            "chunks": chunks,
-        }
+        playback = {**_playback(sentence["startSec"], sentence["endSec"], 0.85), "chunks": chunks}
     else:
-        playback = {
-            "startSec": sentence["startSec"],
-            "endSec": sentence["endSec"],
-            "speed": {"slow": 0.75, "replay": 1.0, "explain": 1.0}.get(action, 1.0),
-        }
+        playback = _playback(
+            sentence["startSec"], sentence["endSec"],
+            {"slow": 0.75, "replay": 1.0, "explain": 1.0}.get(action, 1.0),
+        )
     step = {
         "stepId": new_id("step"),
         "practiceId": practice_id,
@@ -1178,6 +1292,8 @@ def create_review(payload: dict = Body(default={})):
         "status": "ready",
         "budgetMs": budget_ms,
         "effectiveMs": 0,
+        # D03：与真实后端一致，返回剩余预算（前端据此显示「还剩几分钟」）
+        "remainingMs": budget_ms,
         "maxItems": max_items,
         "currentItemId": None,
         "items": items,
@@ -1224,7 +1340,10 @@ def review_action(review_id: str, payload: dict = Body(...)):
         review["status"] = "active"
         return {**review, "developmentFixture": True}
 
-    if action == "done":
+    # D03：真实后端的动作名是 `complete`（「这处练完了」）。
+    # `done` 是早期 Mock 自造的同义动作，仅作兼容保留，不作为契约。
+    # 新代码/测试应发 complete；两者语义相同，Mock 都接受。
+    if action in ("done", "complete"):
         target = next((i for i in review["items"] if i["itemId"] == item_id), None)
         if target is None:
             raise ScenarioFailure("ITEM_NOT_FOUND", 404, f"复习条目不存在：{item_id}")
@@ -1320,6 +1439,7 @@ def review_action(review_id: str, payload: dict = Body(...)):
         if review["status"] == "active" and payload.get("visible", True):
             counted = min(delta, max(0, review["budgetMs"] - review["effectiveMs"]))
             review["effectiveMs"] += counted
+            review["remainingMs"] = max(0, review["budgetMs"] - review["effectiveMs"])
         return {
             **review,
             "countedMs": counted,
@@ -1330,7 +1450,8 @@ def review_action(review_id: str, payload: dict = Body(...)):
     raise ScenarioFailure(
         "INVALID_ACTION",
         422,
-        f"复习动作无效：{action}（应为 start / switch / done / skip / replace / pause / resume / tick）",
+        f"复习动作无效：{action}"
+        "（契约动作为 start / pause / resume / skip / complete / replace / finish）",
     )
 
 

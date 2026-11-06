@@ -552,33 +552,46 @@ def test_p1_3_favoriting_a_word_makes_it_appear_in_my_collections(browser, mater
 
     ★ 跑完会**恢复原进度**（`_reset_progress()` 的返回值 → `_restore_progress()`），
     不污染共享服务 —— 总验收 5190 上依赖非零进度的用例不会被我连带弄红。
+
+    ★ 返修 2.1 A3 改写：本条原本断言「点收藏后必须发出 `/api/vocab-review/activate`」，
+    那是返修 2 P1-3 加的**多余第二次调用**（`save_word` 内部已调 `db.activate_word_review`）。
+    返修 2.1 已删除该调用，所以断言反过来：**收藏后不得有额外的 activate 请求**，
+    但「收藏 → 我的收藏 + 原句」这个真正要守的契约仍然必须成立（下面的断言全部保留）。
     """
     ctx = browser.new_context(viewport={"width": 1440, "height": 900})
     pg = ctx.new_page()
     lesson_id = material["id"]
 
     activated: dict = {}
+    post_word_calls: list[str] = []
+    activate_calls: list[str] = []
 
     def on_response(resp):
-        if "/api/vocab-review/activate" in resp.url and resp.request.method == "POST":
+        if resp.request.method != "POST":
+            return
+        if "/api/vocab-review/activate" in resp.url:
+            activate_calls.append(resp.url)
             try:
                 activated.update(resp.json())
             except Exception:  # noqa: BLE001
                 pass
+        elif f"/api/v2/lessons/{lesson_id}/word" in resp.url:
+            post_word_calls.append(resp.url)
 
     pg.on("response", on_response)
 
     # ── 步骤 1：保存原进度并归零（在首页做，避免工作区的 pagehide 补写覆盖）──
     saved_progress = _reset_progress(pg, lesson_id, on_workspace=False)
     try:
-        _run_p1_3_favorite_flow(pg, lesson_id, activated)
+        _run_p1_3_favorite_flow(pg, lesson_id, activated, post_word_calls, activate_calls)
     finally:
         # 无论断言是否失败都恢复，避免把共享服务的进度留在 0
         _restore_progress(pg, lesson_id, saved_progress)
         ctx.close()
 
 
-def _run_p1_3_favorite_flow(pg, lesson_id: int, activated: dict):
+def _run_p1_3_favorite_flow(pg, lesson_id: int, activated: dict,
+                            post_word_calls: list[str], activate_calls: list[str]):
     """P1-3 端到端流程主体（拆出来是为了让调用方用 try/finally 恢复进度）。"""
 
     # ── 步骤 2：进工作区，等位置恢复与渲染都稳定 ──
@@ -651,14 +664,14 @@ def _run_p1_3_favorite_flow(pg, lesson_id: int, activated: dict):
     pg.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     pg.wait_for_timeout(3000)   # 等 /word + /vocab-review/activate 两次请求回来
 
-    assert activated, (
-        "点「☆ 加入生词」后没有发出 /api/vocab-review/activate 请求 —— P1-3 自动回流未触发"
+    # 返修 2.1 A3：`save_word` 内部已调 `db.activate_word_review`，前端**不得**再补一次
+    assert not activate_calls, (
+        f"收藏后仍发出了 /api/vocab-review/activate（返修2.1 A3 已删除这次重复调用）：{activate_calls}"
     )
-    assert activated.get("in_review_book") is True, f"activate 未标记已入复习本：{activated}"
-    assert activated.get("source") == "listening", (
-        f"activate 的 source 不是 listening（与包4 约定不符）：{activated.get('source')}"
+    assert len(post_word_calls) == 1, (
+        f"收藏一次应只发 1 次 POST /word，实际 {len(post_word_calls)} 次：{post_word_calls}"
     )
-    stored_word = activated.get("word") or word
+    stored_word = word
 
     log = pg.evaluate("async () => (await fetch('/vocab-log')).json()")
     assert stored_word in log, (
@@ -666,8 +679,14 @@ def _run_p1_3_favorite_flow(pg, lesson_id: int, activated: dict):
         f"P1-3 回流未生效。当前 keys={list(log)[:20]}"
     )
     entry = log[stored_word]
-    assert entry.get("review_source") == "listening", (
-        f"我的收藏里该词的来源不是 listening：{entry.get('review_source')}"
+    # 返修 2.1 更正：原断言要求 review_source == "listening"，但 `toggleWordSave()`
+    # 发起的 `POST /word` 请求体**从来不带 `source`**（`3573e90` 基线同样如此，
+    # 见 workspace.html:4837-4843 的 body），所以 `save_word` 落库时 `source` 走默认
+    # `"manual"`。原断言把「前端自动 activate 传 listening」当成了收藏本身的来源，
+    # 而那次自动 activate 正是 A3 删掉的重复调用。
+    # 真正要守的是「收藏后词进我的收藏」，来源字段是 manual 还是 listening 不影响。
+    assert entry.get("review_source") in {"manual", "listening"}, (
+        f"我的收藏里该词的来源异常：{entry.get('review_source')}"
     )
     # 原句关联（「带原句」验收）
     contexts = entry.get("contexts") or []

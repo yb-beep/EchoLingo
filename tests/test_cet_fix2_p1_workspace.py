@@ -142,20 +142,47 @@ def test_p1_2_generic_collection_panel_title_unchanged(generic_html):
 # ══════════════════════════════════════════════════════════════
 
 
-def test_p1_3_auto_activate_uses_existing_endpoint_with_listening_source(cet_html):
-    """CET 收藏成功后自动调 /api/vocab-review/activate，source='listening'。"""
+def _strip_js_comments(js: str) -> str:
+    """剥掉 JS 的 // 行注释与 /* */ 块注释，只留可执行代码。
+
+    断言「某段代码不存在」时不能被说明注释误伤 —— 返修2.1 删掉自动回流后，
+    代码里仍有注释解释「这里不再调用 xxx」。
+    """
+    import re as _re
+    js = _re.sub(r"/\*.*?\*/", "", js, flags=_re.S)
+    return _re.sub(r"(?m)^\s*//.*$", "", js)
+
+
+def test_p1_3_no_duplicate_activate_call_after_favorite(cet_html):
+    """返修 2.1 A3：收藏成功后**不得**再额外调 `/api/vocab-review/activate`。
+
+    背景（任务书 §0 前提更正）：返修 2 P1-3 在这里加了
+    `if (CET_ON) await autoActivateFavoriteWord(...)`，依据是「工作区收藏进不了我的收藏」。
+    该前提经复验是**错的** —— `POST /api/v2/lessons/{id}/word`（`save_word`）最后
+    本来就调 `db.activate_word_review(...)`，收藏本身就是通的。
+
+    再调一次 activate 等于「同一次收藏写两遍库」，多一次 POST，
+    且让「收藏 1 个词 = 1 次 /word」的网络记录变成 2 次写请求。
+    """
     js = _text(WORKSPACE)
-    assert "function autoActivateFavoriteWord(" in js
-    assert "activateWordReview(normalized, 'listening'" in js, "自动回流未用 source='listening'"
-    # 只在 CET 模式自动回流（通用模式行为不变）
-    assert "if (CET_ON) await autoActivateFavoriteWord(" in js
-    # 收藏成功后触发（在 toggleWordSave 的新增分支里）
-    toggle = js.split("async function toggleWordSave", 1)[1].split(
+    # 断言「可执行代码」里没有，而不是整个文件 —— A3 的说明注释会提到它
+    code = _strip_js_comments(js)
+    # 自动回流的函数与调用都已删除
+    assert "function autoActivateFavoriteWord(" not in code, \
+        "自动回流函数被加回来了 —— 返修2.1 A3 已删除（save_word 本来就激活）"
+    assert "autoActivateFavoriteWord(" not in code, "自动回流的调用仍存在"
+    # toggleWordSave 里不得再出现 activate 调用
+    toggle = code.split("async function toggleWordSave", 1)[1].split(
         "async function addWordToReviewFromPopover", 1
     )[0]
-    assert "autoActivateFavoriteWord(" in toggle, "toggleWordSave 收藏成功后未触发自动回流"
-    # 失败不打断收藏本身
-    assert "收藏本身已成功" in js or "静默" in js
+    assert "/api/vocab-review/activate" not in toggle, \
+        "toggleWordSave 收藏成功后仍在调 activate（重复写库）"
+    # 但收藏请求本身必须保留（否则收藏功能就没了）
+    assert "/api/v2/lessons/${LESSON_ID}/word" in toggle, "收藏请求本身被误删"
+    # activate 端点本身必须保留（save_word 内部依赖 db.activate_word_review；
+    # A3 删的是前端多余的第二次调用，不是这个端点）
+    vocab_src = (ROOT / "backend" / "webapp" / "fastapi_routes" / "vocab.py").read_text(encoding="utf-8")
+    assert '@router.post("/api/vocab-review/activate")' in vocab_src, "activate 端点被误删（应保留）"
 
 
 def test_p1_3_cet_panel_shows_state_label_not_manual_button(cet_html):

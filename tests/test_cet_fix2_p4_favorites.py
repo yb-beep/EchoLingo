@@ -60,6 +60,35 @@ def _visible_html(html: str) -> str:
     return re.sub(r"<style[^>]*>.*?</style>", "", cleaned, flags=re.S)
 
 
+def _strip_js_comments(js: str) -> str:
+    """剥掉 JS 的 // 行注释与 /* */ 块注释，只留可执行代码。
+
+    用途：断言「某段代码不存在」时不能被说明注释误伤 ——
+    返修 2.1 删掉补同步后，代码里仍会有注释解释「这里不再调用 xxx」。
+    """
+    js = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$", "", js)
+
+
+def _js_function_body(js: str, name: str) -> str:
+    """取 `function <name>(...) {` 的函数体（按大括号配平，支持嵌套）。"""
+    m = re.search(rf"function\s+{re.escape(name)}\s*\(", js)
+    if not m:
+        return ""
+    i = js.find("{", m.end())
+    if i == -1:
+        return ""
+    depth = 0
+    for j in range(i, len(js)):
+        if js[j] == "{":
+            depth += 1
+        elif js[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return js[i + 1 : j]
+    return ""
+
+
 def _render(monkeypatch, mode="1") -> str:
     from fastapi.testclient import TestClient
     from fastapi_server import create_app
@@ -296,10 +325,18 @@ def test_p4_1_frontend_no_longer_syncs_on_favorites_load(cet_html):
     """
     assert "cetSyncLessonCollections" not in INDEX_TEXT, \
         "补同步前端函数被加回来了 —— 返修2.1 A2 已删除"
-    assert "/api/vocab-review/sync-collections" not in INDEX_TEXT, \
-        "前端仍在请求已删除的补同步端点"
-    # initVocab（收藏页加载入口）不得发起任何写库请求
-    init_fn = INDEX_TEXT.split("async function initVocab()", 1)[1].split("\n}", 1)[0]
+
+    # 断言「可执行的 fetch 调用」不存在，而不是「整个文件不出现该路径」——
+    # A2 的说明注释里会引用这个路径（解释为什么删掉它），不能误伤注释。
+    code = _strip_js_comments(INDEX_TEXT)
+    for pattern in ("fetch('/api/vocab-review/sync-collections'",
+                    'fetch("/api/vocab-review/sync-collections"',
+                    "fetch(`/api/vocab-review/sync-collections`"):
+        assert pattern not in code, f"前端仍在请求已删除的补同步端点：{pattern}"
+
+    # initVocab（收藏单词页的加载入口）不得发起任何写库请求
+    init_fn = _js_function_body(code, "initVocab")
+    assert init_fn, "找不到 initVocab() 函数体"
     assert "sync-collections" not in init_fn, "收藏页加载仍在触发补同步"
     assert "method: 'POST'" not in init_fn and 'method:"POST"' not in init_fn, \
         "收藏页加载仍有 POST 写库"

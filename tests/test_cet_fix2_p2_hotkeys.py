@@ -416,3 +416,84 @@ def test_p2_generic_mode_has_no_base_hotkeys(page):
 
     # 状态条与快捷键提示照旧不出现（通用模式没有这套 UI 的语义）
     assert page.locator("#cet-hotkey-hint").is_hidden(), "通用模式下仍显示底座快捷键提示"
+
+
+@pytest.mark.skipif(not _up(GENERIC_BASE), reason="未设置 CET_GENERIC_BASE_URL（ELT_CET_MODE=0 服务）")
+def test_p2_generic_mode_loop_indicator_fully_hidden(page):
+    """§0.6 回归守卫（复审缺陷）：通用模式下「本句循环」指示条不得可见、不得进可见文本。
+
+    缺陷成因（Lead 用基线 vs 集成逐页可见文本 diff 抓到）：
+        buildBar() 只给 #cet-loop-indicator 设了 hidden 属性，而
+        cet-workspace.css:60 `.cet-study-bar .cet-study-item{display:inline-flex}`
+        是作者样式，优先级高于 UA 的 `[hidden]{display:none}` → 元素照样显示。
+        通用模式下 ownsSpaceKey 初值 false、active 也 false，归属同步的状态变更分支
+        永不成立 → 指示条一次都不被纠正 → 页面凭空多出可见文本「本句循环 开」。
+
+    这条断言用 getComputedStyle().display 而不是 is_hidden()：
+    后者看的是「有没有渲染盒」，而这里要钉死的是「作者 CSS 不能再把它顶出来」。
+    """
+    _open(page, GENERIC_BASE, expect_agent=False)
+
+    state = page.evaluate(
+        """() => {
+            const el = document.getElementById('cet-loop-indicator');
+            if (!el) return {exists: false};
+            const cs = getComputedStyle(el);
+            return {
+                exists: true,
+                display: cs.display,
+                visibility: cs.visibility,
+                hiddenAttr: el.hidden,
+                inlineDisplay: el.style.display,
+                rendered: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+                bodyHasLoopText: document.body.innerText.includes('本句循环'),
+            };
+        }"""
+    )
+    assert state["exists"], "指示条元素应存在（只是隐藏），便于状态切换"
+    assert state["display"] == "none", (
+        f"通用模式下指示条 display={state['display']!r}，应为 'none' —— "
+        "作者 CSS 的 .cet-study-item{display:inline-flex} 把它顶出来了（§0.6 回归）"
+    )
+    assert state["rendered"] is False, "通用模式下指示条仍有渲染盒"
+    assert state["bodyHasLoopText"] is False, (
+        "通用模式可见文本里出现「本句循环」—— 基线 6f07433 没有这个元素，属 §0.6 行为变化"
+    )
+
+
+def test_p2_loop_indicator_visible_only_while_looping(page):
+    """功能不能被一起藏掉：CET 关闭态按 L 开循环时指示条必须真的可见。"""
+    _open(page, BASE, expect_agent=False)
+    page.wait_for_function("() => window.__cetPlayer.ownsSpaceKey === true", timeout=10000)
+
+    def indicator():
+        return page.evaluate(
+            """() => {
+                const el = document.getElementById('cet-loop-indicator');
+                if (!el) return null;
+                return {
+                    display: getComputedStyle(el).display,
+                    rendered: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+                };
+            }"""
+        )
+
+    # 未开循环：隐藏
+    assert indicator()["display"] == "none", "未开循环时指示条应隐藏"
+
+    page.evaluate("() => window.__ws.seek(0.08)")
+    page.wait_for_timeout(300)
+    page.keyboard.press("L")
+    page.wait_for_timeout(500)
+
+    assert page.evaluate("() => window.__cetPlayer._state.loopEnabled") is True
+    on = indicator()
+    assert on["display"] != "none", "开循环后指示条仍被隐藏（功能被一起藏掉了）"
+    assert on["rendered"] is True, "开循环后指示条没有渲染盒"
+    assert "本句循环" in page.evaluate("() => document.body.innerText")
+
+    # 再按 L 关掉：回到隐藏
+    page.keyboard.press("L")
+    page.wait_for_timeout(500)
+    assert page.evaluate("() => window.__cetPlayer._state.loopEnabled") is False
+    assert indicator()["display"] == "none", "关闭循环后指示条未隐藏"

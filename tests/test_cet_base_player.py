@@ -370,3 +370,71 @@ def test_p2_generic_mode_does_not_register_hotkeys():
     # 归属判定的第一项就是 CET_ON，通用模式直接短路
     assert "return CET_ON && !cetListeningEnabled();" in js
     assert "if (!hotkeyActive()) return;" in js
+
+
+# ── 返修2 包2 复审回归：§0.6 通用模式「本句循环」指示条曾泄漏 ────────
+# 缺陷（Lead 用基线 6f07433 vs 集成的逐页可见文本 diff 抓到）：
+#   buildBar() 建 DOM 时只给 #cet-loop-indicator 设了 hidden 属性，而
+#   cet-workspace.css:60 的 `.cet-study-bar .cet-study-item{display:inline-flex}`
+#   是作者样式，优先级高于 UA 的 `[hidden]{display:none}` → 元素照样显示。
+#   通用模式下 ownsSpaceKey 初值 false、active 也是 false，
+#   syncHotkeyOwnership() 的状态变更分支永不成立 → 一次都不纠正 → 一直可见。
+#   实测：通用模式 /workspace/1 多出可见文本「本句循环 开」（基线没有该元素）。
+
+
+def test_p2_loop_indicator_hidden_at_build_time():
+    """回归守卫：buildBar() 建完 DOM 必须立刻按真实归属收起指示条。
+
+    只靠 HTML 的 hidden 属性不够 —— 作者 CSS 会盖掉 UA 的 [hidden]。
+    """
+    js = _text(CET_PLAYER)
+    build_body = js[js.index("function buildBar()"):js.index("function updateBar()")]
+    assert "S.barEl = bar;" in build_body, "buildBar 未记录状态条引用"
+    # 关键：S.barEl = bar 之后必须主动同步一次指示条可见性
+    after_assign = build_body[build_body.index("S.barEl = bar;"):]
+    assert "syncLoopIndicator();" in after_assign, (
+        "buildBar() 建完 DOM 后未调用 syncLoopIndicator()，"
+        "指示条会保持「只有 hidden 属性、被作者 CSS 覆盖」的状态 → 通用模式泄漏"
+    )
+
+
+def test_p2_ui_sync_not_inside_ownership_change_branch():
+    """回归守卫：UI 刷新不能放在 `ownsSpaceKey !== active` 分支里。
+
+    通用模式下 ownsSpaceKey 初值与 active 都是 false，分支永不进入，
+    放在里面等于「永远不会被纠正」。
+    """
+    js = _text(CET_PLAYER)
+    sync_body = js[js.index("function syncHotkeyOwnership()"):js.index("// ── 挂载")]
+    branch_start = sync_body.index("if (S.ownsSpaceKey !== active) {")
+    # 找到该 if 块的结束（按缩进配对大括号）
+    depth = 0
+    branch_end = None
+    for idx in range(sync_body.index("{", branch_start), len(sync_body)):
+        if sync_body[idx] == "{":
+            depth += 1
+        elif sync_body[idx] == "}":
+            depth -= 1
+            if depth == 0:
+                branch_end = idx
+                break
+    assert branch_end is not None, "无法定位归属变更分支"
+    branch = sync_body[branch_start:branch_end]
+    outside = sync_body[:branch_start] + sync_body[branch_end:]
+
+    assert "syncLoopIndicator();" not in branch, (
+        "syncLoopIndicator() 仍在「状态变更」分支里 —— 通用模式下该分支永不进入，"
+        "指示条不会被纠正（§0.6 回归成因）"
+    )
+    assert "syncHotkeyHint();" not in branch, "syncHotkeyHint() 仍在状态变更分支里"
+    assert "syncLoopIndicator();" in outside, "syncHotkeyOwnership() 未无条件刷新指示条"
+    assert "syncHotkeyHint();" in outside, "syncHotkeyOwnership() 未无条件刷新快捷键提示"
+
+
+def test_p2_set_shown_handles_author_css_override():
+    """setShown() 必须同时设 hidden 与行内 display（行内样式优先级最高）。"""
+    js = _text(CET_PLAYER)
+    body = js[js.index("function setShown(el, show)"):]
+    body = body[:body.index("\n  }")]
+    assert "el.hidden = !show" in body, "setShown 未设 hidden 属性"
+    assert "el.style.display" in body, "setShown 未设行内 display（作者 CSS 会盖掉 hidden）"

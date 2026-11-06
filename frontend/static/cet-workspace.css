@@ -64,6 +64,19 @@ body[data-cet-mode="on"] .video-card:has(#youtube-player:empty) {
   white-space: nowrap;
 }
 
+/* 返修2.1 · A5：`[hidden]` 必须真的隐藏。
+ *
+ * 缺陷：上面这条 `.cet-study-bar .cet-study-item { display: inline-flex }` 是**作者样式**，
+ * 优先级（0,2,0）高于 UA 的 `[hidden] { display: none }`（0,1,0），所以给
+ * `.cet-study-item` 设 `hidden` 属性元素照样显示 —— Playwright 的 is_hidden()
+ * 也判为可见，用户能看到本该收起的条目（如「本句循环」指示条）。
+ *
+ * 包2 当时为此在 cet-player.js 里加了 setShown()（同时设 hidden + 行内 display）绕过，
+ * 那是**绕开**不是修好。这里补上根因规则，行内样式仍优先级更高，两者不冲突；
+ * 因此 cet-player.js 的 setShown() 保留不动（它不在本包范围）。
+ */
+.cet-study-bar .cet-study-item[hidden] { display: none !important; }
+
 .cet-study-bar .cet-study-item strong {
   color: var(--ink);
   font-weight: 700;

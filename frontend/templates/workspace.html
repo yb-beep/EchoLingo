@@ -1998,7 +1998,7 @@ window.__CET_BOOT__ = {
 {% if cet_features.ai_chat_general %}
 <script src="/static/voice-input.js?v=20260715-1"></script>
 {% endif %}
-<link rel="stylesheet" href="/static/cet-workspace.css?v=20261105-p1">
+<link rel="stylesheet" href="/static/cet-workspace.css?v=20261106-fix21">
 {#- 返修2：cet-player.js 行为有变更（包2 快捷键），缓存串必须 bump，
     否则真实用户刷新后仍拿到旧 JS。 -#}
 <script src="/static/cet-player.js?v=20261106-fix2" defer></script>
@@ -2903,6 +2903,25 @@ function refreshReadingSentenceSaveStates() {
 }
 
 async function syncHighlightedWordsAfterRender() {
+  // 返修2.1 · A1（阻断）：CET 模式下**不**把高亮词写进「本课收藏」。
+  //
+  // 为什么要拆掉这条通道（返修2 的前提是错的）：
+  //   `POST /highlighted-words/sync` → `_sync_highlighted_words_to_lesson()` 把
+  //   四六级词表命中的高亮词写进 `v2_lesson_words`。返修2 又让「我的收藏」加载时
+  //   把 `v2_lesson_words` 全量 activate 进复习本（A2 拆掉的 `sync-collections`），
+  //   于是**全新库一个词都没收藏**，打开一次工作区就显示「本课收藏 10」。
+  //   那 10 个词是自动高亮词，不是用户收藏 —— 不能冒充收藏。
+  //
+  // 依赖已确认（见交付说明 A1 节，含 3573e90 实测）：
+  //   字幕高亮 `segment.highlighted_words` ← GET /subtitles → highlight_segments()
+  //   精听页「重点词汇 N」 ← GET /intensive → build_intensive_document()
+  //   两者都由 highlight_segments()/highlight_reading_blocks() **当场按词表算**，
+  //   不读 `v2_lesson_words`，因此关掉本同步不影响高亮与精听页数量。
+  //   `★` 标记来自 savedWordSet ← GET /words，即用户真实收藏，同样不依赖本同步。
+  //
+  // 开关读集中配置（window.__CET_BOOT__ ← cet_mode.template_context() 的 cet_on），
+  // 不新增第二套判断；通用模式（ELT_CET_MODE=0）CET_ON=false，行为与 3573e90 完全一致。
+  if (CET_ON) return;
   if (highlightedWordsSyncStarted) return;
   highlightedWordsSyncStarted = true;
   try {
@@ -4183,11 +4202,12 @@ function renderReadingSavedItems() {
     const cached = wordMeaningCache[word];
     const meaning = typeof cached === 'string' ? cached : (cached?.meaning || '');
     const inReviewBook = reviewBookWordSet.has(word);
-    // P1-3（返修2 包1）：CET 模式下收藏成功即自动 activate 回流到「我的收藏」，
-    // 所以这里不再需要用户逐个点「加入复习本」—— 按钮改成**状态标签**。
-    // 通用模式保留原按钮与原行为（原版没有自动回流，不能让用户失去这个操作）。
+    // 返修2.1 · A4：CET 模式这里不出现「加入复习本 / 已在复习本」——
+    // 收藏本身就会进「我的收藏」（save_word 内部 activate），再给一个「加入复习本」
+    // 按钮等于让用户以为收藏和复习本是两件事。
+    // 通用模式保留原按钮与原行为（3573e90 没有自动回流，不能让用户失去这个操作）。
     const action = CET_ON
-      ? `<span class="review-book-state" data-review-book-state="1" aria-label="${inReviewBook ? cetCopy('fix2_favorite_added', '✓ 已收藏') : cetCopy('fix2_word_in_favorites', '收藏后进入「我的收藏」')}">${inReviewBook ? cetCopy('fix2_favorite_added', '✓ 已收藏') : cetCopy('fix2_word_in_favorites', '收藏后进入「我的收藏」')}</span>`
+      ? `<span class="review-book-state" data-review-book-state="1" aria-label="${inReviewBook ? cetCopy('fix2_favorite_added', '★ 已收藏') : cetCopy('fix2_word_in_favorites', '收藏后进入「我的收藏」')}">${inReviewBook ? cetCopy('fix2_favorite_added', '★ 已收藏') : cetCopy('fix2_word_in_favorites', '收藏后进入「我的收藏」')}</span>`
       : `<button class="review-book-btn" ${inReviewBook ? 'disabled' : ''} onclick="addSavedWordToReview(event, '${escapeJsAttr(word)}', '${escapeJsAttr(meaning)}')">${inReviewBook ? '已在复习本' : '加入复习本'}</button>`;
     return `<div class="reading-saved-item reading-saved-word">
       <span><strong>${escapeHtml(word)}</strong>${meaning ? ` · ${escapeHtml(meaning)}` : ''}</span>
@@ -4229,31 +4249,14 @@ async function addSavedWordToReview(event, word, meaning = '') {
 }
 
 /**
- * P1-3（返修2 包1）：CET 模式「☆ 加入生词」成功后的自动回流。
+ * 返修2.1 · A3：`autoActivateFavoriteWord()` 已删除。
  *
- * 只在收藏**成功**后调用，且失败不打断收藏本身 —— 收藏是主操作，
- * 回流是附加收益：activate 失败时用户至少还在本课收藏里看得到这个词，
- * 包4 首页侧还有一次补同步兜底。
- *
- * payload 与包4 对齐（两边都用已有接口，不新增后端）：
- *   POST /api/vocab-review/activate
- *   {"word": "<归一化词>", "source": "listening", "lesson_id": <id>, "meaning": "<释义>"}
- *
- * 幂等性由后端保证（db.activate_word_review 用 INSERT ... ON CONFLICT DO UPDATE），
- * 所以包4 首页加载时再补调一次不会重复累加。
+ * 它原是返修2 P1-3 加的「收藏成功后额外 POST /api/vocab-review/activate」，
+ * 前提（工作区收藏进不了「我的收藏」）经复验是错的：save_word 本身已 activate。
+ * 唯一调用点（toggleWordSave 新增分支）已移除，函数留着就是一条**活的重复写库通道**，
+ * 故整段删除；通用模式的「＋ 加入复习本」按钮走的是 activateWordReview()，
+ * 与本函数无关，行为不变。
  */
-async function autoActivateFavoriteWord(word, meaning = '') {
-  const normalized = normalizeWord(word);
-  if (!normalized) return false;
-  try {
-    await activateWordReview(normalized, 'listening', meaning || '');
-    document.dispatchEvent(new CustomEvent('cet:favorites-changed', {detail: {reason: 'auto-activate', word: normalized}}));
-    return true;
-  } catch (_) {
-    // 静默：不弹窗打断播放；收藏本身已成功，首页侧还有补同步
-    return false;
-  }
-}
 
 function sentenceTagsForCategory(category) {
   return (sentenceTagCatalog.tags || [])
@@ -4752,15 +4755,30 @@ function openWordPopover(anchor, word, meaning, phonetic = '', source = '', dict
   const phoneticHtml = phonetic ? `<div class="phonetic">/${escapeHtml(phonetic)}/</div>` : '';
   // \u8bcd\u9891/\u8bcd\u5178\u6807\u6ce8\u884c\uff08COCA\u00b7\u725b\u6d25\u00b7\u67ef\u6797\u65af\uff09\u6309 may \u8981\u6c42\u4e0d\u5c55\u793a\uff1bdictMeta \u6570\u636e\u4fdd\u7559
   const sourceHtml = source === 'external' ? '<div class="lookup-source">AI \u5728\u7ebf\u8865\u5145\u91ca\u4e49</div>' : '';
+  // 返修2.1 · A4：文案统一走 cet_copy（键由主代理维护在 cet_mode.py）。
+  //   未收藏 → fix2_favorite_word_cta：CET「☆ 收藏单词」/ 通用「☆ 加入生词」（= 3573e90 原版）
+  //   已收藏 → fix2_favorite_added   ：CET「✓ 已收藏」 / 通用「★ 已收藏」（= 3573e90 原版实心星）
+  // 「＋ 加入复习本」按钮按任务书 A4 **去掉**：收藏本身就会进「我的收藏」，
+  // 两个按钮做同一件事只会让用户以为收藏和复习本是两回事。
+  // 通用模式也必须去掉吗？——不。任务书 F6 要求通用模式与 3573e90 一致，
+  // 原版有「加入复习本」按钮，所以通用分支保留（只是不进 CET 的 DOM）。
+  const saveBtnLabel = saved
+    ? cetCopy('fix2_favorite_added', '★ 已收藏')
+    : cetCopy('fix2_favorite_word_cta', '☆ 加入生词');
+  // 「已掌握」的悬浮说明：原版写的是「移出生词本」，CET 口径不能出现「生词本」
+  // （任务书 A4 要求 CET 可见文本「生词」0 次），故走 cet_copy 键 fix2_master_hint
+  // （由主代理在 cet_mode.py 维护：CET「移出收藏，不再高亮」/ 通用原版「移出生词本」）。
+  const masterTitle = cetCopy('fix2_master_hint', '标记已掌握：移出生词本，不再高亮');
+  const reviewBtnHtml = CET_ON ? '' : `
+      <button class="word-review-btn" ${inReviewBook ? 'disabled' : ''} onclick="addWordToReviewFromPopover(event, '${escapeJsAttr(normalized)}', '${escapeJsAttr(meaning || '')}')">${inReviewBook ? '✓ 已在复习本' : '＋ 加入复习本'}</button>`;
   pop.innerHTML = `<div class="word">${escapeHtml(word)}</div>
     <button class="word-speak-btn" type="button" title="播放发音" aria-label="播放发音" onclick="speakWordFromPopover(event, '${escapeJsAttr(word)}')">🔊</button>
     ${phoneticHtml}
     <div class="meaning">${escapeHtml(meaning || '\u6682\u65e0\u91ca\u4e49')}</div>
     ${sourceHtml}
     <div class="word-actions">
-      <button class="word-save-btn ${saved ? 'saved' : ''}" onclick="toggleWordSave(event, '${escapeJsAttr(normalized)}', '${escapeJsAttr(meaning || '')}')">${saved ? '★ 已收藏' : '☆ 加入生词'}</button>
-      <button class="word-review-btn" ${inReviewBook ? 'disabled' : ''} onclick="addWordToReviewFromPopover(event, '${escapeJsAttr(normalized)}', '${escapeJsAttr(meaning || '')}')">${inReviewBook ? '✓ 已在复习本' : '＋ 加入复习本'}</button>
-      <button class="word-master-btn" title="标记已掌握：移出生词本，不再高亮" onclick="masterWordFromPopover(event, '${escapeJsAttr(normalized)}')">✓ 已掌握</button>
+      <button class="word-save-btn ${saved ? 'saved' : ''}" onclick="toggleWordSave(event, '${escapeJsAttr(normalized)}', '${escapeJsAttr(meaning || '')}')">${saveBtnLabel}</button>${reviewBtnHtml}
+      <button class="word-master-btn" title="${masterTitle}" onclick="masterWordFromPopover(event, '${escapeJsAttr(normalized)}')">✓ 已掌握</button>
     </div>`;
   pop.classList.add('open');
   const gap = 8;
@@ -4832,23 +4850,17 @@ async function toggleWordSave(event, word, meaning) {
         readingHiddenWordSet.delete(returned);
         readingHiddenWordSet.delete(normalized);
         if (data.meaning) wordMeaningCache[returned] = data.meaning;
-        // P1-3（返修2 包1）：CET 模式收藏成功即**自动**回流「我的收藏」。
+        // 返修2.1 · A3：这里**不再**额外调 `/api/vocab-review/activate`。
         //
-        // 缺陷：原先「☆ 加入生词」只写 v2_lesson_words（本课词集），
-        // 而首页「我的收藏 · 词汇收藏」读的是 /vocab-log（word_review_items）。
-        // 两条数据链不连通 → 用户收藏 10 个词，打开「我的收藏」看到「暂无词汇」
-        // （实测 /api/v2/lessons/1/words 10 词、/vocab-log 为空）。
+        // 返修2 P1-3 在此加了 `if (CET_ON) await autoActivateFavoriteWord(...)`，
+        // 依据是「工作区收藏进不了我的收藏」—— 该前提经复验是错的：
+        // `POST /api/v2/lessons/{id}/word`（v2_lessons.py:1700 save_word）最后本来就调
+        // `db.activate_word_review(...)`，上面这一条 `resp` 已经把词写进复习本了。
+        // 再调一次 activate 是**同一次收藏写两遍库**：多一次 POST，也让
+        // 「收藏 1 个词 = 1 次 /word」的网络记录变成 2 次写请求。
         //
-        // 复用已有接口，不新增后端：POST /api/vocab-review/activate
-        //   body: {word, source:"listening", lesson_id, meaning}
-        //   · source 合法值见 backend/db.py activate_word_review；
-        //     'lookup'/'practice' 会 400，'listening' 合法。
-        //   · 幂等：INSERT ... ON CONFLICT(word) DO UPDATE，重复调不重复计数。
-        //   · 原句关联：/word 那条路已写 v2_lesson_words.sentence 并调 db.add_context，
-        //     而 /vocab-log 对无 contexts 行的词会回填 v2_lesson_words 的句子，
-        //     所以「带原句」不需要额外接口。
-        // 通用模式不做（原版没有自动回流，E8 要求通用模式行为不变）。
-        if (CET_ON) await autoActivateFavoriteWord(returned || normalized, data.meaning || meaning);
+        // 行为不变：收藏后词照样出现在「我的收藏」（数据由 save_word 的 activate 写入），
+        // 见交付说明 A3 节的真实浏览器网络记录与 /vocab-log 证据。
       }
     }
     updateCurrentSubtitle();

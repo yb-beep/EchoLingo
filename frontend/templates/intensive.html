@@ -2298,6 +2298,23 @@
     }
 
     async function syncIntensiveHighlightedWords() {
+      // 返修2.1 · A1 附加修复（阻断）：CET 模式下**不**把高亮词写进「本课收藏」。
+      //
+      // 这是 A1 的**第二条**自动写入通道，与 workspace.html 那条同根因：
+      //   `POST /highlighted-words/sync` → `_sync_highlighted_words_to_lesson()`
+      //   把四六级词表命中的高亮词写进 `v2_lesson_words`，而「本课收藏」读的就是它。
+      // 实测（全新库、工作区侧已门控）：只打开工作区 `words=[]`（A1 生效）；
+      // 再打开精听页 → `words=[displaying, amendments, ... 10 个]`；
+      // 返回工作区就显示「本课收藏 10」，用户一个词都没收藏。
+      //
+      // 依赖已确认：「重点词汇 N」筛选用的是 `sentence.highlighted_words`，
+      // 由 GET /intensive → build_intensive_document() 当场按词表算出，
+      // **不读** `v2_lesson_words`，所以关掉本同步不影响筛选数量
+      // （实测门控前后均为「重点词汇 9 / 全部 32」）。
+      //
+      // 开关读集中配置 window.__CET_BOOT__.enabled（:678 已定义），不新增第二套判断；
+      // 通用模式（ELT_CET_MODE=0）CET_ON=false，行为与 3573e90 完全一致。
+      if (CET_ON) return;
       try {
         await fetch(`/api/v2/lessons/${LESSON_ID}/highlighted-words/sync${_wordlistsQuery()}`, {method: 'POST'});
       } catch (_) {

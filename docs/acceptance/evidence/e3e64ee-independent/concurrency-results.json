@@ -1,0 +1,26 @@
+{
+  "clean": {
+    "state": "ok",
+    "returnedIds": [
+      "attempt-ff5978d8a32c",
+      "attempt-ff5978d8a32c",
+      "attempt-ff5978d8a32c",
+      "attempt-ff5978d8a32c",
+      "attempt-ff5978d8a32c",
+      "attempt-ff5978d8a32c"
+    ],
+    "databaseCount": 1
+  },
+  "legacy_duplicates": {
+    "state": "needs_dedup: UNIQUE constraint failed: cet_attempts.material_id, cet_attempts.listening_session_id",
+    "returnedIds": [
+      "attempt-c7a2fbaacee8",
+      "attempt-c7a2fbaacee8",
+      "attempt-c7a2fbaacee8",
+      "attempt-c7a2fbaacee8",
+      "attempt-c7a2fbaacee8",
+      "attempt-c7a2fbaacee8"
+    ],
+    "databaseCount": 1
+  }
+}

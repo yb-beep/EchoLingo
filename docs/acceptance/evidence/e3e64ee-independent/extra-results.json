@@ -1,0 +1,212 @@
+{
+  "explicitIdsSameSession": {
+    "returnedIds": [
+      "explicit-57d87e0f-0",
+      "explicit-57d87e0f-1",
+      "explicit-57d87e0f-2",
+      "explicit-57d87e0f-3",
+      "explicit-57d87e0f-4",
+      "explicit-57d87e0f-5"
+    ],
+    "uniqueCount": 6,
+    "state": "needs_dedup: UNIQUE constraint failed: cet_attempts.material_id, cet_attempts.listening_session_id"
+  },
+  "ambiguousExistingKey": {
+    "returnedId": "explicit-57d87e0f-2",
+    "duplicates": 6
+  },
+  "executorControlledExplain": [
+    {
+      "sentenceId": "v2-2181-0",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-1",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-2",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-3",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-4",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-5",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-6",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-7",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-8",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-9",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-10",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-11",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-12",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-13",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-14",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-15",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-16",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-17",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-18",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-19",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-20",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-21",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-22",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-23",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-24",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-25",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-26",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-27",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-28",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-29",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-30",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    },
+    {
+      "sentenceId": "v2-2181-31",
+      "ok": false,
+      "code": "AI_INVALID_OUTPUT",
+      "message": "模型短语不是原句中的合法短片段。"
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "duplicates": {
+    "state": "needs_dedup: UNIQUE constraint failed: cet_attempts.material_id, cet_attempts.listening_session_id",
+    "indexSql": null,
+    "attempts": [
+      [
+        "0",
+        "mat",
+        "same",
+        "v0"
+      ],
+      [
+        "1",
+        "mat",
+        "same",
+        "v1"
+      ]
+    ],
+    "answers": [
+      [
+        "0",
+        "answer0"
+      ],
+      [
+        "1",
+        "answer1"
+      ]
+    ],
+    "secondEmptySessionError": null
+  },
+  "empty_sessions": {
+    "state": "ok",
+    "indexSql": "CREATE UNIQUE INDEX cet_attempts_session_uniq ON cet_attempts(material_id, listening_session_id) WHERE listening_session_id IS NOT NULL AND listening_session_id <> ''",
+    "attempts": [
+      [
+        "0",
+        "mat",
+        "",
+        "v0"
+      ],
+      [
+        "1",
+        "mat",
+        "",
+        "v1"
+      ]
+    ],
+    "answers": [
+      [
+        "0",
+        "answer0"
+      ],
+      [
+        "1",
+        "answer1"
+      ]
+    ],
+    "secondEmptySessionError": null
+  },
+  "old_full_index": {
+    "state": "ok",
+    "indexSql": "CREATE UNIQUE INDEX cet_attempts_session_uniq ON cet_attempts(material_id, listening_session_id) WHERE listening_session_id IS NOT NULL AND listening_session_id <> ''",
+    "attempts": [
+      [
+        "0",
+        "mat",
+        "",
+        "v0"
+      ],
+      [
+        "new",
+        "mat",
+        "",
+        "v3"
+      ]
+    ],
+    "answers": [
+      [
+        "0",
+        "answer0"
+      ]
+    ],
+    "secondEmptySessionError": null
+  },
+  "actualUpgrade": {
+    "requestedIds": [
+      "upgrade-57bfe0first",
+      "upgrade-57bfe0second"
+    ],
+    "returnedIds": [
+      "upgrade-57bfe0first",
+      "upgrade-57bfe0second"
+    ],
+    "state": "ok"
+  }
+}

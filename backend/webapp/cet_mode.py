@@ -169,6 +169,20 @@ _COPY_CET = {
     "settings_heading": "设置",
     "empty_library": "还没有听力材料。导入一份本地音频开始学习。",
     "unspecified_level": "待分类",
+    # ── 返修2 · 包4：P4-1 统一「收藏」口径 / P4-2 去英文残留 ──────────
+    # 纪律（主代理裁决）：只追加、不改老键；每个键两套文案成对，
+    # 通用版一律给「与返修前渲染结果等价」的原文，保证 ELT_CET_MODE=0 字节级不变。
+    "fix2_vocab_eyebrow": "四六级 · 词汇收藏",
+    "fix2_vocab_continue_cta": "继续自评熟悉度 →",
+    "fix2_sentences_eyebrow": "四六级 · 句子收藏",
+    "fix2_favorites_pane_vocab": "收藏单词",
+    "fix2_favorites_pane_sentences": "收藏句子",
+    "fix2_favorite_word_cta": "☆ 收藏单词",
+    "fix2_favorite_sentence_cta": "☆ 收藏句子",
+    "fix2_favorite_added": "✓ 已收藏",
+    "fix2_sync_collections": "同步本课收藏",
+    "fix2_my_collections_wordlist": "我的收藏",
+    "fix2_lesson_collections": "本课收藏",
 }
 
 _COPY_GENERIC = {
@@ -184,6 +198,20 @@ _COPY_GENERIC = {
     "settings_heading": "设置",
     "empty_library": "暂无课程，从上方新建第一门吧。",
     "unspecified_level": "未指定",
+    # ── 返修2 · 包4：与 _COPY_CET 同名成对，值 = 返修前模板里硬编码的原文 ──
+    # 目的：`ELT_CET_MODE=0` 时模板经 CET.copy 取到的就是这些原字符串，
+    # 渲染结果与返修前完全一致（通用模式回归）。
+    "fix2_vocab_eyebrow": "Vocabulary atelier",
+    "fix2_vocab_continue_cta": "继续词汇练习 →",
+    "fix2_sentences_eyebrow": "句子精听",
+    "fix2_favorites_pane_vocab": "词汇收藏",
+    "fix2_favorites_pane_sentences": "句子收藏",
+    "fix2_favorite_word_cta": "☆ 收藏",
+    "fix2_favorite_sentence_cta": "☆ 收藏句子",
+    "fix2_favorite_added": "✓ 已收藏",
+    "fix2_sync_collections": "同步本课收藏",
+    "fix2_my_collections_wordlist": "我的生词本",
+    "fix2_lesson_collections": "学习收集 Phase B",
 }
 
 # 词表：CET 模式默认只把 CET4/CET6 作为主选项（任务书 §3.2）

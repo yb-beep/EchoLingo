@@ -1735,7 +1735,15 @@ def save_word(lesson_id: int, body: WordSaveBody):
     # 不含词时改用 v2_sentences 中真正含该词的句子，找不到则不写语境，避免脏数据入 contexts。
     context_sentence = str(body.sentence or "")
     if context_sentence and not db.sentence_contains_word(context_sentence, word):
-        context_sentence = db.find_v2_sentence_containing(word) or ""
+        # 返修 2.1 B2：短词（<5 字符）原句丢失。
+        # `db.sentence_contains_word` 对 len(w) < 5 直接返回 False（db.py:1283-1284 不做词干匹配），
+        # 于是收藏 `hoping` → 归一成 `hope`（4 字符）→ 守卫判否 → find_v2_sentence_containing
+        # 也找不到（句里是 hoping 不是 hope）→ context_sentence="" → 原句丢失、contexts=[]。
+        # 修法（不改 db.py）：退回**用户实际提交的原词**（body.word，如 hoping）再判一次，
+        # 命中就用这句提交上来的原句；未命中仍走原兜底逻辑。
+        raw_word = re.sub(r"[^a-z'-]", "", str(body.word or "").strip().lower()).strip("'-")
+        if not (raw_word and raw_word != word and db.sentence_contains_word(context_sentence, raw_word)):
+            context_sentence = db.find_v2_sentence_containing(word) or ""
     db.save_v2_lesson_word(lesson_id, word, context_sentence)
     db.activate_word_review(
         word,

@@ -2,6 +2,8 @@
 import html
 import json
 import re
+import sqlite3
+import threading
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -30,6 +32,21 @@ _WORD_MEANING_PLACEHOLDERS = {
 
 _COMPILED_DIR = Path(__file__).resolve().parents[3] / "resources" / "wordlists" / "wordlists" / "compiled"
 WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
+
+# ── B1：词形还原（返修 2.1）────────────────────────────────────────────
+# ECDICT 的 `exchange` 字段形如 `0:get/1:i`：
+#   `0:<lemma>`  —— 该词的词元（原形）
+#   `1:<marker>` —— 该词自身属于哪种屈折形式
+# 只有**屈折**标记才做还原；比较级 `r` / 最高级 `t` 不还原
+# （`better` 的 exchange 是 `0:good/1:r`，`1:r` 是比较级不是屈折变形，
+#  且 `better` 本身是独立词条，任务书 B1 允许「保持原样」，这里选保持原样）。
+_INFLECTION_MARKERS = frozenset({"p", "i", "d", "s", "3", "s3", "3s", "pd", "dp"})
+_EXCHANGE_LEMMA_CACHE: dict[str, str] = {}
+_EXISTS_CACHE: dict[str, bool] = {}
+_QUALITY_CACHE: dict[str, bool] = {}
+_EXCHANGE_CONN = None
+_EXCHANGE_LOCK = threading.Lock()
+_ECDICT_PATH = Path(__file__).resolve().parents[3] / "resources" / "ecdict" / "ecdict.db"
 
 _COMMON_MEANINGS = {
     "randomly": "随机地；任意地",
@@ -323,14 +340,20 @@ def lookup_word_meaning(word: str, *, allow_external_fallback: bool = False) -> 
     if cache_key in _LOOKUP_CACHE:
         return dict(_LOOKUP_CACHE[cache_key])
     meanings = load_word_meanings()
-    candidates = _lookup_candidates(surface)
+    # B1：候选按「还原后的词元优先」排序。只改 lemma 不改候选顺序的话，
+    # `getting` 的释义仍会先命中 `gett` 的「欧洲轮机技术制造商集团」——B1 的可见症状就是这个。
+    candidates = _ordered_candidates(_lookup_candidates(surface))
     for candidate in candidates:
         for meaning in (meanings.get(candidate, ""), _COMMON_MEANINGS.get(candidate, "")):
             if meaning and not is_word_meaning_placeholder(meaning) and _concise_gloss(meaning):
                 phonetic = _get_ipa(normalized)
                 result = {
                     "word": normalized,
-                    "lemma": candidate,
+                    # B1：报出去的 lemma 一律走还原，不能直接用命中释义的那个候选。
+                    # 反例（实测）：`meanings` 是模块级可变缓存，`getting` 一旦被查过就会
+                    # 被写进 `meanings["getting"]`；下次再查时若 `get` 在该缓存里没有释义，
+                    # 循环会落到 `getting` 并把它当 lemma 返回 —— 修好的 B1 会这样"复发"。
+                    "lemma": _resolve_lemma(candidate) or candidate,
                     "meaning": meaning,
                     "phonetic": phonetic,
                     "found": True,
@@ -446,6 +469,180 @@ def _summarize_local_dict_meaning(raw: str) -> str:
     return text[:260]
 
 
+def _exchange_lemma(word: str) -> str:
+    """B1：读 ECDICT 的 `exchange` 字段，返回**权威屈折词元**；不适用时返回 ""。
+
+    `exchange` 形如 `0:get/1:i`：
+      - `0:<lemma>`  该词的词元（原形）
+      - `1:<marker>` 该词自身属于哪种屈折形式
+    只有 `1:` 标记属于屈折（p/i/d/s/3/s3/pd/dp…）时才认 `0:` 那个词元。
+    `1:r`（比较级，如 `better` → `0:good/1:r`）与 `1:t`（最高级）**不还原**：
+    它们不是屈折变形，且 better/best 本身就是独立词条（任务书 B1 允许保持原样）。
+    """
+    key = (word or "").strip().lower()
+    if not key:
+        return ""
+    if key in _EXCHANGE_LEMMA_CACHE:
+        return _EXCHANGE_LEMMA_CACHE[key]
+    global _EXCHANGE_CONN
+    lemma = ""
+    try:
+        if _EXCHANGE_CONN is None and _ECDICT_PATH.exists():
+            with _EXCHANGE_LOCK:
+                if _EXCHANGE_CONN is None:
+                    _EXCHANGE_CONN = sqlite3.connect(
+                        f"file:{_ECDICT_PATH}?mode=ro", uri=True, check_same_thread=False
+                    )
+        if _EXCHANGE_CONN is not None:
+            with _EXCHANGE_LOCK:
+                row = _EXCHANGE_CONN.execute(
+                    "SELECT exchange FROM words WHERE word = ?", (key,)
+                ).fetchone()
+            if row and row[0]:
+                base = ""
+                markers: set[str] = set()
+                for part in str(row[0]).split("/"):
+                    part = part.strip()
+                    if part.startswith("0:"):
+                        base = part[2:].strip().lower()
+                    elif part.startswith("1:"):
+                        markers.add(part[2:].strip().lower())
+                # 只有「纯屈折」标记才认这个词元；带 r/t（比较级/最高级）不还原
+                if base and base != key and markers and markers <= _INFLECTION_MARKERS:
+                    lemma = base
+    except Exception:
+        lemma = ""
+    _EXCHANGE_LEMMA_CACHE[key] = lemma
+    return lemma
+
+
+def _word_exists_in_dict(word: str) -> bool:
+    """B1 校验层：词在词典里是否查得到（ECDICT 优先，其次随库分发的 compact 释义库）。"""
+    key = (word or "").strip().lower()
+    if not key:
+        return False
+    cached = _EXISTS_CACHE.get(key)
+    if cached is not None:
+        return cached
+    exists = False
+    try:
+        exists = bool(dict_service.word_in_dict(key))
+    except Exception:
+        exists = False
+    if not exists:
+        try:
+            exists = bool(str(dict_service.lookup_ecdict(key) or "").strip())
+        except Exception:
+            exists = False
+    _EXISTS_CACHE[key] = exists
+    return exists
+
+
+# ECDICT 里存在大量「形似还原词、实为缩写/人名/专业词」的条目，例如
+#   gett → abbr. 欧洲轮机技术制造商集团      playe → [医]翻放机, 唱机
+#   walke → [人名] 沃克                      carrie → n. 卡丽（女名…）
+#   tri  → [计] 三                           mak/hav → abbr. …
+# 只靠「在词典里查得到」会把 played→playe、getting→gett。这里额外做条目质量判定。
+_QUALITY_POS_RE = re.compile(
+    r"(?:^|[\s;,])(?:n|v|vt|vi|a|ad|adv|adj|prep|conj|pron|num|int|art|aux|pl|abbr)\."
+)
+_NAME_HINTS = ("人名", "女名", "男名", "姓氏", "地名")
+
+
+def _is_quality_lemma_entry(word: str) -> bool:
+    """B1 质量层：候选词条是否是「正常词条」（不是缩写 / 人名 / 纯专业词标签）。
+
+    判定依据只有一条：ECDICT 的 translation 里出现常见词性标记，且不是 `abbr.` 开头。
+    这层不追求完美，只挡掉 `gett`/`playe`/`walke`/`carrie`/`tri` 这类会污染收藏本的条目。
+    """
+    key = (word or "").strip().lower()
+    if not key:
+        return False
+    cached = _QUALITY_CACHE.get(key)
+    if cached is not None:
+        return cached
+    ok = False
+    try:
+        raw = str(dict_service.lookup_ecdict(key) or "")
+    except Exception:
+        raw = ""
+    if raw:
+        # lookup_ecdict 的返回形如 "/phonetic/ [pos] definition translation"
+        text = re.sub(r"^/[^/]*/\s*", "", raw)
+        text = re.sub(r"^\[[^\]]*\]\s*", "", text)
+        head = text[:120]
+        lowered = head.lower()
+        is_abbr = lowered.startswith("abbr") or "[abbr" in lowered[:16]
+        has_pos = bool(_QUALITY_POS_RE.search(head))
+        is_name = any(hint in head[:40] for hint in _NAME_HINTS)
+        ok = bool(has_pos and not is_abbr and not is_name)
+    _QUALITY_CACHE[key] = ok
+    return ok
+
+
+def _rule_lemma_candidates(word: str) -> list[str]:
+    """B1 第二层：规则剥离候选（保持 `_lookup_candidates` 的顺序，交给存在性+质量双层筛选）。"""
+    return _lookup_candidates(word)
+
+
+def _resolve_lemma(word: str) -> str:
+    """B1：三层还原（exchange 优先 → 规则兜底 → 存在性/质量校验），全失败回退原词。
+
+    任务书 B1 明确：「还原出来的词在 ECDICT 里查不到时，回退成原词，不要造出一个不存在的词」。
+
+    关键约束：exchange 给出的词元**必须也能被常规剥离规则产出**才会被采用。
+    这样 `getting→get`（规则能产 `get`）成立，而 `went→go`、`children→child`、`was→be`
+    这类不规则变化不会被改写（规则产不出 `go`/`child`/`be`），保持 3573e90 的原行为。
+    """
+    surface = re.sub(r"[^a-zA-Z'-]", "", word or "").lower().strip("'-")
+    if not surface:
+        return ""
+    normalized = surface.replace("-", "")
+    candidates = _rule_lemma_candidates(surface)
+    candidate_set = set(candidates)
+
+    # 第一层：ECDICT exchange 字段（权威屈折词元），但必须同时满足
+    #   ① 是常规规则能产出的形式（排除不规则变化，保住 went/children/was 原样）
+    #   ② 词典里查得到  ③ 不是缩写/人名条目
+    for probe in (surface, normalized):
+        lemma = _exchange_lemma(probe)
+        if (
+            lemma
+            and lemma in candidate_set
+            and _word_exists_in_dict(lemma)
+            and _is_quality_lemma_entry(lemma)
+        ):
+            return lemma
+
+    # 第二层：规则剥离。按候选顺序找第一个「真实存在于词典且条目正常」的还原形式。
+    # 顺序即优先级：`_lookup_candidates` 把 base 放在 base+"e" 之前，
+    # 所以 played→play 会先于 playe 命中；+e 形式只作为最后兜底。
+    for candidate in candidates:
+        if candidate == surface:
+            continue
+        if _word_exists_in_dict(candidate) and _is_quality_lemma_entry(candidate):
+            return candidate
+
+    # 第三层：全都还原不出真词 → 回退原词（不造不存在的词）
+    return surface
+
+
+def _ordered_candidates(candidates: list[str]) -> list[str]:
+    """B1：把还原后的词元提到候选首位，让释义也取自正确的词。
+
+    不这么做的话，`getting` 的释义仍会先命中 `gett` 的「欧洲轮机技术制造商集团」——
+    B1 的可见症状就是这个释义，只改 lemma 不改释义顺序等于没修好。
+    """
+    if not candidates:
+        return []
+    lemma = _resolve_lemma(candidates[0])
+    if not lemma or lemma == candidates[0]:
+        return list(candidates)
+    ordered = [lemma]
+    ordered.extend(item for item in candidates if item != lemma)
+    return ordered
+
+
 def _lookup_candidates(word: str) -> list[str]:
     candidates = [word]
     if word.endswith("'s") and len(word) > 3:
@@ -481,10 +678,19 @@ def _lookup_candidates(word: str) -> list[str]:
 
 
 def _preferred_lookup_lemma(candidates: list[str]) -> str:
+    """B1：返回候选里**真实存在**的还原词元；都还原不出就回退原词。
+
+    原实现 `return candidates[-1]` 直接取最后一个候选 —— 而 `_lookup_candidates` 把
+    `base+"e"` 无条件追加在最后，于是 `getting → gette`、`displaying → displaye`。
+    改法：交给 `_resolve_lemma` 走「exchange → 规则 → 存在性/质量校验」，全失败回退原词。
+    """
+    if not candidates:
+        return ""
+    # 带连字符的复合词（non-negotiables）保持原逻辑：连字符形式优先
     for candidate in reversed(candidates):
         if "-" in candidate:
             return candidate
-    return candidates[-1] if candidates else ""
+    return _resolve_lemma(candidates[0]) or candidates[0]
 
 
 def _normalize_reading_word(word: str) -> str:

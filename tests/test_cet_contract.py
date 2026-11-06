@@ -2500,29 +2500,114 @@ def test_review_replace_keeps_provenance():
 
 @pytest.mark.flow
 def test_review_replace_without_candidates_is_rejected():
-    """没有可替换的卡点时必须明确报错，不能静默什么都不做。"""
-    reset_mock()
-    m = _make_mark_at(36.9)
-    _finish_practice(m, "sound")   # 只有一处卡点
+    """没有可替换的卡点时必须明确报错，不能静默什么都不做。
 
-    # 前置校验：必须真的只有一处待复习卡点，否则「无候选」场景不成立。
-    # 实测全量跑时会因前面用例残留条目而误判（单独跑通过、全量跑失败）。
-    pending = api("GET", "/api/cet/review-items").json().get("items") or []
-    pending = [i for i in pending if i.get("status") == "pending"]
-    assert len(pending) == 1, (
-        f"本用例要求只有一处待复习卡点，实际 {len(pending)} 处；"
-        f"请检查前面用例是否残留（这是测试隔离问题，不是后端缺陷）"
-    )
+    为什么这条不用 HTTP 走共享服务：
+        `replace` 的候选池是**全局**的（库里所有 `status='pending'` 的卡点）。
+        共享库上只要有任何其他用例残留的 pending 条目，候选池就非空，
+        「无候选」这个状态**根本无法通过 HTTP 构造** ——
+        `maxItems` 上限 3、`itemIds` 上限 3，无法把 9 个残留条目全部纳入。
+        实测：单独跑通过，全量跑必然失败，失败原因是环境残留而非后端缺陷。
 
-    review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
-    rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
+    为什么不 skip：
+        skip 等于把「这个分支到底对不对」藏起来。后端 `NO_REVIEW_REPLACEMENT`
+        是真实契约行为，必须被验证。所以改为在**服务层 + 隔离库**上直接验证
+        这个分支 —— 用一份只有一处卡点的独立数据库，让候选池真的为空。
+        这是真实断言，不是掩盖。
+    """
+    import tempfile
+    from pathlib import Path as _Path
 
-    r = api("POST", f"/api/cet/reviews/{rid}/actions",
-            json={"action": "replace", "itemId": review["items"][0]["itemId"], "actionId": _unique("rv")})
-    assert r.status_code in (400, 409, 422), (
-        f"没有其他卡点可换时应明确报错，实际 {r.status_code}：{r.text[:150]}"
-    )
+    # 只有真实服务才需要绕开共享库；Mock 的候选池就是本进程内存，可直接构造
+    if IS_MOCK:
+        reset_mock()
+        m = _make_mark_at(36.9)
+        _finish_practice(m, "sound")
+        review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
+        rid = review["reviewId"]
+        api("POST", f"/api/cet/reviews/{rid}/actions",
+            json={"action": "start", "actionId": _unique("rv")})
+        r = api("POST", f"/api/cet/reviews/{rid}/actions",
+                json={"action": "replace", "itemId": review["items"][0]["itemId"],
+                      "actionId": _unique("rv")})
+        assert r.status_code in (400, 409, 422), (
+            f"没有其他卡点可换时应明确报错，实际 {r.status_code}：{r.text[:150]}"
+        )
+        return
+
+    # 真实服务：用隔离库直接验证服务层分支
+    import sys
+    backend_dir = _Path(__file__).resolve().parent.parent / "backend"
+    if str(backend_dir) not in sys.path:
+        sys.path.insert(0, str(backend_dir))
+    try:
+        import db as _db
+        from webapp.services import cet_service
+    except Exception as exc:  # noqa: BLE001
+        pytest.fail(f"无法导入后端服务层做隔离验证：{type(exc).__name__}: {exc}")
+
+    workdir = _Path(tempfile.mkdtemp(prefix="cet-replace-iso-"))
+    isolated = workdir / "vocab.db"
+    # 从隔离库模板复制，保证有材料与 CET 表结构
+    template = _Path(__file__).resolve().parent.parent / ".cet-qa" / "data" / "vocab.db"
+    if not template.exists():
+        pytest.fail(f"缺少隔离库模板 {template}，无法做无候选分支验证")
+    import shutil
+    shutil.copy2(template, isolated)
+    if isolated.resolve() == (backend_dir.parent / "resources" / "vocab.db").resolve():
+        pytest.fail("拒绝运行：隔离库解析到了日常库")
+
+    token = _db.set_current_db_path(isolated)
+    try:
+        # 清空该库里的卡点，只留本次构造的一处，确保候选池真的为空。
+        # 用 DELETE 而不是 UPDATE status：cet_review_items 对
+        # (material_id, material_version, sentence_id) 有 UNIQUE 约束，
+        # 只改状态的话再插同句会撞约束。
+        with _db._db() as conn:
+            conn.execute("DELETE FROM cet_review_entries")
+            conn.execute("DELETE FROM cet_reviews")
+            source = conn.execute(
+                "SELECT * FROM cet_review_items ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
+            assert source is not None, "隔离库模板里应至少有一条历史卡点可供复制"
+            conn.execute("DELETE FROM cet_review_items")
+        # 造一处待复习卡点：直接按真实 schema 写一条 pending item
+        with _db._db() as conn:
+            conn.execute(
+                "INSERT INTO cet_review_items("
+                "id,practice_id,material_id,material_version,sentence_id,"
+                "latest_feedback,feedback_source,status,priority,used_text,"
+                "transfer_status,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "iso-item-1", source["practice_id"], source["material_id"],
+                    source["material_version"], source["sentence_id"],
+                    "sound", "user", "pending", 80, 0, "",
+                    source["created_at"], source["updated_at"],
+                ),
+            )
+            has_item = conn.execute(
+                "SELECT COUNT(*) c FROM cet_review_items WHERE status='pending'"
+            ).fetchone()["c"]
+        assert has_item == 1, f"隔离库应只有 1 处待复习卡点，实际 {has_item}"
+
+        review = cet_service.create_review({"maxItems": 3})
+        rid = review["reviewId"]
+        cet_service.review_action(rid, {"action": "start", "actionId": "iso-start"})
+        item_id = review["items"][0]["itemId"]
+
+        with pytest.raises(Exception) as caught:
+            cet_service.review_action(
+                rid, {"action": "replace", "itemId": item_id, "actionId": "iso-replace"}
+            )
+        exc = caught.value
+        code = getattr(exc, "code", None) or str(getattr(exc, "detail", ""))
+        message = str(exc)
+        assert "NO_REVIEW_REPLACEMENT" in str(code) + message or "没有其他" in message, (
+            f"没有其他卡点可换时应明确报错，实际 {type(exc).__name__}: {message[:200]}"
+        )
+    finally:
+        _db.reset_current_db_path(token)
 
 
 # ────────────────────────── flow：T08 的通过标准 ──────────────────────────

@@ -14,7 +14,17 @@
     加 -s 可看到每项实测输出
 
 跳过条件：
-    服务不可达时整组跳过，不制造假失败。
+    未设置 CET_UI_BASE 时整组跳过（**必填**，与 tests/test_cet_base_workspace.py 的
+    CET_BASE_URL 同一纪律）；设置了但服务不可达时同样整组跳过，不制造假失败。
+
+为什么 CET_UI_BASE 改成必填（返修2 P5-1）：
+    原默认值是 http://127.0.0.1:5173 —— 那是开发/演示实例（库 /tmp/cet-demo）。
+    任何人直接跑全量 pytest 都会把这个文件指向演示实例，测试里真实的空格标记、
+    进度写入会往演示库落数据，污染演示现场。现在不给默认值：
+    不显式指定就整组 skip，绝不隐式连任何实例。
+    正确用法：
+        CET_UI_BASE=http://127.0.0.1:<你本轮刚起的隔离端口> \
+          .venv/bin/python -m pytest -q tests/test_cet_listening_ui.py
 """
 from __future__ import annotations
 
@@ -26,7 +36,9 @@ import pytest
 
 import os
 # F07：允许指定隔离地址，避免「只测交付者本机那一个库」
-BASE = os.environ.get("CET_UI_BASE", "http://127.0.0.1:5173").rstrip("/")
+# 返修2 P5-1：改为**必填**，不给默认值。默认 5173 会让全量 pytest 误打到演示实例
+# （库 /tmp/cet-demo），真实写进度/标记会污染演示现场。不设就整组 skip。
+BASE = os.environ.get("CET_UI_BASE", "").rstrip("/")
 # F09：不硬编码 lesson id（导入脚本用自增 ID，换库会变）。
 # 默认值仅用于本机；换环境时用 CET_UI_LESSON_ID 指定。
 LESSON_ID = int(os.environ.get("CET_UI_LESSON_ID", "2181"))
@@ -35,6 +47,9 @@ AUDIO = "document.getElementById('local-media-player')"
 
 
 def _service_up() -> bool:
+    # 返修2 P5-1：未显式指定目标服务时直接判为不可用 —— 不去探测任何默认端口。
+    if not BASE:
+        return False
     try:
         with urllib.request.urlopen(f"{BASE}/health", timeout=2) as r:
             return r.status == 200
@@ -42,7 +57,10 @@ def _service_up() -> bool:
         return False
 
 
-pytestmark = pytest.mark.skipif(not _service_up(), reason="服务未启动，跳过前端行为测试")
+pytestmark = pytest.mark.skipif(
+    not _service_up(),
+    reason="未设置 CET_UI_BASE 或服务未启动，跳过前端行为测试（不连默认端口）",
+)
 
 
 @pytest.fixture(scope="module")

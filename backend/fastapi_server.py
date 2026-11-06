@@ -65,6 +65,7 @@ from webapp.fastapi_routes.pages import router as pages_router
 from webapp.fastapi_routes.settings import router as settings_router
 from webapp.fastapi_routes.study import router as study_router
 from webapp.fastapi_routes.cet import router as cet_router
+from webapp.fastapi_routes.cet_base import router as cet_base_router
 from webapp.fastapi_routes.vocab import router as vocab_router
 from webapp.fastapi_routes.v2_lessons import router as v2_lessons_router
 from webapp.fastapi_routes.v2_chat import router as v2_chat_router
@@ -207,6 +208,7 @@ def create_app() -> FastAPI:
     app.include_router(lessons_router)
     app.include_router(study_router)
     app.include_router(cet_router)
+    app.include_router(cet_base_router)
     app.include_router(vocab_router)
     app.include_router(jobs_router)
     app.include_router(output_router)

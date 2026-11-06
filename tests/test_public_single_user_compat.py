@@ -33,14 +33,36 @@ CHILD_SCRIPT = textwrap.dedent(
     sys.meta_path.insert(0, _Blocker())
     sys.path.insert(0, "__BACKEND_DIR__")
 
+    # P0.4 数据隔离：子进程不继承父进程 conftest 对 db.DB_PATH 的重定向，
+    # create_app() 会回落到默认 resources/vocab.db 并建库 —— 等于测试写用户正式库。
+    # 注意：仓库根 `.env` 里有 ELT_USER_DB，analyzer/ai_config 在 import 期
+    # load_dotenv() 会把它注入 os.environ，而 db.current_db_path() 的优先级是
+    # contextvar → ELT_USER_DB → DB_PATH，所以必须在 import fastapi_server
+    # **之后**再清一次环境变量并重定向，否则会被 .env 覆盖。
+    import os, tempfile
+    from pathlib import Path as _Path
+    _tmp_db = _Path(tempfile.mkdtemp(prefix="elt-single-user-")) / "vocab.db"
+
+    import db as _db
+
     import fastapi_server
+
+    os.environ.pop("ELT_USER_DB", None)
+    _db.DB_PATH = _tmp_db
+    # 注意：不能 set _current_db_path() —— db.current_user_root() 把 contextvar
+    # 当作「多用户请求上下文」标志，设了会让 current_output_root() 返回
+    # <tmp>/output 而不是全局 output，破坏本用例要验证的单用户语义。
+    # 只改 DB_PATH + 清 env 就足够让 current_db_path() 回落到临时库。
 
     assert fastapi_server.auth_router is None, "auth_router 应降级为 None"
     assert fastapi_server.admin_private_router is None, "admin_private_router 应降级为 None"
     assert fastapi_server.credits_router is None, "credits_router 应降级为 None"
 
     app = fastapi_server.create_app()
-    paths = {route.path for route in app.routes}
+    # FastAPI 0.162+/Starlette 1.10+ 的 app.routes 里含 _IncludedRouter 包装对象
+    # （没有 .path 属性，真实路由挂在 .routes 里）。用 openapi() 取权威路径集合，
+    # 既跨版本稳定，也不依赖内部结构。
+    paths = set(app.openapi().get("paths", {}))
     assert "/health" in paths, f"/health 缺失: {sorted(paths)}"
     assert not any(p.startswith("/api/auth") for p in paths), "公开库不应注册 auth 路由"
     assert not any(p.startswith("/api/credits") for p in paths), "公开库不应注册 credits 路由"
@@ -56,6 +78,8 @@ CHILD_SCRIPT = textwrap.dedent(
     root = user_assets.current_output_root(Path("output"))
     assert root == Path("output"), f"单用户 output 应回落全局目录，实际 {root}"
 
+    assert str(_db.current_db_path()) == str(_tmp_db), (
+        f"子进程应使用自己的临时库，实际 {_db.current_db_path()}")
     print("PUBLIC_SINGLE_USER_COMPAT_OK")
     """
 )

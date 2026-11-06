@@ -5,9 +5,20 @@ from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
+from webapp import cet_mode
 from webapp.services import cet_service
 
 router = APIRouter(prefix="/api/cet", tags=["cet"])
+
+
+@router.get("/mode")
+def get_cet_mode():
+    """四六级专用底座的集中功能配置（任务书 §3.3）。
+
+    前端启动时读这一份，决定渲染哪些导航、跳过哪些模块的初始化。
+    与后端 `webapp.cet_mode` 同源，不各写一套开关。
+    """
+    return cet_mode.config()
 
 
 @router.get("/materials")

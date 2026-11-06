@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
+from webapp import cet_mode
 from webapp.runtime import ai_config
 
 router = APIRouter()
@@ -11,17 +12,21 @@ templates = Jinja2Templates(directory=str(ai_config.BASE_DIR / "frontend" / "tem
 
 @router.get("/")
 def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
+    # 四六级专用底座：模板需要的开关/文案全部来自 cet_mode 这一份集中配置，
+    # 不在模板里散落判断（任务书 §3.3「优先通过集中功能配置控制」）。
+    return templates.TemplateResponse(request, "index.html", cet_mode.template_context())
 
 
 @router.get("/vocab")
 def vocab_page(request: Request):
-    return templates.TemplateResponse(request, "vocab.html")
+    return templates.TemplateResponse(request, "vocab.html", cet_mode.template_context())
 
 
 @router.get("/workspace/{lesson_id}")
 def workspace(request: Request, lesson_id: int):
-    return templates.TemplateResponse(request, "workspace.html", {"lesson_id": lesson_id})
+    return templates.TemplateResponse(
+        request, "workspace.html", {"lesson_id": lesson_id, **cet_mode.template_context()}
+    )
 
 
 @router.get("/workspace/{lesson_id}/intensive")
@@ -29,7 +34,7 @@ def intensive_workspace(request: Request, lesson_id: int):
     return templates.TemplateResponse(
         request,
         "intensive.html",
-        {"lesson_id": lesson_id},
+        {"lesson_id": lesson_id, **cet_mode.template_context()},
         headers={
             "Cache-Control": "no-store, max-age=0",
             "Pragma": "no-cache",

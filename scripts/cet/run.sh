@@ -139,12 +139,48 @@ fi
 rc=$?
 
 if [ $rc -eq 0 ]; then
+  # F09：不硬编码 lesson id —— 导入脚本用数据库自增 ID，换库就会变。
+  # 从材料接口反查真实 ID；查不到就明确说「未导入」，不打印假链接。
   say ""
   say "=================================================================="
   say "  已启动"
   say ""
-  say "  六级材料   http://127.0.0.1:5173/workspace/2181"
-  say "  四级样例   http://127.0.0.1:5173/workspace/2182"
+  six_url=$("$PY" - <<'PYEOF' 2>/dev/null
+import json, urllib.request
+try:
+    with urllib.request.urlopen("http://127.0.0.1:5173/api/cet/materials", timeout=5) as r:
+        items = json.loads(r.read().decode()).get("items") or []
+    for m in items:
+        if m.get("materialId") == "cet6-202512-conv2":
+            print(m.get("lessonUrl") or "")
+            break
+except Exception:
+    pass
+PYEOF
+)
+  four_url=$("$PY" - <<'PYEOF' 2>/dev/null
+import json, urllib.request
+try:
+    with urllib.request.urlopen("http://127.0.0.1:5173/api/cet/materials", timeout=5) as r:
+        items = json.loads(r.read().decode()).get("items") or []
+    for m in items:
+        if m.get("materialId") == "cet4-sample-hope-wish":
+            print(m.get("lessonUrl") or "")
+            break
+except Exception:
+    pass
+PYEOF
+)
+  if [ -n "$six_url" ]; then
+    say "  六级材料   http://127.0.0.1:5173${six_url}"
+  else
+    say "  六级材料   未导入（先跑 .venv/bin/python scripts/cet/import_materials.py --all）"
+  fi
+  if [ -n "$four_url" ]; then
+    say "  四级样例   http://127.0.0.1:5173${four_url}"
+  else
+    say "  四级样例   未导入"
+  fi
   say "  首页       http://127.0.0.1:5173/"
   say "  接口       http://127.0.0.1:5173/api/cet/materials"
   say ""

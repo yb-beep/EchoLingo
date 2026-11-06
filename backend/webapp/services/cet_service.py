@@ -311,17 +311,57 @@ def _lesson_id(material_id: str) -> int:
     return int(row["id"])
 
 
-def _audio_sha256(lesson: dict[str, Any]) -> str:
-    """材料的音频哈希（契约要求，用于核对「是不是同一段音频」）。
+_AUDIO_HASH_CACHE: dict[str, str] = {}
+_AUDIO_HASH_LOCK = threading.Lock()
 
-    底座不一定保存哈希；取不到就返回空串，而不是编一个值 ——
-    契约里 audioSha256 是便于核对的可选信息，不能伪造。
+
+def _audio_sha256(lesson: dict[str, Any]) -> str:
+    """材料的音频哈希（F10：用于核对「是不是同一段音频」）。
+
+    优先级：
+      1. 数据库里已存的哈希字段（最快）
+      2. **实际读取音频文件计算 SHA-256**（F10 修复：原来只读字段，
+         字段从没被写入过，所以恒为空串）
+      3. 文件不可读时返回空串 —— 不编造值
+
+    结果按「媒体 URL」缓存，避免每次列表请求都重算（105 秒音频约 1.6MB）。
     """
     for key in ("audio_sha256", "media_sha256", "audioSha256"):
         value = lesson.get(key)
         if value:
             return str(value)
-    return ""
+
+    media_url = str(lesson.get("media_url") or "")
+    if not media_url:
+        return ""
+
+    with _AUDIO_HASH_LOCK:
+        cached = _AUDIO_HASH_CACHE.get(media_url)
+    if cached is not None:
+        return cached
+
+    digest = ""
+    try:
+        # media_url 形如 /output/v2_assets/2181/xxx.mp3，映射到仓库根目录下的文件
+        rel = media_url.lstrip("/")
+        candidates = [
+            Path(db.BASE_DIR) / rel if hasattr(db, "BASE_DIR") else None,
+            Path.cwd() / rel,
+        ]
+        for path in candidates:
+            if path and path.is_file():
+                hasher = hashlib.sha256()
+                with open(path, "rb") as fh:
+                    for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                        hasher.update(chunk)
+                digest = hasher.hexdigest()
+                break
+    except Exception:  # noqa: BLE001
+        digest = ""
+
+    with _AUDIO_HASH_LOCK:
+        _AUDIO_HASH_CACHE[media_url] = digest
+    return digest
 
 
 def _question_count(material_id: str, version: str) -> int:
@@ -413,6 +453,8 @@ def _material(lesson: dict[str, Any], include_sentences: bool = True) -> dict[st
         "level": _level(lesson),
         "section": "",
         "audioUrl": lesson.get("media_url") or "",
+        # F09：前端/启动脚本据此拼出工作区地址，不硬编码 lesson id
+        "lessonUrl": f"/workspace/{lesson_id}",
         "audioSha256": _audio_sha256(lesson),
         "durationSec": float(lesson.get("duration") or 0),
         "durationSeconds": float(lesson.get("duration") or 0),

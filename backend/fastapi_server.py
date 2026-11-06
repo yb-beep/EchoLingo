@@ -84,7 +84,14 @@ def _resume_interrupted_translations() -> None:
         )
         db_paths = list(users_root.glob("*/vocab.db"))
     else:
-        db_paths = [db.DB_PATH]
+        # F09：必须尊重 ELT_USER_DB。
+        # 原实现固定用 db.DB_PATH（模块级默认 resources/vocab.db），
+        # 会绕过 ELT_USER_DB 指向的隔离库 —— 后台翻译任务会读写用户正式数据。
+        _env_db = _os.environ.get("ELT_USER_DB")
+        if _env_db:
+            db_paths = [Path(_env_db).expanduser().resolve()]
+        else:
+            db_paths = [db.DB_PATH]
     for path in db_paths:
         token = db.set_current_db_path(path)
         try:

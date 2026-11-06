@@ -113,6 +113,121 @@ def _audio(page, expr: str):
     )
 
 
+def _reset_progress(page, lesson_id: int, *, on_workspace: bool = False):
+    """把某材料的学习进度归零。
+
+    ★ 为什么测试必须先归零（踩过的坑，实测证据见下）：
+    `workspace.html` 的 `fetchProgress()` 是**异步**的 —— 页面先按第 0 句渲染，
+    进度回来后再 seek 到恢复位置并切句。所以「刚进页面时看到的当前句」可能是
+    **临时状态**，不是稳定状态。
+
+    实测（5190 服务，lesson 2 库里进度 56.917s / 第 25 句）：
+        [刚进页面]   ['okay','i','m','hoping']  subtitle='Okay, I'm hoping to finish in about an hour.'
+        [等 3s 后]   ['ooh','we','still','have'] subtitle='Ooh, we still have time!'
+        [reload 后立即]['okay','i','m','hoping'] subtitle='Okay, I'm hoping to finish in about an hour.'
+        [reload 后 3s] ['ooh','we','still','have'] subtitle='Ooh, we still have time!'
+
+    如果测试在「刚进页面」时挑词（拿到 `okay`），再 reload，就会去等一个
+    在真实当前句（第 25 句 `Ooh, we still have time!`）里**根本不存在**的词，
+    于是 `locator.click()` 超时。这不是产品缺陷（恢复进度到 56.917s 就该显示第 25 句），
+    是测试挑词时机不对。
+
+    归零后当前句恒为第 0 句，测试对「库里有残留进度」完全免疫，
+    比依赖 `_wait_settled()` 的时序更可靠。
+
+    注意：若当前已在工作区页面上，归零后**必须 reload** 才能生效 ——
+    工作区在 pagehide/beforeunload 时会补写当前位置（这是正确行为），
+    所以要在离开页面后再归零，或在归零后 reload 让页面重新读进度。
+
+    返回值：归零**之前**的进度 `{"seconds": float, "segment": int}`，
+    供 `_restore_progress()` 复原 —— 本用例会跑在共享服务上（例如总验收的 5190），
+    不能留下「进度被测试改成 0」这种副作用。
+    """
+    if not on_workspace:
+        page.goto(f"{BASE}/", wait_until="domcontentloaded")
+    return page.evaluate(
+        f"""async () => {{
+            const before = await (await fetch('/api/v2/lessons/{lesson_id}/progress')).json();
+            await fetch('/api/v2/lessons/{lesson_id}/progress', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{last_position_seconds: 0, last_segment_index: 0}}),
+            }});
+            return {{
+                seconds: Number(before.last_position_seconds || 0),
+                segment: Number(before.last_segment_index || 0),
+            }};
+        }}"""
+    )
+
+
+def _restore_progress(page, lesson_id: int, saved: dict | None):
+    """把进度恢复成测试前保存的值（`_reset_progress()` 的返回值）。
+
+    为什么必须恢复：本用例会跑在共享服务上（总验收 5190 上 lesson 2 的进度是
+    56.917s / 第 25 句）。归零后不恢复等于污染别人的验收环境，
+    后续依赖非零进度的用例会连带失败。
+    必须在**离开工作区**的页面上做：工作区 pagehide 会补写当前位置。
+    """
+    if not saved:
+        return
+    page.goto(f"{BASE}/", wait_until="domcontentloaded")
+    page.evaluate(
+        f"""async (saved) => {{
+            await fetch('/api/v2/lessons/{lesson_id}/progress', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{
+                    last_position_seconds: saved.seconds,
+                    last_segment_index: saved.segment,
+                }}),
+            }});
+        }}""",
+        saved,
+    )
+
+
+def _wait_current_sentence_stable(page, timeout_ms: int = 8000) -> str:
+    """等「当前句」连续两次采样一致，返回该句首词。
+
+    用于挑词前确认位置已恢复完 —— 只靠 `_wait_settled()`（等网络静默）不够，
+    因为 `fetchProgress` 回来后还要 seek + 触发一次重渲染。
+    """
+    import time as _time
+
+    deadline = _time.time() + timeout_ms / 1000
+    last = None
+    while _time.time() < deadline:
+        current = page.evaluate(
+            """() => {
+                const root = document.getElementById('current-subtitle');
+                if (!root) return null;
+                const btn = root.querySelector('.subtitle-word, .lookup-word');
+                return {
+                    first: btn ? (btn.dataset.word || btn.textContent || '').trim().toLowerCase() : '',
+                    idx: window.__ws ? window.__ws.activeSentenceIndex : -1,
+                    text: (root.textContent || '').trim().slice(0, 60),
+                };
+            }"""
+        )
+        if current and last and current == last and current["first"]:
+            return current["first"]
+        last = current
+        page.wait_for_timeout(250)
+    return (last or {}).get("first", "")
+
+
+def _pick_collectable_word(page) -> str:
+    """从**当前稳定句**里挑一个可收藏的实词（跳过缩写如 "it's"）。"""
+    return page.evaluate(
+        """() => {
+            const btns = [...document.querySelectorAll('#current-subtitle .subtitle-word, #current-subtitle .lookup-word')];
+            return btns.map(b => (b.dataset.word || b.textContent || '').trim().toLowerCase())
+                       .find(w => /^[a-z]{4,}$/.test(w)) || '';
+        }"""
+    )
+
+
 def _wait_settled(page, quiet_ms: int = 1500):
     """等页面 bootstrap 的异步链收敛（不再有数据接口请求）。
 
@@ -426,6 +541,17 @@ def test_p1_3_favoriting_a_word_makes_it_appear_in_my_collections(browser, mater
     ECDICT 会把某些屈折形式归一成词元（实测 `displaying` → `displaye`），
     这是既有词典行为、不在包1 文件范围内。P1-3 要证明的是
     「收藏后这个词（无论落库成什么词形）出现在我的收藏里，且带原句」。
+
+    ★ 本用例的前提：**先把学习进度归零**，让当前句恒为第 0 句。
+    原因见 `_reset_progress()` 的 docstring：`fetchProgress()` 是异步的，
+    页面先渲染第 0 句、进度回来后跳到恢复位置，所以「刚进页面挑词」会拿到
+    临时状态的词，reload 后该词在当前句里不存在 → locator 超时
+    （实测复现：5190 上 lesson 2 进度 56.917s/第 25 句，刚进页面显示 `okay`，
+     3 秒后变 `still`，用 `okay` 去点必然超时）。
+    归零后不依赖任何历史进度，测试可重复、也不受别人跑过的残留数据影响。
+
+    ★ 跑完会**恢复原进度**（`_reset_progress()` 的返回值 → `_restore_progress()`），
+    不污染共享服务 —— 总验收 5190 上依赖非零进度的用例不会被我连带弄红。
     """
     ctx = browser.new_context(viewport={"width": 1440, "height": 900})
     pg = ctx.new_page()
@@ -441,19 +567,31 @@ def test_p1_3_favoriting_a_word_makes_it_appear_in_my_collections(browser, mater
                 pass
 
     pg.on("response", on_response)
+
+    # ── 步骤 1：保存原进度并归零（在首页做，避免工作区的 pagehide 补写覆盖）──
+    saved_progress = _reset_progress(pg, lesson_id, on_workspace=False)
+    try:
+        _run_p1_3_favorite_flow(pg, lesson_id, activated)
+    finally:
+        # 无论断言是否失败都恢复，避免把共享服务的进度留在 0
+        _restore_progress(pg, lesson_id, saved_progress)
+        ctx.close()
+
+
+def _run_p1_3_favorite_flow(pg, lesson_id: int, activated: dict):
+    """P1-3 端到端流程主体（拆出来是为了让调用方用 try/finally 恢复进度）。"""
+
+    # ── 步骤 2：进工作区，等位置恢复与渲染都稳定 ──
     _goto_workspace(pg, lesson_id)
+    _wait_settled(pg)                       # 等数据接口静默
+    first_word = _wait_current_sentence_stable(pg)   # 再等「当前句」连续两次一致
+    assert first_word, "当前句没有渲染出可点词"
 
-    # 挑一个当前句里真实存在的实词（跳过缩写如 "it's"）
-    word = pg.evaluate(
-        """() => {
-            const btns = [...document.querySelectorAll('#current-subtitle .subtitle-word, #current-subtitle .lookup-word')];
-            return btns.map(b => (b.dataset.word || b.textContent || '').trim().toLowerCase())
-                       .find(w => /^[a-z]{4,}$/.test(w)) || '';
-        }"""
-    )
-    assert word, "当前句没有可用于收藏的实词"
+    # ── 步骤 3：挑词（此时当前句已是稳定状态）──
+    word = _pick_collectable_word(pg)
+    assert word, f"当前稳定句里没有可用于收藏的实词（首词={first_word!r}）"
 
-    # 先确保可重复跑：删本课收藏，并把该词从「归档/已掌握」放回可见状态。
+    # ── 步骤 4：把该词恢复成「未收藏且可见」，保证可重复跑 ──
     #
     # 为什么是 unarchive 而不是 archive：`activate_word_review` 的
     # `ON CONFLICT DO UPDATE` **不会**改 archived/mastered（见 backend/db.py:1063-1075），
@@ -470,15 +608,35 @@ def test_p1_3_favoriting_a_word_makes_it_appear_in_my_collections(browser, mater
             }}
         }}"""
     )
+
+    # ── 步骤 5：reload 让「删除/恢复」在页面上生效，并再次等稳定 ──
     pg.reload(wait_until="domcontentloaded")
     pg.wait_for_selector("#local-media-player", state="attached", timeout=20000)
     pg.wait_for_function(
         "() => window.__ws && Array.isArray(window.__ws.sentences) && window.__ws.sentences.length > 0",
         timeout=20000,
     )
-    _wait_settled(pg)   # 等 bootstrap 重渲染收敛，避免点中的节点被换掉
+    _wait_settled(pg)
+    # reload 后当前句必须仍是稳定态；若这轮挑到的词不在当前句里，
+    # 说明位置又变了 —— 直接失败并给出可诊断信息，而不是静默 skip。
+    still_there = pg.evaluate(
+        f"""() => {{
+            const btns = [...document.querySelectorAll('#current-subtitle .subtitle-word, #current-subtitle .lookup-word')];
+            return btns.some(b => (b.dataset.word || b.textContent || '').trim().toLowerCase() === {word!r});
+        }}"""
+    )
+    if not still_there:
+        current_text = pg.evaluate(
+            "() => ((document.getElementById('current-subtitle') || {}).textContent || '').trim()"
+        )
+        current_idx = pg.evaluate("() => window.__ws.activeSentenceIndex")
+        raise AssertionError(
+            f"reload 后当前句里找不到刚挑的词「{word}」—— 当前句在挑词后又变了。"
+            f"当前句={current_text!r}，activeSentenceIndex={current_idx}。"
+            "若复现，说明进度恢复比 _wait_current_sentence_stable 的等待更慢，需要加长该等待。"
+        )
 
-    # 真实点击该词 → 弹出查词浮层 → 点「☆ 加入生词」
+    # ── 步骤 6：真实点击该词 → 弹出查词浮层 → 点「☆ 加入生词」──
     # （收藏按钮只在浮层里，这是原版交互路径，不能绕过）
     pg.evaluate("() => window.scrollTo(0, 0)")
     pg.locator(f'#current-subtitle .subtitle-word[data-word="{word}"]').first.click()
@@ -516,11 +674,15 @@ def test_p1_3_favoriting_a_word_makes_it_appear_in_my_collections(browser, mater
     assert contexts, f"「{stored_word}」没有原句上下文：{entry}"
     sentences = [str(c.get("sentence") or "").strip() for c in contexts]
     assert any(sentences), f"「{stored_word}」的上下文句子为空：{contexts}"
-    ctx.close()
 
 
 def test_p1_3_cet_panel_shows_state_label_after_favorite(page, material):
-    """CET 模式收藏面板不再给每个词一个「加入复习本」按钮，而是状态标签。"""
+    """CET 模式收藏面板不再给每个词一个「加入复习本」按钮，而是状态标签。
+
+    ★ 与上一条 P1-3 用例不同：本用例**不依赖当前句**，只断言面板里
+    `.review-book-btn` 的 DOM 计数，所以不需要归零进度、也不受恢复位置影响。
+    （主代理要求顺手排查这条，结论是它没有同样的隐患 —— 记在这里以免后人重复排查。）
+    """
     _goto_workspace(page, material["id"])
     page.click('.sidebar-workspace-tab[data-sidebar-target="collection"]')
     page.wait_for_timeout(600)

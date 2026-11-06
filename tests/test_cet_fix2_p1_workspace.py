@@ -337,3 +337,51 @@ def test_cet_player_cache_buster_bumped():
         "cet-player.js 缓存串未 bump，包2 改完后真实用户刷新仍拿到旧 JS"
     )
     assert "?v=20261105-p1" not in src.split("cet-player.js", 1)[1].split(">", 1)[0]
+
+
+def test_cet_favorites_cache_buster_bumped():
+    """cet-favorites.js 也改了行为（P1-5 快照改造），缓存串必须一起 bump。
+
+    只 bump cet-player.js 会让 P1-5 的修复对**老用户不生效**：
+    浏览器继续用缓存里的旧 cet-favorites.js，它仍会自己拉 /words + /phase-b，
+    重复请求照旧存在。
+    """
+    src = _text(WORKSPACE)
+    assert "/static/cet-favorites.js?v=20261106-fix2" in src, (
+        "cet-favorites.js 缓存串未 bump，P1-5 的修复对老用户不生效"
+    )
+    tag = src.split("cet-favorites.js", 1)[1].split(">", 1)[0]
+    assert "?v=20261105-p1" not in tag, f"cet-favorites.js 仍是旧缓存串：{tag}"
+
+
+def test_copy_fallbacks_are_consistent_per_key():
+    """同一个文案键在所有调用点的兜底值必须一致。
+
+    为什么要有这条：主代理合并时看到 `fix2_intensive_entry` 在 title 与可见文案
+    用了两个不同兜底（'逐句精听' vs '逐句精听 →'），无法判断哪份才是 CET 文案，
+    核对包4 写入 cet_mode.py 的键值时会出错。
+    """
+    import collections
+
+    src = _text(WORKSPACE)
+    found = collections.defaultdict(set)
+    # Jinja: cet_copy.get('key', 'fallback')
+    for m in re.finditer(r"cet_copy\.get\(\s*'([^']+)'\s*,\s*'([^']*)'", src):
+        found[m.group(1)].add(m.group(2))
+    # JS: cetCopy('key', 'fallback')
+    for m in re.finditer(r"cetCopy\(\s*'([^']+)'\s*,\s*'([^']*)'", src):
+        found[m.group(1)].add(m.group(2))
+    assert found, "没有扫描到任何文案取值调用，正则可能失效"
+    inconsistent = {k: v for k, v in found.items() if len(v) > 1}
+    assert not inconsistent, (
+        f"以下键在不同调用点用了不同兜底值，包4 无法核对：{inconsistent}"
+    )
+
+
+def test_copy_fallbacks_cover_all_fix2_keys_used():
+    """所有 fix2_ 键都必须带兜底（键没合进来时页面不白屏）。"""
+    src = _text(WORKSPACE)
+    bare = re.findall(r"cet_copy\.get\(\s*'(fix2_[^']+)'\s*\)", src)
+    assert not bare, f"这些 fix2_ 键取值没带兜底：{bare}"
+    bare_js = re.findall(r"cetCopy\(\s*'(fix2_[^']+)'\s*\)", src)
+    assert not bare_js, f"这些 fix2_ 键取值没带兜底（JS 侧）：{bare_js}"

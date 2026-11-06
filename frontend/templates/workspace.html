@@ -1719,11 +1719,16 @@
             「逐句精听 →」会变成重复入口，违反「通用模式行为不变」。 -#}
         {% if cet_on %}
         <div class="intensive-entry-group">
+          {#- 同一个键 `fix2_intensive_entry` 的兜底值必须**处处一致**，
+              否则包4 加键时无法判断哪份才是 CET 文案。
+              这里 title 与可见文案统一用 '逐句精听 →'（与 cet_mode.py 侧
+              包4 将写入的 CET 值一致）；title 去掉箭头由 JS 侧同步时处理，
+              模板不另写第二个兜底。 -#}
           <a id="intensive-entry" class="intensive-entry"
              href="/workspace/{{ lesson_id }}/intensive"
              data-intensive-entry="1"
              aria-disabled="false"
-             title="{{ cet_copy.get('fix2_intensive_entry', '逐句精听') }}">{{ cet_copy.get('fix2_intensive_entry', '逐句精听 →') }}</a>
+             title="{{ cet_copy.get('fix2_intensive_entry', '逐句精听 →') }}">{{ cet_copy.get('fix2_intensive_entry', '逐句精听 →') }}</a>
           <span id="intensive-entry-hint" class="intensive-entry-hint" hidden>{{ cet_copy.get('fix2_intensive_need_timeline', '需要逐句时间轴') }}</span>
         </div>
         {% endif %}
@@ -1997,7 +2002,7 @@ window.__CET_BOOT__ = {
 {#- 返修2：cet-player.js 行为有变更（包2 快捷键），缓存串必须 bump，
     否则真实用户刷新后仍拿到旧 JS。 -#}
 <script src="/static/cet-player.js?v=20261106-fix2" defer></script>
-<script src="/static/cet-favorites.js?v=20261105-p1" defer></script>
+<script src="/static/cet-favorites.js?v=20261106-fix2" defer></script>
 <script>
 const LESSON_ID = {{ lesson_id }};
 // 集中开关（唯一来源：window.__CET_BOOT__ ← cet_mode.template_context()）
@@ -2546,8 +2551,11 @@ function syncIntensiveEntry() {
     entry.removeAttribute('href');
     entry.setAttribute('tabindex', '-1');
   }
+  // title 与可见文案分开：可见文案是「逐句精听 →」，tooltip 不要那个箭头。
+  // 两处都从同一个键取，兜底值也统一，避免出现「同一个键两份兜底」。
+  const entryLabel = cetCopy('fix2_intensive_entry', '逐句精听 →');
   entry.title = usable
-    ? cetCopy('fix2_intensive_entry', '逐句精听')
+    ? entryLabel.replace(/\s*→\s*$/, '')
     : cetCopy('fix2_intensive_need_timeline', '需要逐句时间轴');
   if (hint) {
     hint.hidden = usable;

@@ -7,6 +7,33 @@
 
 ---
 
+## 0. 分支与接续（先看这里）
+
+| 项 | 值 |
+| --- | --- |
+| 交付分支 | **`cet-base-delivery`** |
+| 交付 SHA | `8bbd92025f1386a43a4ef02e164e6166444a7f87` |
+| 底座验收 | ✅ 已通过独立验收（[6ce3545 复验](docs/acceptance/2026-11-06-6ce3545-底座独立复验.md)） |
+
+```bash
+git clone https://github.com/yb-beep/EchoLingo.git
+cd EchoLingo
+git checkout cet-base-delivery
+```
+
+**接续卡点 / AI 带练 / 换句 / 智能复习模块的队友，请先读
+[队友接续指南](docs/cet-base/队友接续指南.md)。**
+
+一句话：**你的四个文件（`cet-listening.js` / `.css` / `cet_service.py` / `cet_ai.py`）
+相对 `70f8187` 一行未改，模块只是被「关掉」了不是被改坏。**
+打开 `cet_listening_agent` 开关就能接续，模板不用改：
+
+```bash
+ELT_CET_FEATURE_CET_LISTENING_AGENT=1 ...   # 或把 cet_mode.py 里 kept 改 True
+```
+
+---
+
 ## 1. 本版本用途
 
 把 EchoLingo 收束成**四六级听力学习底座**。只保留一条主线：

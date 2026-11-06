@@ -37,6 +37,12 @@ def _error(status: int, code: str, message: str, **extra: Any) -> None:
 
 _ATTEMPT_IDEMPOTENCY_STATE = "unknown"
 
+# 冻结约定 §2：AI 请求状态枚举（练习状态另有 active/complete，两者不混用）
+_AI_TERMINAL_STATES = {"succeeded", "failed", "cancelled", "stale"}
+# 冻结约定 §5：迟到响应不得覆盖 cancelled 与非系统故障的 failed；
+# 因进程异常悬空的失败（SERVER_RESTARTED）可被迟到结果接管，避免请求永远悬空。
+_AI_OVERRIDABLE_FAILURES = {"SERVER_RESTARTED"}
+
 
 def init_cet_schema(path: Path | None = None) -> None:
     """Run idempotent CET migrations and recover interrupted model requests."""
@@ -727,52 +733,129 @@ def get_attempt(attempt_id: str) -> dict[str, Any]:
     return _attempt_payload(attempt_id)
 
 
+def _session_attempt_rows(conn, material_id: str, session_id: str) -> list[Any]:
+    """D01：同一材料 + 非空会话下的全部历史记录，按 created_at 最早优先。
+
+    历史重复记录**一条都不删**（删除会因 ON DELETE CASCADE 连带删掉作答与答案），
+    只在这里给出确定性的对外身份顺序：最早 created_at，同一时刻再用 rowid 兜底。
+    """
+    return conn.execute(
+        "SELECT id, created_at, rowid AS rid FROM cet_attempts "
+        "WHERE material_id=? AND listening_session_id=? "
+        "ORDER BY created_at, rid",
+        (material_id, session_id),
+    ).fetchall()
+
+
+def _claim_attempt_idem(material_id: str, session_id: str, candidate_id: str) -> str:
+    """D01：非空会话的原子幂等占位，返回本会话唯一 attemptId。
+
+    幂等键 = materialId::sessionId。映射表主键唯一，并发时只有一个能插入成功，
+    其余读回同一个 attemptId。**与 attemptId 是服务端生成还是客户端自带无关**
+    —— 这正是 D01 的核心：旧实现把占位写在 `if not attempt_id` 内部，
+    客户端自带 ID 就整段跳过，历史重复库上 6 个 ID 落 6 份。
+
+    占位记录里的 attemptId 即本次会话的权威身份；即使占位者尚未落库
+    （或已中断），后来者复用同一个 ID 继续落库，因此不会产生第二条记录。
+    """
+    idem_key = f"{material_id}::{session_id}"
+    with _db() as conn:
+        held = conn.execute(
+            "SELECT attempt_id FROM cet_attempt_idem WHERE idem_key=?", (idem_key,)
+        ).fetchone()
+        if held:
+            return held["attempt_id"]
+        try:
+            conn.execute(
+                "INSERT INTO cet_attempt_idem(idem_key,attempt_id,created_at) VALUES(?,?,?)",
+                (idem_key, candidate_id, _now()),
+            )
+            conn.commit()
+            return candidate_id
+        except sqlite3.IntegrityError:
+            # 并发下别人先占位：读回它的 attemptId（主键唯一，最多一个赢家）
+            conn.rollback()
+            held = conn.execute(
+                "SELECT attempt_id FROM cet_attempt_idem WHERE idem_key=?", (idem_key,)
+            ).fetchone()
+            return held["attempt_id"] if held else candidate_id
+
+
+def _resolve_session_attempt_id(material_id: str, session_id: str, client_attempt_id: str) -> str:
+    """D01：非空会话的交卷身份解析——**两种 ID 入口共用同一条规则**。
+
+    1. 已有历史（含历史重复）→ 取 created_at 最早一条，不新建
+    2. 没有历史 → 幂等映射表原子占位（客户端自带 ID 也只作为候选，受同一约束）
+    """
+    with _db() as conn:
+        rows = _session_attempt_rows(conn, material_id, session_id)
+    if rows:
+        return rows[0]["id"]
+    candidate = client_attempt_id or f"attempt-{uuid.uuid4().hex[:12]}"
+    return _claim_attempt_idem(material_id, session_id, candidate)
+
+
+def _attempt_conflict_meta(material_id: str, session_id: str, chosen_id: str) -> dict[str, Any]:
+    """D01：历史重复键的显式冲突说明。
+
+    空会话不参与幂等，不存在冲突语义。非空会话若有 >1 条历史记录，
+    必须**说明选了哪一条、为什么**，不能任取一条还不作声。
+    """
+    if not session_id:
+        return {"conflict": False}
+    with _db() as conn:
+        rows = _session_attempt_rows(conn, material_id, session_id)
+    if len(rows) <= 1:
+        return {"conflict": False}
+    return {
+        "conflict": True,
+        "conflictDetail": {
+            "reason": "duplicate_attempts_for_session",
+            "policy": "keep_earliest_created_at",
+            "chosenAttemptId": chosen_id,
+            "chosenCreatedAt": rows[0]["created_at"],
+            "duplicateCount": len(rows),
+            "attemptIds": [row["id"] for row in rows],
+            "createdAts": [row["created_at"] for row in rows],
+        },
+    }
+
+
+def _attempt_payload_with_conflict(
+    attempt_id: str, material_id: str, session_id: str
+) -> dict[str, Any]:
+    """D01：交卷响应统一带上冲突说明（旧记录保留，选择可追溯）。"""
+    payload = _attempt_payload(attempt_id)
+    payload.update(_attempt_conflict_meta(material_id, session_id, attempt_id))
+    return payload
+
+
 def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
     # 契约：attemptId 由服务端生成；幂等靠 listeningSessionId（同一会话只交一次卷）。
-    # 原实现要求客户端自带 attemptId，A 按契约调用会直接 422。
+    # D01：幂等保护必须覆盖**两种 ID 入口**。旧实现把映射占位写在
+    # `if not attempt_id` 内部，客户端自带 attemptId 时整段跳过 ——
+    # 在有历史重复、部分唯一索引建不上的库里，同一材料同一会话提交 6 个
+    # 不同 attemptId 会落 6 份，违反「同一材料 + 非空 session 只能一条」。
     material_id = str(body.get("materialId") or "").strip()
     session_id = str(body.get("listeningSessionId") or "").strip()
-    attempt_id = str(body.get("attemptId") or "").strip()
-    if not attempt_id:
-        if not session_id:
-            _error(422, "ATTEMPT_ID_REQUIRED", "materialId 和 listeningSessionId 不能为空。")
-        # 同一听音会话复用同一 attempt（幂等）
-        # C02：用幂等映射表做**原子占位**。
-        # 唯一索引在历史有重复时建不上（needs_dedup），那时并发会各建一条。
-        # 映射表主键唯一，并发时只有一个能插入成功，其余读回同一个 attemptId。
-        # 历史记录一条都不动。
-        idem_key = f"{material_id}::{session_id}"
-        candidate_id = f"attempt-{uuid.uuid4().hex[:12]}"
-        with _db() as _conn:
-            prev = _conn.execute(
-                "SELECT id FROM cet_attempts WHERE material_id=? AND listening_session_id=?",
-                (material_id, session_id),
-            ).fetchone()
-            if prev:
-                attempt_id = prev["id"]
-            else:
-                try:
-                    _conn.execute(
-                        "INSERT INTO cet_attempt_idem(idem_key,attempt_id,created_at) VALUES(?,?,?)",
-                        (idem_key, candidate_id, _now()),
-                    )
-                    _conn.commit()
-                    attempt_id = candidate_id
-                except sqlite3.IntegrityError:
-                    # 并发下别人先占位：读回它的 attemptId
-                    _conn.rollback()
-                    held = _conn.execute(
-                        "SELECT attempt_id FROM cet_attempt_idem WHERE idem_key=?", (idem_key,)
-                    ).fetchone()
-                    attempt_id = held["attempt_id"] if held else candidate_id
+    client_attempt_id = str(body.get("attemptId") or "").strip()
     if not material_id:
         _error(422, "ATTEMPT_ID_REQUIRED", "materialId 不能为空。")
+    if not session_id and not client_attempt_id:
+        _error(422, "ATTEMPT_ID_REQUIRED", "materialId 和 listeningSessionId 不能为空。")
+    # 非空会话：无论 ID 谁给的，都先解析出本会话的唯一身份；
+    # 空会话：没有幂等键，客户端自带的 attemptId 保留为独立作答（不合并）。
+    attempt_id = (
+        _resolve_session_attempt_id(material_id, session_id, client_attempt_id)
+        if session_id
+        else client_attempt_id
+    )
     with _db() as conn:
         existing = conn.execute("SELECT material_id FROM cet_attempts WHERE id=?", (attempt_id,)).fetchone()
     if existing:
         if existing["material_id"] != material_id:
             _error(409, "IDEMPOTENCY_CONFLICT", "attemptId 已用于另一份材料。")
-        return _attempt_payload(attempt_id)
+        return _attempt_payload_with_conflict(attempt_id, material_id, session_id)
     material = get_material(material_id)
     if body.get("materialVersion") != material["materialVersion"]:
         _error(409, "MATERIAL_VERSION_CHANGED", "材料版本已变化，请刷新后重试。", currentVersion=material["materialVersion"])
@@ -846,19 +929,22 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
             if existing:
                 if existing["material_id"] != material_id:
                     _error(409, "IDEMPOTENCY_CONFLICT", "attemptId 已用于另一份材料。")
-                return _attempt_payload(existing["id"])
+                return _attempt_payload_with_conflict(existing["id"], material_id, session_id)
             same_session = conn.execute(
-                "SELECT id FROM cet_attempts WHERE material_id=? AND listening_session_id=?",
+                "SELECT id FROM cet_attempts WHERE material_id=? AND listening_session_id=? "
+                "ORDER BY created_at, rowid LIMIT 1",
                 (material_id, str(body.get("listeningSessionId") or "")),
             ).fetchone()
             if same_session:
-                return _attempt_payload(same_session["id"])
+                return _attempt_payload_with_conflict(same_session["id"], material_id, session_id)
             _error(409, "IDEMPOTENCY_CONFLICT", "交卷记录冲突，请重试。")
         conn.executemany(
             "INSERT INTO cet_attempt_answers(attempt_id,question_id,answer,correct_answer,status,is_correct,answer_source,evidence_sentence_id) "
             "VALUES(?,?,?,?,?,?,?,?)", answer_rows,
         )
-    return _attempt_payload(attempt_id)
+    # 新建路径也要带 conflict 字段（值必为 false）：让调用方无需区分「字段缺失」
+    # 与「无冲突」，响应形状对两种入口一致。
+    return _attempt_payload_with_conflict(attempt_id, material_id, session_id)
 
 
 def _mark_payload(row: Any) -> dict[str, Any]:
@@ -1176,12 +1262,28 @@ def _new_step(
     return step_id
 
 
-def _cancel_pending_ai(conn, practice: Any, status: str = "cancelled") -> None:
-    if practice["ai_request_id"]:
-        conn.execute(
-            "UPDATE cet_ai_requests SET status=?,completed_at=? WHERE id=? AND status='pending'",
-            (status, _now(), practice["ai_request_id"]),
-        )
+def _cancel_pending_ai(
+    conn, practice: Any, *, status: str, error_code: str = ""
+) -> None:
+    """把当前 pending 的 AI 请求推进到终态。
+
+    冻结约定 §5：`status` **必须由调用方显式传入**，不得依赖默认值。
+    旧签名默认 `cancelled`，于是「被新请求/新动作取代」被错标成
+    `cancelled`（应为 `stale`），用户主动取消与被动取代无法区分。
+
+    - 用户主动取消 → `cancelled` + `USER_CANCELLED`
+    - 被新请求/新动作取代 → `stale`
+    只推进 `pending`：已经是终态（cancelled/failed/succeeded/stale）的不动。
+    """
+    if status not in _AI_TERMINAL_STATES:
+        _error(422, "INVALID_AI_STATUS", "AI 请求终态不合法。", status=status)
+    if not practice["ai_request_id"]:
+        return
+    conn.execute(
+        "UPDATE cet_ai_requests SET status=?,error_code=?,completed_at=? "
+        "WHERE id=? AND status='pending'",
+        (status, error_code, _now(), practice["ai_request_id"]),
+    )
 
 
 def create_practice(body: dict[str, Any]) -> dict[str, Any]:
@@ -1466,6 +1568,44 @@ def _persist_feedback(practice_id: str, feedback: str, request_id: str) -> None:
         conn.commit()
 
 
+def _late_ai_result_terminal(conn, request_id: str) -> bool:
+    """冻结约定 §5：迟到响应到达时的终态收敛。
+
+    返回 True 表示本次迟到结果**接管**了请求（已标 `stale`）。
+
+    允许接管的只有两种「请求还没真正结束」的情况：
+      - `pending`：结果正常晚到
+      - `failed` + 系统故障码（如 `SERVER_RESTARTED`）：进程异常导致请求悬空，
+        请求本身没错，迟到结果应被接收，否则请求永远卡在 failed
+    绝不动：`cancelled`（用户明确不要了）、真失败（如 AI_INVALID_OUTPUT）、
+    `succeeded`（已生效）。
+    """
+    row = conn.execute(
+        "SELECT status, error_code FROM cet_ai_requests WHERE id=?", (request_id,)
+    ).fetchone()
+    if not row:
+        return False
+    status = row["status"]
+    overridable_failure = (
+        status == "failed" and (row["error_code"] or "") in _AI_OVERRIDABLE_FAILURES
+    )
+    if status != "pending" and not overridable_failure:
+        return False
+    if status == "pending":
+        conn.execute(
+            "UPDATE cet_ai_requests SET status='stale',completed_at=? "
+            "WHERE id=? AND status='pending'",
+            (_now(), request_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE cet_ai_requests SET status='stale',completed_at=? "
+            "WHERE id=? AND status='failed' AND error_code=?",
+            (_now(), request_id, row["error_code"]),
+        )
+    return True
+
+
 def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
     # 契约用 feedback（sound/meaning/heard）驱动下一步，由服务端决定动作；
     # B 原实现要求客户端传 action + requestId。两者都支持：
@@ -1543,7 +1683,7 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
             if previous["status"] == "succeeded":
                 return _practice_payload(practice_id)
             _error(409, "AI_REQUEST_IN_PROGRESS", "相同模型请求正在处理或已失败，请查询状态或使用新 requestId。")
-        _cancel_pending_ai(conn, practice)
+        _cancel_pending_ai(conn, practice, status="stale")
         changed = conn.execute(
             "UPDATE cet_practices SET revision=?,ai_request_id=?,updated_at=? WHERE id=? AND revision=? AND status='active'",
             (revision, request_id, now, practice_id, practice["revision"]),
@@ -1579,9 +1719,9 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
                 )
                 conn.commit()
             else:
-                conn.execute("UPDATE cet_ai_requests SET status='stale',completed_at=? "
-                         "WHERE id=? AND status <> 'cancelled'",
-                         (_now(), request_id))
+                # 冻结约定 §5：只收敛「还能接管」的请求（pending 或系统故障悬空），
+                # 不覆盖 cancelled / 真失败 / succeeded 终态。
+                _late_ai_result_terminal(conn, request_id)
                 conn.commit()
                 _error(409, "STALE_RESPONSE", "模型错误结果已过期，未改变当前练习。", practiceId=practice_id, requestId=request_id)
         # 503 也要带回当前练习状态：反馈已经落库了，
@@ -1600,9 +1740,9 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
             or practice["current_step_id"] != request["step_id"] or practice["ai_request_id"] != request_id
             or request["status"] != "pending"
         ):
-            conn.execute("UPDATE cet_ai_requests SET status='stale',completed_at=? "
-                         "WHERE id=? AND status <> 'cancelled'",
-                         (_now(), request_id))
+            # 冻结约定 §5：不覆盖 cancelled / 真失败 / succeeded；
+            # 但进程异常悬空的 failed（SERVER_RESTARTED）允许被迟到结果接管。
+            _late_ai_result_terminal(conn, request_id)
             conn.commit()
             _error(409, "STALE_RESPONSE", "模型结果已过期，未覆盖当前练习。", practiceId=practice_id, requestId=request_id)
         candidate_id = None
@@ -1749,7 +1889,7 @@ def cancel_ai_request(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
 
         if row["status"] == "pending":
             conn.execute(
-                "UPDATE cet_ai_requests SET status='cancelled',completed_at=? "
+                "UPDATE cet_ai_requests SET status='cancelled',error_code='USER_CANCELLED',completed_at=? "
                 "WHERE id=? AND status='pending'",
                 (_now(), target_id),
             )
@@ -1892,7 +2032,7 @@ def record_practice_event(practice_id: str, body: dict[str, Any]) -> dict[str, A
             if step["action"] != "explain" and not played:
                 _error(409, "PLAYBACK_REQUIRED", "请先完整播放当前步骤，再提交反馈。")
             payload = {"feedback": feedback}
-            _cancel_pending_ai(conn, practice)
+            _cancel_pending_ai(conn, practice, status="stale")
             conn.execute(
                 "UPDATE cet_practices SET latest_feedback=?,feedback_source='user',revision=revision+1,updated_at=? WHERE id=?",
                 (feedback, _now(), practice_id),
@@ -2021,7 +2161,7 @@ def finish_practice(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
             return {"practice": _practice_payload(practice_id), "reviewItem": _review_item_payload(item)}
         if body.get("stepId") != practice["current_step_id"] or body.get("materialVersion") != practice["material_version"]:
             _error(409, "STALE_RESPONSE", "步骤或材料版本已变化，请刷新后重试。")
-        _cancel_pending_ai(conn, practice)
+        _cancel_pending_ai(conn, practice, status="stale")
         _new_step(conn, practice, "finish", "user", show_text=False, payload={"finishId": finish_id})
         now = _now()
         conn.execute(
@@ -2202,7 +2342,7 @@ def review_action(review_id: str, body: dict[str, Any]) -> dict[str, Any]:
                 _error(409, "INVALID_REVIEW_STATE", "仅进行中的复习可以暂停。")
             if entry:
                 practice = _practice_row(conn, entry["practice_id"])
-                _cancel_pending_ai(conn, practice)
+                _cancel_pending_ai(conn, practice, status="stale")
                 conn.execute("UPDATE cet_practices SET revision=revision+1,updated_at=? WHERE id=?", (now, practice["id"]))
             conn.execute(
                 "UPDATE cet_reviews SET status='paused',pause_count=pause_count+1,revision=revision+1,updated_at=? WHERE id=?",
@@ -2255,7 +2395,7 @@ def review_action(review_id: str, body: dict[str, Any]) -> dict[str, Any]:
         elif action == "finish":
             if entry:
                 practice = _practice_row(conn, entry["practice_id"])
-                _cancel_pending_ai(conn, practice)
+                _cancel_pending_ai(conn, practice, status="stale")
                 conn.execute("UPDATE cet_practices SET revision=revision+1,updated_at=? WHERE id=?", (now, practice["id"]))
             conn.execute("UPDATE cet_reviews SET status='complete',revision=revision+1,updated_at=? WHERE id=?", (now, review_id))
         inserted = conn.execute(

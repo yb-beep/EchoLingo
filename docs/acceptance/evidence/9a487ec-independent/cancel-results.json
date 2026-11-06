@@ -1,0 +1,119 @@
+{
+  "practiceId": "practice-2dbd36567d8f",
+  "requestIds": [
+    "cancel-9125a504A",
+    "cancel-79955cecB"
+  ],
+  "initialStep": "601bb6201f614b4b89a5d647d5105b04",
+  "pendingA": {
+    "code": 200,
+    "body": {
+      "practiceId": "practice-2dbd36567d8f",
+      "status": "pending",
+      "aiRequest": {
+        "requestId": "cancel-9125a504A",
+        "status": "pending",
+        "action": "explain",
+        "errorCode": "",
+        "createdAt": "2026-11-05T15:12:18.765063+00:00",
+        "completedAt": null
+      }
+    }
+  },
+  "cancelA": {
+    "code": 200,
+    "body": {
+      "practiceId": "practice-2dbd36567d8f",
+      "aiRequest": null,
+      "status": "idle",
+      "cancelled": true
+    }
+  },
+  "statusAfterCancel": {
+    "code": 200,
+    "body": {
+      "practiceId": "practice-2dbd36567d8f",
+      "aiRequest": null,
+      "status": "idle"
+    }
+  },
+  "pendingB": {
+    "code": 200,
+    "body": {
+      "practiceId": "practice-2dbd36567d8f",
+      "status": "pending",
+      "aiRequest": {
+        "requestId": "cancel-79955cecB",
+        "status": "pending",
+        "action": "explain",
+        "errorCode": "",
+        "createdAt": "2026-11-05T15:12:18.829713+00:00",
+        "completedAt": null
+      }
+    }
+  },
+  "retryCancelA": {
+    "code": 200,
+    "body": {
+      "practiceId": "practice-2dbd36567d8f",
+      "aiRequest": null,
+      "status": "idle",
+      "cancelled": true
+    }
+  },
+  "dbImmediately": [
+    [
+      "cancel-79955cecB",
+      "cancelled",
+      ""
+    ],
+    [
+      "cancel-9125a504A",
+      "cancelled",
+      ""
+    ]
+  ],
+  "lateA": {
+    "code": 409,
+    "body": {
+      "detail": {
+        "code": "STALE_RESPONSE",
+        "message": "模型结果已过期，未覆盖当前练习。",
+        "practiceId": "practice-2dbd36567d8f",
+        "requestId": "cancel-9125a504A"
+      }
+    }
+  },
+  "lateB": {
+    "code": 409,
+    "body": {
+      "detail": {
+        "code": "STALE_RESPONSE",
+        "message": "模型结果已过期，未覆盖当前练习。",
+        "practiceId": "practice-2dbd36567d8f",
+        "requestId": "cancel-79955cecB"
+      }
+    }
+  },
+  "finalStatus": {
+    "code": 200,
+    "body": {
+      "practiceId": "practice-2dbd36567d8f",
+      "aiRequest": null,
+      "status": "idle"
+    }
+  },
+  "finalStep": "601bb6201f614b4b89a5d647d5105b04",
+  "dbAfterLate": [
+    [
+      "cancel-79955cecB",
+      "stale",
+      ""
+    ],
+    [
+      "cancel-9125a504A",
+      "stale",
+      ""
+    ]
+  ]
+}

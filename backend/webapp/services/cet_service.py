@@ -237,7 +237,8 @@ def init_cet_schema(path: Path | None = None) -> None:
                     "UPDATE cet_reviews SET status='paused',pause_count=pause_count+1,updated_at=? "
                     "WHERE status='active'", (_now(),)
                 )
-                # N4：交卷幂等约束（建表之后再建索引）
+                # N4/C01/C02：交卷幂等约束 + 兜底映射表
+                _ensure_attempt_idem_map(conn)
                 _ensure_attempt_idempotency(conn)
             _initialized.add(target)
         finally:
@@ -447,6 +448,26 @@ def list_materials(level: str | None = None) -> list[dict[str, Any]]:
     return [item for item in materials if level is None or item["level"] == level]
 
 
+def _ensure_attempt_idem_map(conn) -> None:
+    """C02：幂等键映射表。
+
+    唯一索引在「历史有重复」时建不上（needs_dedup），此时新会话仍会并发写多条。
+    这里用一张独立的映射表做兜底：只要主键唯一，并发也只能有一条成功。
+    历史记录一条都不动。
+    """
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS cet_attempt_idem ("
+            "  idem_key TEXT PRIMARY KEY,"
+            "  attempt_id TEXT NOT NULL,"
+            "  created_at TEXT NOT NULL"
+            ")"
+        )
+        conn.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _ensure_attempt_idempotency(conn) -> None:
     """给「同一材料 + 非空听音会话」加唯一约束，**不删除任何历史记录**。
 
@@ -460,17 +481,42 @@ def _ensure_attempt_idempotency(conn) -> None:
     """
     global _ATTEMPT_IDEMPOTENCY_STATE
     try:
-        # 空 session 不参与唯一约束（旧接口兼容客户端只传 attemptId）
-        # 部分唯一索引：只约束 listening_session_id 非空的行
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS cet_attempts_session_uniq "
-            "ON cet_attempts(material_id, listening_session_id) "
-            "WHERE listening_session_id IS NOT NULL AND listening_session_id <> ''"
-        )
-        conn.commit()
-        _ATTEMPT_IDEMPOTENCY_STATE = "ok"
+        # C01：必须检查**已有索引的真实定义**。
+        # CREATE ... IF NOT EXISTS 遇到同名旧索引（全量、无 WHERE）不会更新，
+        # 却会把状态误报为 ok —— 上一版就踩了这个坑：
+        # 旧全量索引继续生效，两个空 session 的作答被当成重复，返回同一 attemptId。
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' AND name='cet_attempts_session_uniq'"
+        ).fetchone()
+        existing_sql = (row["sql"] or "") if row else ""
+
+        def _is_partial(sql: str) -> bool:
+            norm = " ".join(sql.lower().split())
+            return " where " in norm and "listening_session_id" in norm
+
+        if existing_sql and not _is_partial(existing_sql):
+            # 旧全量索引：先删再建（不删任何数据，只替换索引定义）
+            conn.execute("DROP INDEX IF EXISTS cet_attempts_session_uniq")
+            conn.commit()
+            existing_sql = ""
+
+        if not existing_sql:
+            conn.execute(
+                "CREATE UNIQUE INDEX cet_attempts_session_uniq "
+                "ON cet_attempts(material_id, listening_session_id) "
+                "WHERE listening_session_id IS NOT NULL AND listening_session_id <> ''"
+            )
+            conn.commit()
+
+        # 复核：确认现在确实是部分索引
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' AND name='cet_attempts_session_uniq'"
+        ).fetchone()
+        if row and _is_partial(row["sql"] or ""):
+            _ATTEMPT_IDEMPOTENCY_STATE = "ok"
+        else:
+            _ATTEMPT_IDEMPOTENCY_STATE = "failed: index definition not applied"
     except sqlite3.IntegrityError as exc:
-        # 已有重复数据导致索引建不上：不删数据，登记待人工处理
         conn.rollback()
         _ATTEMPT_IDEMPOTENCY_STATE = f"needs_dedup: {exc}"
     except Exception as exc:  # noqa: BLE001
@@ -691,12 +737,34 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
         if not session_id:
             _error(422, "ATTEMPT_ID_REQUIRED", "materialId 和 listeningSessionId 不能为空。")
         # 同一听音会话复用同一 attempt（幂等）
+        # C02：用幂等映射表做**原子占位**。
+        # 唯一索引在历史有重复时建不上（needs_dedup），那时并发会各建一条。
+        # 映射表主键唯一，并发时只有一个能插入成功，其余读回同一个 attemptId。
+        # 历史记录一条都不动。
+        idem_key = f"{material_id}::{session_id}"
+        candidate_id = f"attempt-{uuid.uuid4().hex[:12]}"
         with _db() as _conn:
             prev = _conn.execute(
                 "SELECT id FROM cet_attempts WHERE material_id=? AND listening_session_id=?",
                 (material_id, session_id),
             ).fetchone()
-        attempt_id = prev["id"] if prev else f"attempt-{uuid.uuid4().hex[:12]}"
+            if prev:
+                attempt_id = prev["id"]
+            else:
+                try:
+                    _conn.execute(
+                        "INSERT INTO cet_attempt_idem(idem_key,attempt_id,created_at) VALUES(?,?,?)",
+                        (idem_key, candidate_id, _now()),
+                    )
+                    _conn.commit()
+                    attempt_id = candidate_id
+                except sqlite3.IntegrityError:
+                    # 并发下别人先占位：读回它的 attemptId
+                    _conn.rollback()
+                    held = _conn.execute(
+                        "SELECT attempt_id FROM cet_attempt_idem WHERE idem_key=?", (idem_key,)
+                    ).fetchone()
+                    attempt_id = held["attempt_id"] if held else candidate_id
     if not material_id:
         _error(422, "ATTEMPT_ID_REQUIRED", "materialId 不能为空。")
     with _db() as conn:
@@ -1209,7 +1277,9 @@ def _local_practice_action_conn(
     if not already_validated:
         if body.get("stepId") != practice["current_step_id"] or body.get("materialVersion") != practice["material_version"]:
             _error(409, "STALE_RESPONSE", "步骤或材料版本已变化，请刷新后重试。")
-    _cancel_pending_ai(conn, practice)
+    # C03 语义区分：被新动作/新请求取代的旧 AI 请求标 stale，
+    # 只有用户主动取消才标 cancelled（两者终态都可查）。
+    _cancel_pending_ai(conn, practice, status="stale")
     payload: dict[str, Any] = {"source": "local"}
     sentence = json.loads(practice["sentence_json"])
     if action == "chunk":
@@ -1508,7 +1578,9 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
                 )
                 conn.commit()
             else:
-                conn.execute("UPDATE cet_ai_requests SET status='stale',completed_at=? WHERE id=?", (_now(), request_id))
+                conn.execute("UPDATE cet_ai_requests SET status='stale',completed_at=? "
+                         "WHERE id=? AND status <> 'cancelled'",
+                         (_now(), request_id))
                 conn.commit()
                 _error(409, "STALE_RESPONSE", "模型错误结果已过期，未改变当前练习。", practiceId=practice_id, requestId=request_id)
         # 503 也要带回当前练习状态：反馈已经落库了，
@@ -1527,7 +1599,9 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
             or practice["current_step_id"] != request["step_id"] or practice["ai_request_id"] != request_id
             or request["status"] != "pending"
         ):
-            conn.execute("UPDATE cet_ai_requests SET status='stale',completed_at=? WHERE id=?", (_now(), request_id))
+            conn.execute("UPDATE cet_ai_requests SET status='stale',completed_at=? "
+                         "WHERE id=? AND status <> 'cancelled'",
+                         (_now(), request_id))
             conn.commit()
             _error(409, "STALE_RESPONSE", "模型结果已过期，未覆盖当前练习。", practiceId=practice_id, requestId=request_id)
         candidate_id = None
@@ -1634,38 +1708,81 @@ def ai_request_status(practice_id: str) -> dict[str, Any]:
 
 
 def cancel_ai_request(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
-    """B03：取消当前 AI 请求（契约要求可取消）。
+    """C03：取消指定 AI 请求。
 
-    幂等：已取消/已完成的请求再取消不报错，返回当前状态。
+    契约：body.requestId 指定要取消的请求（**必须匹配当前 active 请求**）。
+    - 重试取消 A 不会影响后来启动的 B（目标身份参与判断）
+    - 取消后保留请求记录与终态，不把 aiRequest 置空
+    - 迟到响应只能被拒绝，不能把 cancelled 覆盖成 stale
     """
+    target_id = str((body or {}).get("requestId") or "").strip()
     with _db() as conn:
-        # 先取写锁，避免与完成路径竞争
+        # 先取写锁，避免与完成/失败路径竞争
         conn.execute("UPDATE cet_practices SET updated_at=updated_at WHERE id=?", (practice_id,))
         practice = _practice_row(conn, practice_id)
-        request_id = practice["ai_request_id"]
-        if not request_id:
+        active_id = practice["ai_request_id"]
+
+        # 未指定目标：只取消当前 active 请求
+        if not target_id:
+            target_id = active_id or ""
+
+        if not target_id:
             conn.commit()
-            return {"practiceId": practice_id, "aiRequest": None, "status": "idle", "cancelled": False}
-        row = conn.execute("SELECT * FROM cet_ai_requests WHERE id=?", (request_id,)).fetchone()
-        if not row:
+            return {"practiceId": practice_id, "aiRequest": None, "status": "idle",
+                    "cancelled": False, "reason": "no_active_request"}
+
+        row = conn.execute("SELECT * FROM cet_ai_requests WHERE id=?", (target_id,)).fetchone()
+        if not row or row["practice_id"] != practice_id:
             conn.commit()
-            return {"practiceId": practice_id, "aiRequest": None, "status": "idle", "cancelled": False}
+            return {"practiceId": practice_id, "status": "not_found",
+                    "cancelled": False, "reason": "request_not_found",
+                    "aiRequest": None}
+
+        # 目标不是当前 active 请求：说明它已被处理过，不能误伤新请求
+        if active_id and target_id != active_id:
+            conn.commit()
+            state = _ai_request_payload(conn, row)
+            return {"practiceId": practice_id, "aiRequest": state,
+                    "status": row["status"], "cancelled": False,
+                    "reason": "not_the_active_request"}
+
         if row["status"] == "pending":
             conn.execute(
-                "UPDATE cet_ai_requests SET status='cancelled',completed_at=? WHERE id=? AND status='pending'",
-                (_now(), request_id),
+                "UPDATE cet_ai_requests SET status='cancelled',completed_at=? "
+                "WHERE id=? AND status='pending'",
+                (_now(), target_id),
             )
+            # C03：保留 ai_request_id 指针（终态可查），
+            # 但请求状态已是 cancelled，不再被当 active（_cancel_pending_ai 只看 pending）。
             conn.execute(
-                "UPDATE cet_practices SET ai_request_id=NULL,updated_at=? WHERE id=?",
+                "UPDATE cet_practices SET updated_at=? WHERE id=?",
                 (_now(), practice_id),
             )
             cancelled = True
         else:
             cancelled = False
         conn.commit()
-    state = ai_request_status(practice_id)
-    state["cancelled"] = cancelled
-    return state
+        fresh = conn.execute("SELECT * FROM cet_ai_requests WHERE id=?", (target_id,)).fetchone()
+        return {
+            "practiceId": practice_id,
+            "aiRequest": _ai_request_payload(conn, fresh),
+            "status": fresh["status"],
+            "cancelled": cancelled,
+        }
+
+
+def _ai_request_payload(conn, row) -> dict[str, Any] | None:
+    """C03：请求终态快照（取消后仍可查）。"""
+    if not row:
+        return None
+    return {
+        "requestId": row["id"],
+        "status": row["status"],
+        "action": row["action"],
+        "errorCode": row["error_code"],
+        "createdAt": row["created_at"],
+        "completedAt": row["completed_at"],
+    }
 
 
 def record_practice_event(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:

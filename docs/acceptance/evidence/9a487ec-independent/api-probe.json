@@ -1,0 +1,310 @@
+{
+  "practiceId": "practice-2dbd36567d8f",
+  "stale": {
+    "status": 409,
+    "latestFeedback": "sound",
+    "history": 1,
+    "revisionBefore": 1,
+    "revisionAfter": 1
+  },
+  "meaning": {
+    "status": 200,
+    "latestFeedback": "meaning",
+    "modelInputLog": "{\"action\": \"explain\", \"feedback\": \"meaning\"}\n"
+  },
+  "transfer": {
+    "status": 200,
+    "body": {
+      "practiceId": "practice-2dbd36567d8f",
+      "id": "practice-2dbd36567d8f",
+      "markId": "mark-66fec8fa9ac3",
+      "materialId": "cet6-202512-conv2",
+      "materialVersion": "sha256-a8ddff44a6d62a5002f4de63",
+      "sentenceId": "v2-2181-1",
+      "sentence": {
+        "materialId": "v2-2181",
+        "materialVersion": "sha256-a8ddff44a6d62a5002f4de63",
+        "sentenceId": "v2-2181-1",
+        "index": 1,
+        "startSec": 3.55,
+        "endSec": 7.01,
+        "startSeconds": 3.55,
+        "endSeconds": 7.01,
+        "text": "I think we should call it a day and meet again tomorrow morning.",
+        "timingSource": "echolingo.v2_subtitle_segments"
+      },
+      "audioUrl": "/output/v2_assets/2181/cet6-202512-conv2.mp3",
+      "status": "active",
+      "revision": 5,
+      "currentStepId": "601bb6201f614b4b89a5d647d5105b04",
+      "currentStep": {
+        "stepId": "601bb6201f614b4b89a5d647d5105b04",
+        "id": "601bb6201f614b4b89a5d647d5105b04",
+        "sequence": 3,
+        "action": "transfer",
+        "source": "ai",
+        "playRange": {
+          "startSeconds": 101.8,
+          "endSeconds": 105.28
+        },
+        "playback": {
+          "startSeconds": 101.8,
+          "endSeconds": 105.28
+        },
+        "speed": 1.0,
+        "showText": false,
+        "textVisible": false,
+        "feedback": null,
+        "candidateId": "transfer-3b50a2ddbc47a1138ee6",
+        "data": {
+          "candidate": {
+            "materialId": "v2-2181",
+            "materialVersion": "sha256-a8ddff44a6d62a5002f4de63",
+            "sentenceId": "v2-2181-31",
+            "startSeconds": 101.8,
+            "endSeconds": 105.28,
+            "text": "Go on then, let's stop there and meet up again, same time tomorrow.",
+            "audioUrl": "/output/v2_assets/2181/cet6-202512-conv2.mp3",
+            "source": {
+              "type": "echolingo.v2_subtitle_segments",
+              "unseen": true
+            }
+          },
+          "question": "[验收模拟题] 选择正确含义",
+          "options": [
+            {
+              "id": "A",
+              "text": "选项甲"
+            },
+            {
+              "id": "B",
+              "text": "选项乙"
+            }
+          ],
+          "assisted": true,
+          "source": "ai"
+        },
+        "createdAt": "2026-11-05T15:03:01.651354+00:00"
+      },
+      "step": {
+        "stepId": "601bb6201f614b4b89a5d647d5105b04",
+        "id": "601bb6201f614b4b89a5d647d5105b04",
+        "sequence": 3,
+        "action": "transfer",
+        "source": "ai",
+        "playRange": {
+          "startSeconds": 101.8,
+          "endSeconds": 105.28
+        },
+        "playback": {
+          "startSeconds": 101.8,
+          "endSeconds": 105.28
+        },
+        "speed": 1.0,
+        "showText": false,
+        "textVisible": false,
+        "feedback": null,
+        "candidateId": "transfer-3b50a2ddbc47a1138ee6",
+        "data": {
+          "candidate": {
+            "materialId": "v2-2181",
+            "materialVersion": "sha256-a8ddff44a6d62a5002f4de63",
+            "sentenceId": "v2-2181-31",
+            "startSeconds": 101.8,
+            "endSeconds": 105.28,
+            "text": "Go on then, let's stop there and meet up again, same time tomorrow.",
+            "audioUrl": "/output/v2_assets/2181/cet6-202512-conv2.mp3",
+            "source": {
+              "type": "echolingo.v2_subtitle_segments",
+              "unseen": true
+            }
+          },
+          "question": "[验收模拟题] 选择正确含义",
+          "options": [
+            {
+              "id": "A",
+              "text": "选项甲"
+            },
+            {
+              "id": "B",
+              "text": "选项乙"
+            }
+          ],
+          "assisted": true,
+          "source": "ai"
+        },
+        "createdAt": "2026-11-05T15:03:01.651354+00:00"
+      },
+      "stepCount": 4,
+      "steps": [
+        {
+          "stepId": "b35e3361b6eb4f3c82b9a4d508a99483",
+          "id": "b35e3361b6eb4f3c82b9a4d508a99483",
+          "sequence": 0,
+          "action": "replay",
+          "source": "system",
+          "playRange": {
+            "startSeconds": 3.55,
+            "endSeconds": 7.01
+          },
+          "playback": {
+            "startSeconds": 3.55,
+            "endSeconds": 7.01
+          },
+          "speed": 1.0,
+          "showText": false,
+          "textVisible": false,
+          "feedback": null,
+          "candidateId": null,
+          "data": {
+            "initial": true
+          },
+          "createdAt": "2026-11-05T15:03:01.580040+00:00"
+        },
+        {
+          "stepId": "b4087ec236294f85ae03236124ee5cd7",
+          "id": "b4087ec236294f85ae03236124ee5cd7",
+          "sequence": 1,
+          "action": "slow",
+          "source": "local",
+          "playRange": {
+            "startSeconds": 3.55,
+            "endSeconds": 7.01
+          },
+          "playback": {
+            "startSeconds": 3.55,
+            "endSeconds": 7.01
+          },
+          "speed": 0.75,
+          "showText": true,
+          "textVisible": true,
+          "feedback": null,
+          "candidateId": null,
+          "data": {
+            "source": "local"
+          },
+          "createdAt": "2026-11-05T15:03:01.588403+00:00"
+        },
+        {
+          "stepId": "35af3c1c8ba24d8f9eaf2965f8d37205",
+          "id": "35af3c1c8ba24d8f9eaf2965f8d37205",
+          "sequence": 2,
+          "action": "explain",
+          "source": "ai",
+          "playRange": {
+            "startSeconds": 3.55,
+            "endSeconds": 7.01
+          },
+          "playback": {
+            "startSeconds": 3.55,
+            "endSeconds": 7.01
+          },
+          "speed": 1.0,
+          "showText": true,
+          "textVisible": true,
+          "feedback": null,
+          "candidateId": null,
+          "data": {
+            "explanation": "[验收模拟正文] 这是一条受控解释，用于验证显示与刷新恢复，不代表真实模型。",
+            "keyPhrases": [],
+            "source": "ai"
+          },
+          "createdAt": "2026-11-05T15:03:01.604620+00:00"
+        },
+        {
+          "stepId": "601bb6201f614b4b89a5d647d5105b04",
+          "id": "601bb6201f614b4b89a5d647d5105b04",
+          "sequence": 3,
+          "action": "transfer",
+          "source": "ai",
+          "playRange": {
+            "startSeconds": 101.8,
+            "endSeconds": 105.28
+          },
+          "playback": {
+            "startSeconds": 101.8,
+            "endSeconds": 105.28
+          },
+          "speed": 1.0,
+          "showText": false,
+          "textVisible": false,
+          "feedback": null,
+          "candidateId": "transfer-3b50a2ddbc47a1138ee6",
+          "data": {
+            "candidate": {
+              "materialId": "v2-2181",
+              "materialVersion": "sha256-a8ddff44a6d62a5002f4de63",
+              "sentenceId": "v2-2181-31",
+              "startSeconds": 101.8,
+              "endSeconds": 105.28,
+              "text": "Go on then, let's stop there and meet up again, same time tomorrow.",
+              "audioUrl": "/output/v2_assets/2181/cet6-202512-conv2.mp3",
+              "source": {
+                "type": "echolingo.v2_subtitle_segments",
+                "unseen": true
+              }
+            },
+            "question": "[验收模拟题] 选择正确含义",
+            "options": [
+              {
+                "id": "A",
+                "text": "选项甲"
+              },
+              {
+                "id": "B",
+                "text": "选项乙"
+              }
+            ],
+            "assisted": true,
+            "source": "ai"
+          },
+          "createdAt": "2026-11-05T15:03:01.651354+00:00"
+        }
+      ],
+      "latestFeedback": "heard",
+      "feedbackSource": "user",
+      "feedbackHistory": [
+        {
+          "feedback": "sound",
+          "source": "user",
+          "stepId": "b35e3361b6eb4f3c82b9a4d508a99483",
+          "eventId": "fb-ind-4341f883sound",
+          "createdAt": "2026-11-05T15:03:01.588181+00:00"
+        },
+        {
+          "feedback": "meaning",
+          "source": "user",
+          "stepId": "b4087ec236294f85ae03236124ee5cd7",
+          "eventId": "fb-ind-4341f883meaning",
+          "createdAt": "2026-11-05T15:03:01.600693+00:00"
+        },
+        {
+          "feedback": "heard",
+          "source": "user",
+          "stepId": "35af3c1c8ba24d8f9eaf2965f8d37205",
+          "eventId": "fb-ind-4341f883heard",
+          "createdAt": "2026-11-05T15:03:01.609563+00:00"
+        }
+      ],
+      "outcome": "unresolved",
+      "usedText": true,
+      "transferStatus": "presented",
+      "lastTransferResult": null,
+      "effectiveMs": 0,
+      "aiRequest": {
+        "requestId": "ind-4341f883heard",
+        "stepId": "35af3c1c8ba24d8f9eaf2965f8d37205",
+        "revision": 4,
+        "action": "transfer",
+        "status": "succeeded",
+        "errorCode": "",
+        "model": "audit-fixture",
+        "createdAt": "2026-11-05T15:03:01.648680+00:00",
+        "completedAt": "2026-11-05T15:03:01.651998+00:00"
+      },
+      "createdAt": "2026-11-05T15:03:01.580040+00:00",
+      "updatedAt": "2026-11-05T15:03:01.651354+00:00",
+      "completedAt": null
+    }
+  }
+}

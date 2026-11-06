@@ -1,0 +1,90 @@
+- banner:
+  - link "返回首页":
+    - /url: /
+    - generic: ←
+    - generic: 首页
+  - heading "2025年12月六级第一套 · Conversation Two" [level=1]
+  - generic: 字幕生成中
+- main:
+  - region "video and current subtitle":
+    - generic "playback and subtitle controls":
+      - text: 字幕
+      - combobox "字幕":
+        - option "英文 + 点词查询" [selected]
+        - option "英文"
+        - option "中文" [disabled]
+        - option "中英双语" [disabled]
+        - option "隐藏字幕"
+      - text: 倍速
+      - combobox "倍速":
+        - option "0.5x"
+        - option "0.75x"
+        - option "1x" [selected]
+        - option "1.25x"
+        - option "1.5x"
+        - option "2x"
+      - button "精听"
+      - button "阅读"
+      - button "结束卡点练习"
+      - generic: 本轮已保存，已加入今日复习
+      - button "今日复习"
+    - region "current subtitle":
+      - strong: 当前句
+      - button "上一句": ‹
+      - generic: 5 / 33
+      - button "下一句": ›
+      - button "加入精读":
+        - text: 加入精读
+      - button "Let's"
+      - button "do"
+      - button "two"
+      - button "more"
+      - button "hours"
+      - text: ","
+      - button "please"
+      - text: .
+      - generic: 0:11 - 0:13 ｜ 1 行字幕
+      - generic: 卡点标记（1）
+      - generic: 0:00.01
+      - generic: 本轮已练
+      - generic: It's getting late and we're both displaying signs of weariness.
+      - button "回听"
+  - complementary "learning workspace":
+    - strong: 卡点带练
+    - generic: 本轮已保存。可以点「今日复习」继续，或回到卡点列表。
+    - generic: 本轮已结束，可保存或开始复习。
+    - strong: 四六级题目
+    - generic: 已交卷 · 得分 1
+    - generic: 第 5 题 你选 B · 正确 B · 答对
+    - generic: 原声证据 [0:00.01–0:03.49] It's getting late and we're both displaying signs of weariness.
+    - generic: 第 6 题 你选 - · 正确 B · 不判对错
+    - generic: 原声证据 [0:36.77–0:41.41] Yeah, two months working on nothing but the same contract is a little tough.
+    - generic: 第 7 题 你选 - · 正确 D · 不判对错
+    - generic: 原声证据 [0:47.24–0:48.86] You must be delusional.
+    - generic: 第 8 题 你选 - · 正确 C · 不判对错
+    - generic: 原声证据 [1:32.06–1:37.66] The entire managerial hierarchy wants to see this project implemented as soon as possible and the board too is virtually unanimous in its support.
+    - generic: 第 9 题 你选 - · 参考答案未知 · 不判对错
+    - button "交卷"
+    - tablist "学习工具":
+      - tab "导航" [selected]: 导航
+      - tab "收藏": 收藏
+      - tab "AI 伴读": AI 伴读
+    - heading "内容大纲" [level=2]
+    - generic: 按主题跳转。用 A/B 按钮选取讨论区间。
+    - button "AI 总结结构"
+    - generic: 0:00 – 0:28
+    - generic: 开场 It's getting late and we're both displaying signs of weariness. I think we should call it a day and meet again tomorrow morning. We are so close. Don...
+    - button "A"
+    - button "B"
+    - generic: 0:28 – 1:05
+    - generic: 第 1 段：Don't get me wrong. Don't get me wrong—it's a great professional opportunity for me and a milestone for the company, but it's just been so long. Yeah, two months working...
+    - button "A"
+    - button "B"
+    - generic: 1:05 – 1:31
+    - generic: "第 2 段：I wasn't finished. When we are done with it and send it upstairs, what do you think will happen? / W: What? What? They'll argue about it for like a month. There's alway..."
+    - button "A"
+    - button "B"
+    - generic: 1:32 – 1:45
+    - generic: 第 3 段：The entire managerial hierarchy wants to see this project... And the board, too, is virtually unanimous in its support. Go on then, let's stop there and meet up again, same time tomorrow.
+    - button "A"
+    - button "B"

@@ -1,0 +1,216 @@
+{
+  "counts": {
+    "响应包装、字段或枚举": 7,
+    "复习事件/actionId/响应前置": 9,
+    "播放事件协议及计时字段": 6,
+    "步骤/交卷/错误包装前置": 6,
+    "AI 查询取消测试前置": 3,
+    "句子 fixture 身份或边界策略": 3,
+    "本地动作 actionId": 2,
+    "作答冲突或候选可用性": 2,
+    "慢响应注入方法": 1,
+    "非法句子错误码约定": 1
+  },
+  "failures": [
+    {
+      "index": 1,
+      "test": "test_attempt_cannot_change_existing_answers",
+      "firstFailureGroup": "作答冲突或候选可用性"
+    },
+    {
+      "index": 2,
+      "test": "test_mark_confirm_and_adjust",
+      "firstFailureGroup": "句子 fixture 身份或边界策略"
+    },
+    {
+      "index": 3,
+      "test": "test_mark_confirm_invalid_sentence_rejected",
+      "firstFailureGroup": "非法句子错误码约定"
+    },
+    {
+      "index": 4,
+      "test": "test_feedback_leads_to_different_actions",
+      "firstFailureGroup": "响应包装、字段或枚举"
+    },
+    {
+      "index": 5,
+      "test": "test_heard_feedback_hides_text_and_plays_original_speed",
+      "firstFailureGroup": "响应包装、字段或枚举"
+    },
+    {
+      "index": 6,
+      "test": "test_local_help_works_without_model",
+      "firstFailureGroup": "本地动作 actionId"
+    },
+    {
+      "index": 7,
+      "test": "test_playback_events_dedupe_and_count_time",
+      "firstFailureGroup": "播放事件协议及计时字段"
+    },
+    {
+      "index": 8,
+      "test": "test_finish_is_idempotent_and_latest_feedback_wins",
+      "firstFailureGroup": "响应包装、字段或枚举"
+    },
+    {
+      "index": 9,
+      "test": "test_review_session_binds_original_practice_id",
+      "firstFailureGroup": "响应包装、字段或枚举"
+    },
+    {
+      "index": 10,
+      "test": "test_review_skip_keeps_item_pending",
+      "firstFailureGroup": "复习事件/actionId/响应前置"
+    },
+    {
+      "index": 11,
+      "test": "test_review_pause_does_not_accumulate_time",
+      "firstFailureGroup": "复习事件/actionId/响应前置"
+    },
+    {
+      "index": 12,
+      "test": "test_slow_scenario_is_slow",
+      "firstFailureGroup": "慢响应注入方法"
+    },
+    {
+      "index": 13,
+      "test": "test_transfer_returns_real_candidates",
+      "firstFailureGroup": "作答冲突或候选可用性"
+    },
+    {
+      "index": 14,
+      "test": "test_transfer_no_candidate_still_saves",
+      "firstFailureGroup": "响应包装、字段或枚举"
+    },
+    {
+      "index": 15,
+      "test": "test_concurrent_duplicate_events_count_once",
+      "firstFailureGroup": "播放事件协议及计时字段"
+    },
+    {
+      "index": 16,
+      "test": "test_practice_status_enum",
+      "firstFailureGroup": "步骤/交卷/错误包装前置"
+    },
+    {
+      "index": 17,
+      "test": "test_step_action_enum",
+      "firstFailureGroup": "步骤/交卷/错误包装前置"
+    },
+    {
+      "index": 18,
+      "test": "test_review_status_enum_through_lifecycle",
+      "firstFailureGroup": "复习事件/actionId/响应前置"
+    },
+    {
+      "index": 19,
+      "test": "test_review_item_status_always_in_enum",
+      "firstFailureGroup": "复习事件/actionId/响应前置"
+    },
+    {
+      "index": 20,
+      "test": "test_playback_event_carries_required_fields",
+      "firstFailureGroup": "播放事件协议及计时字段"
+    },
+    {
+      "index": 21,
+      "test": "test_model_request_bound_to_practice_and_step",
+      "firstFailureGroup": "步骤/交卷/错误包装前置"
+    },
+    {
+      "index": 22,
+      "test": "test_material_ref_press_time_confirmed_sentence_all_kept",
+      "firstFailureGroup": "步骤/交卷/错误包装前置"
+    },
+    {
+      "index": 23,
+      "test": "test_review_budget_caps_effective_time",
+      "firstFailureGroup": "复习事件/actionId/响应前置"
+    },
+    {
+      "index": 24,
+      "test": "test_review_can_finish_after_budget_exhausted",
+      "firstFailureGroup": "复习事件/actionId/响应前置"
+    },
+    {
+      "index": 25,
+      "test": "test_review_no_more_time_counted_after_budget_exhausted",
+      "firstFailureGroup": "复习事件/actionId/响应前置"
+    },
+    {
+      "index": 26,
+      "test": "test_review_caps_items_at_three",
+      "firstFailureGroup": "响应包装、字段或枚举"
+    },
+    {
+      "index": 27,
+      "test": "test_mark_snaps_to_correct_sentence_for_all_sentences",
+      "firstFailureGroup": "句子 fixture 身份或边界策略"
+    },
+    {
+      "index": 28,
+      "test": "test_mark_snaps_to_boundary_belonging_sentence",
+      "firstFailureGroup": "句子 fixture 身份或边界策略"
+    },
+    {
+      "index": 29,
+      "test": "test_playback_under_threshold_not_counted",
+      "firstFailureGroup": "播放事件协议及计时字段"
+    },
+    {
+      "index": 30,
+      "test": "test_playback_above_threshold_is_counted",
+      "firstFailureGroup": "播放事件协议及计时字段"
+    },
+    {
+      "index": 31,
+      "test": "test_playback_threshold_reports_expected_duration",
+      "firstFailureGroup": "播放事件协议及计时字段"
+    },
+    {
+      "index": 32,
+      "test": "test_marks_survive_relist_stable_ids",
+      "firstFailureGroup": "步骤/交卷/错误包装前置"
+    },
+    {
+      "index": 33,
+      "test": "test_ai_request_starts_pending_and_is_queryable",
+      "firstFailureGroup": "AI 查询取消测试前置"
+    },
+    {
+      "index": 34,
+      "test": "test_ai_request_can_be_cancelled",
+      "firstFailureGroup": "AI 查询取消测试前置"
+    },
+    {
+      "index": 35,
+      "test": "test_cancelled_request_late_result_is_rejected",
+      "firstFailureGroup": "AI 查询取消测试前置"
+    },
+    {
+      "index": 36,
+      "test": "test_ai_failure_is_reported_with_code",
+      "firstFailureGroup": "步骤/交卷/错误包装前置"
+    },
+    {
+      "index": 37,
+      "test": "test_review_replace_swaps_in_an_unlisted_item",
+      "firstFailureGroup": "复习事件/actionId/响应前置"
+    },
+    {
+      "index": 38,
+      "test": "test_review_replace_keeps_provenance",
+      "firstFailureGroup": "复习事件/actionId/响应前置"
+    },
+    {
+      "index": 39,
+      "test": "test_save_works_after_ai_failure",
+      "firstFailureGroup": "本地动作 actionId"
+    },
+    {
+      "index": 40,
+      "test": "test_retry_after_ai_failure_works",
+      "firstFailureGroup": "响应包装、字段或枚举"
+    }
+  ]
+}

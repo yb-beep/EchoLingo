@@ -15,6 +15,12 @@
 
 服务不可达时整组跳过，不制造假失败（与 test_cet_listening_ui.py 同一纪律）。
 
+⚠️ **必须指向本轮刚起的服务，不要指向残留的旧实例**：
+    本文件会真实写入学习进度（如 seek 到 55s 后断言 A 材料进度落在 55s 附近）。
+    若连到别人跑过测试的旧服务，库里已有旧进度，T10「进度不串材料」会假失败
+    （实测 A 读到 0.212 而非 55）。正确做法：
+        CET_BASE_URL=http://127.0.0.1:<你刚起的端口> pytest tests/test_cet_base_workspace.py
+
 环境变量：
     CET_BASE_URL        默认 http://127.0.0.1:5183
     CET_BASE_LESSON_A   第一份材料 lesson id（默认自动发现）

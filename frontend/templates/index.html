@@ -4,7 +4,15 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎧</text></svg>">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>EchoLingo · 英语精学工作台</title>
+  <title>{{ cet_copy.site_title }}</title>
+  {# 四六级专用底座：CET 增量样式（复用 --brand/--ink/--line 等既有变量，不重做视觉） #}
+  <link rel="stylesheet" href="/static/cet-base.css?v=20261105-1">
+  {# 首屏注入集中配置，避免「先渲染通用再收束」的闪烁。
+     用 application/json 数据块而不是可执行内联脚本注入：既有测试取页面里第一个
+     裸 script 开标签之后的内容做语法检查，这里不能出现那个开标签字面量。
+     服务端 /api/cet/mode 是最终权威，cet-mode.js 会对齐。 #}
+  <script type="application/json" id="cet-boot">{{ cet_mode|tojson }}</script>
+  <script src="/static/cet-mode.js?v=20261105-1"></script>
   <style>
     :root {
       --bg: #f6f7f4; --surface: #ffffff; --surface-alt: #eef2ed;
@@ -1535,8 +1543,11 @@
 <!-- ── Header ── -->
 <div class="page-header">
   <div class="header-top">
-    <h1>🎧 EchoLingo</h1>
+    <h1>🎧 <span id="site-title">{{ cet_copy.site_title }}</span></h1>
     <span class="header-stat" id="header-stat"></span>
+    {# 积分/登录/个人档案：CET 模式下收束（任务书 §3.3）。
+       只隐藏入口，**不绕过鉴权、不改服务安全配置**；后端 auth 行为原样保留。 #}
+    {% if cet_features.credits_account %}
     <a id="credit-badge" href="/account" title="积分余额（点击查看详情）" style="display:none; margin-left:8px; border:1px solid #dde5d6; background:#f8f9f7; color:#33502b; border-radius:6px; padding:4px 10px; font-size:12px; text-decoration:none; white-space:nowrap; font-variant-numeric:tabular-nums;"></a>
     <a id="login-btn" href="/login" style="display:none; margin-left:8px; border:1px solid #4f6ef7; color:#4f6ef7; border-radius:6px; padding:4px 12px; font-size:13px; text-decoration:none;">登录</a>
     <div id="user-menu" style="display:none; position:relative; margin-left:8px;">
@@ -1547,13 +1558,29 @@
         <button onclick="logout()" style="display:block; width:100%; text-align:left; padding:8px 14px; font-size:13px; background:none; border:none; cursor:pointer; color:#333;">退出登录</button>
       </div>
     </div>
+    {% endif %}
   </div>
+  {# 导航由 cet_nav 单一来源生成（任务书 §3.2：听力材料 / 我的收藏 / 设置）。
+     通用模式（ELT_CET_MODE=0）保留原导航，保证原版回归可用。 #}
+  {% if cet_on %}
+  <div class="tab-bar" role="tablist" aria-label="主导航">
+    {% for item in cet_nav %}
+    <button class="tab-btn{% if loop.first %} active{% endif %}" type="button" role="tab"
+            id="tab-btn-{{ item.key }}" data-cet-nav="{{ item.key }}"
+            aria-selected="{{ 'true' if loop.first else 'false' }}"
+            onclick="switchTab('{{ item.key }}')">{{ item.icon }} {{ item.label }}</button>
+    {% endfor %}
+  </div>
+  {% else %}
   <div class="tab-bar">
     <button class="tab-btn active" id="tab-btn-lessons" onclick="switchTab('lessons')">📺 课程</button>
     <a class="tab-btn" id="planning-tab-link" href="/planning" style="display:flex;align-items:center;text-decoration:none;">👤 个人档案</a>
     <button class="tab-btn" id="tab-btn-resources" onclick="switchTab('resources')">⚙️ 设置</button>
   </div>
+  {% endif %}
 </div>
+{# 路由兜底提示：访问已收束的旧链接时说明「去了哪里」，不留空白页 #}
+<div id="cet-route-notice" class="cet-route-notice" role="status" aria-live="polite" hidden></div>
 
 <!-- ══════════════════════════════════════════════
      TAB: LESSONS
@@ -1561,6 +1588,126 @@
 <div class="tab-pane active" id="tab-lessons">
 <div class="container">
 
+  {% if cet_on %}
+  {# ══════════════════════════════════════════════════════════════
+     CET 模式首页（任务书 §3.2 / §4-P1）
+     级别是材料归属的唯一维度；不按标题猜级别；缺失一律「未标注」。
+  ══════════════════════════════════════════════════════════════ #}
+  <section class="home-hero cet-hero" aria-label="听力材料入口">
+    <div class="cet-hero-copy">
+      <h2>{{ cet_copy.home_heading }}</h2>
+      <p>{{ cet_copy.home_subtitle }}</p>
+    </div>
+
+    <div class="cet-level-switch" role="group" aria-label="按级别查看材料">
+      <button type="button" class="cet-level-btn active" data-cet-level="all" aria-pressed="true">全部</button>
+      <button type="button" class="cet-level-btn" data-cet-level="cet4" aria-pressed="false">四级</button>
+      <button type="button" class="cet-level-btn" data-cet-level="cet6" aria-pressed="false">六级</button>
+      <button type="button" class="cet-level-btn" data-cet-level="unspecified" aria-pressed="false">{{ cet_copy.unspecified_level }}</button>
+    </div>
+
+    {# 继续学习放首页显眼位置 #}
+    <a class="cet-continue-card" id="continue-lesson-link" href="#">
+      <span class="cet-continue-label">继续学习</span>
+      <span class="cet-continue-title" id="continue-lesson-note">还没有听力材料，先导入一份本地音频。</span>
+      <span class="cet-continue-mark" aria-hidden="true">→</span>
+    </a>
+
+    {# 空库时唯一的明确入口：导入听力材料（不出现满屏占位或虚构统计） #}
+    <div class="cet-empty-library" id="cet-empty-library" hidden>
+      <p class="cet-empty-title">还没有听力材料</p>
+      <p class="cet-empty-note">导入一份本地音频（可选配套字幕），就能开始逐句精听。</p>
+      <button type="button" class="primary cet-empty-action" onclick="cetFocusImport()">导入听力材料</button>
+    </div>
+  </section>
+
+  {# ── CET 本地导入（P2 界面入口）：收束的来源卡不在 DOM 里，因此不发起平台探测 ── #}
+  <div class="gen-panel cet-import-panel" id="cet-import-panel">
+    <div class="gen-panel-header">
+      <h2>＋ 导入听力材料</h2>
+      <button type="button" class="text-link-btn" id="cet-import-toggle" onclick="cetToggleImport()">收起 ▲</button>
+    </div>
+    <div id="cet-import-form">
+      <div class="course-builder">
+        <section class="course-source-card">
+          <div class="course-source-head">
+            <div>
+              <h3 class="course-source-title">本地音频</h3>
+              <div class="course-source-note" id="cet-audio-formats">支持 mp3 / m4a / wav / mp4 / mov</div>
+            </div>
+            <span class="source-badge" id="cet-audio-badge">未选择</span>
+          </div>
+          <div class="reading-upload-row">
+            <input id="cet-audio-input" class="reading-file-input" type="file" hidden
+                   accept=".mp3,.m4a,.wav,.mp4,.mov,audio/*,video/*" onchange="cetOnAudioPicked()">
+            <button class="reading-upload-btn" type="button"
+                    onclick="document.getElementById('cet-audio-input').click()">选择音频文件</button>
+            <span class="reading-upload-note" id="cet-audio-note">只有音频也能导入并整段播放</span>
+          </div>
+          <div class="cet-import-grid">
+            <label class="cet-field">
+              <span>标题</span>
+              <input id="cet-title-input" type="text" maxlength="200" placeholder="留空则用文件名">
+            </label>
+            <label class="cet-field">
+              <span>级别</span>
+              <select id="cet-level-input">
+                <option value="unspecified">待分类</option>
+                <option value="cet4">四级</option>
+                <option value="cet6">六级</option>
+              </select>
+            </label>
+            <label class="cet-field">
+              <span>素材类别</span>
+              <select id="cet-category-input">
+                <option value="">未标注</option>
+                <option value="真题">真题</option>
+                <option value="练习">练习</option>
+                <option value="样例">样例</option>
+                <option value="开发夹具">开发夹具</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="course-source-card">
+          <div class="course-source-head">
+            <div>
+              <h3 class="course-source-title">配套原文（可选）</h3>
+              <div class="course-source-note" id="cet-subtitle-formats">
+                SRT / VTT / 句子 JSON 带时间轴可逐句定位；纯文本只作原文，不伪造时间戳
+              </div>
+            </div>
+            <span class="source-badge" id="cet-subtitle-badge">未选择</span>
+          </div>
+          <div class="reading-upload-row">
+            <input id="cet-subtitle-input" class="reading-file-input" type="file" hidden
+                   accept=".srt,.vtt,.json,.txt,text/plain,application/json"
+                   onchange="cetOnSubtitlePicked()">
+            <button class="reading-upload-btn" type="button"
+                    onclick="document.getElementById('cet-subtitle-input').click()">选择字幕 / 文本文件</button>
+            <span class="reading-upload-note" id="cet-subtitle-note">不选也能导入，导入后显示「暂无逐句定位」</span>
+          </div>
+          <div id="cet-import-check" class="cet-import-check" hidden aria-live="polite"></div>
+        </section>
+      </div>
+      <div class="gen-action-row">
+        <button class="primary" id="cet-import-btn" type="button" onclick="cetStartImport()">导入并打开材料</button>
+        <button type="button" id="cet-validate-btn" onclick="cetValidateImport()">仅校验</button>
+        <button type="button" id="cet-import-reset" class="hidden" onclick="cetResetImport()">再导入一份</button>
+        <div class="inline-progress hidden" id="cet-import-progress" aria-live="polite">
+          <div class="inline-progress-track"><div class="inline-progress-fill" id="cet-import-progress-fill"></div></div>
+          <div class="inline-progress-label" id="cet-import-progress-label">准备中…</div>
+        </div>
+      </div>
+      <div id="cet-import-errors" class="cet-import-errors" hidden aria-live="assertive"></div>
+    </div>
+  </div>
+
+  {% else %}
+  {# ══════════════════════════════════════════════════════════════
+     通用模式（ELT_CET_MODE=0）：保留原首页，供原版回归与队友对照。
+  ══════════════════════════════════════════════════════════════ #}
   <section class="home-hero" aria-label="复习入口">
     <div class="review-entry-grid">
       <a class="home-action" href="#vocab" onclick="switchTab('vocab'); return false;">
@@ -1594,7 +1741,6 @@
         <div class="path-desc">进入词汇/句子复习页面进行练习。</div>
       </div>
     </div>
-
   </section>
 
   <!-- Generation Panel -->
@@ -1605,6 +1751,9 @@
     </div>
     <div id="gen-form">
       <div class="course-builder">
+        {# 链接导入（B站/YouTube/网盘/网页）：任务书 §3.3 退出。CET 模式下整块不渲染，
+           因此也不会发起 /api/browse-file 与平台探测。底层解析器保留不删。 #}
+        {% if cet_features.link_import %}
         <!-- 链接导入卡：仅单用户/公开库模式由 initAuthBadge 揭示；
              多用户模式保持隐藏（平台链接导入走管理员私有页）。 -->
         <section class="course-source-card" id="link-source-card" style="display:none">
@@ -1715,6 +1864,7 @@
           </div>
           <div class="pan-task" id="pan-task" style="display:none"></div>
         </section>
+        {% endif %}
 
         <!-- 默认隐藏：由 initAuthBadge 在单用户模式或登录后揭示；
              首页统一使用浏览器文件上传，不暴露服务器路径或平台链接入口。 -->
@@ -1764,6 +1914,8 @@
           </div>
         </section>
 
+        {# 独立文章/PDF 阅读课程 + 文本生成朗读课程：任务书 §3.3 退出 #}
+        {% if cet_features.reading_course %}
         <section class="course-source-card">
           <div class="course-source-head">
             <div>
@@ -1794,6 +1946,7 @@
             </div>
           </div>
         </section>
+        {% endif %}
       </div>
       <div class="gen-action-row">
         <button class="primary" id="gen-btn" onclick="startGeneration()">▶ 开始生成</button>
@@ -1835,30 +1988,50 @@
       </details>
     </div>
   </div>
+  {% endif %}
 
   <section class="recent-section" aria-labelledby="recent-course-title">
     <div class="section-header">
       <h2 id="recent-course-title">最近学习</h2>
-
+      <span class="section-count" id="recent-course-count"></span>
     </div>
     <div class="lesson-grid" id="lesson-grid">
-      <div class="empty-state"><p>加载中…</p></div>
+      <div class="empty-state"><p>正在读取材料…</p></div>
     </div>
   </section>
 
   <section class="course-library-shell" aria-labelledby="course-library-title">
     <div class="course-library-head">
       <div>
-        <h2 id="course-library-title">全部课程</h2>
-        <p>默认收起上方"最近学习"中的课程，搜索或筛选时显示全部。</p>
+        <h2 id="course-library-title">{{ cet_copy.library_heading }}</h2>
+        <p id="course-library-sub">级别、时长、素材类别与可用状态都来自材料本身；缺失一律显示「未标注」。</p>
       </div>
       <div class="course-library-toolbar">
-        <input id="course-search" type="search" placeholder="搜索课程名称…" aria-label="搜索课程名称">
+        <input id="course-search" type="search" placeholder="按标题搜索材料…" aria-label="按标题搜索材料">
+        {% if cet_on %}
+        {# CET：按级别 + 素材类别筛选；两个筛选都基于实际存在的数据 #}
+        <select id="cet-level-filter" aria-label="按级别筛选">
+          <option value="all">全部级别</option>
+          <option value="cet4">四级</option>
+          <option value="cet6">六级</option>
+          <option value="unspecified">{{ cet_copy.unspecified_level }}</option>
+        </select>
+        <select id="cet-category-filter" aria-label="按素材类别筛选">
+          <option value="all">全部类别</option>
+          <option value="真题">真题</option>
+          <option value="练习">练习</option>
+          <option value="样例">样例</option>
+          <option value="开发夹具">开发夹具</option>
+          <option value="none">未标注</option>
+        </select>
+        {% endif %}
         <select id="course-mode-filter" aria-label="按学习模式筛选">
           <option value="all">全部模式</option>
           <option value="listening">精听</option>
+          {% if not cet_on %}
           <option value="reading">阅读</option>
           <option value="intensive">精读</option>
+          {% endif %}
         </select>
         <select id="course-status-filter" aria-label="按课程状态筛选">
           <option value="active">未归档</option>
@@ -1870,8 +2043,11 @@
         </select>
       </div>
     </div>
+    {% if cet_on %}
+    <div class="cet-library-summary" id="cet-library-summary" aria-live="polite"></div>
+    {% endif %}
     <div class="course-library-list" id="course-library-list">
-      <div class="empty-state"><p>加载中…</p></div>
+      <div class="empty-state"><p>正在读取材料…</p></div>
     </div>
     <div class="course-pagination">
       <button id="course-page-prev" type="button">← 上一页</button>
@@ -1891,15 +2067,28 @@
   <header class="workshop-masthead">
     <div>
       <span class="eyebrow">Vocabulary atelier</span>
+      {% if cet_on %}
+      <h2>{{ cet_copy.vocab_heading }}</h2>
+      <p>从听力材料里收藏的生词，按真实语境自评熟悉度，再决定是否展开词卡。</p>
+      {% else %}
       <h2>词汇记忆工坊</h2>
       <p>从真实语境判断熟悉度，再决定是否展开词卡或主动造句。</p>
+      {% endif %}
     </div>
     <button class="primary" type="button" onclick="focusNextVocabCard()">继续词汇练习 →</button>
   </header>
+  {% if cet_on %}
+  {# 我的收藏 = 词汇收藏 + 句子收藏，共用一个导航项（任务书 §3.2） #}
+  <nav class="workshop-tabs cet-favorites-tabs" aria-label="我的收藏">
+    <button class="active" type="button" data-cet-favorites-pane="vocab" onclick="cetSetFavoritesPane('vocab')">词汇收藏</button>
+    <button type="button" data-cet-favorites-pane="sentences" onclick="cetSetFavoritesPane('sentences')">句子收藏</button>
+  </nav>
+  {% else %}
   <nav class="workshop-tabs" aria-label="词汇记忆工坊子页">
     <button class="active" data-workshop-view="practice" type="button" onclick="setWorkshopView('practice')">词汇练习</button>
     <button data-workshop-view="story" type="button" onclick="setWorkshopView('story')">记忆故事</button>
   </nav>
+  {% endif %}
 
   <section id="vocab-practice-view" class="workshop-view active">
     <div class="vocab-controls">
@@ -1928,6 +2117,11 @@
       </select>
       <select class="sort-select" id="vocab-exam-filter" onchange="setVocabExamFilter(this.value)" aria-label="按考试标签筛选">
         <option value="all">全部考试标签</option>
+        {% if cet_on %}
+        {# CET 模式：四级/六级是主选项，其他考试标签不作主选项（底层词表与用户配置保留） #}
+        <option value="四级">四级</option>
+        <option value="六级">六级</option>
+        {% else %}
         <option value="中考">中考</option>
         <option value="高考">高考</option>
         <option value="四级">四级</option>
@@ -1936,6 +2130,7 @@
         <option value="托福">托福</option>
         <option value="雅思">雅思</option>
         <option value="GRE">GRE</option>
+        {% endif %}
       </select>
       <input class="search-input" id="search-input" type="search" placeholder="搜索单词或短语…" oninput="setSearch(this.value)">
       <span class="spacer"></span>
@@ -1969,6 +2164,7 @@
     <div class="course-pagination" id="vocab-pagination"></div>
   </section>
 
+  {% if cet_features.memory_story %}
   <section id="vocab-story-view" class="workshop-view" hidden>
     <div class="today-panel" id="today-panel">
       <h2>记忆故事</h2>
@@ -2056,6 +2252,7 @@
       </div>
     </section>
   </section>
+  {% endif %}
 </div>
 </div>
 
@@ -2067,13 +2264,19 @@
   <header class="sentence-library-masthead">
     <div>
       <span class="eyebrow">句子精听</span>
-      <h2>句子库</h2>
+      <h2>{% if cet_on %}{{ cet_copy.sentences_heading }}{% else %}句子库{% endif %}</h2>
       <p>在收藏句中直接播放、隐藏原文并记录是否听懂。</p>
     </div>
     <div class="masthead-actions">
       <span><strong id="sentence-review-total-count">0</strong> 个收藏句</span>
     </div>
   </header>
+  {% if cet_on %}
+  <nav class="workshop-tabs cet-favorites-tabs" aria-label="我的收藏">
+    <button type="button" data-cet-favorites-pane="vocab" onclick="cetSetFavoritesPane('vocab')">词汇收藏</button>
+    <button class="active" type="button" data-cet-favorites-pane="sentences" onclick="cetSetFavoritesPane('sentences')">句子收藏</button>
+  </nav>
+  {% endif %}
 
   <section class="sentence-library-shell" id="sentence-library-shell" aria-labelledby="sentence-library-title">
     <div class="sentence-library-head">
@@ -2148,7 +2351,7 @@
           可以直接上传原词，也可以选择使用 AI 补全单复数、过去式、过去分词和 <code>-ing</code> 等常用词形。
         </p>
         <div class="url-row">
-          <input type="text" id="wordlist-tag-input" placeholder="标签，如 商务 / 雅思 / 自定义"
+          <input type="text" id="wordlist-tag-input" placeholder="{% if cet_on %}标签，如 四级听力 / 真题 / 自定义{% else %}标签，如 商务 / 雅思 / 自定义{% endif %}"
                  maxlength="10" style="max-width:220px;">
           <input type="file" id="wordlist-upload-input" accept=".txt,.csv" style="flex: 1;" onchange="resetExpandedWordlist()">
           <button type="button" id="wordlist-expand-button" onclick="expandSelectedWordlist()">扩展词形</button>
@@ -2266,7 +2469,7 @@
      JAVASCRIPT
 ══════════════════════════════════════════════ -->
 <script src="/static/elt_credits.js?v=20260809-1"></script>
-<script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits){eltCredits.annotate();}});</script>
+<script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits && window.CET && CET.feature('credits_account')){eltCredits.annotate();}});</script>
 <script src="/static/natural-tts.js?v=20260809-1"></script>
 <script>
 // ── Tab Routing ───────────────────────────────
@@ -2329,28 +2532,77 @@ async function toggleManualSavedSentence(button, text, {label = '☆ 收藏', tr
   }
 }
 
-function switchTab(name) {
-  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  const _tabBtn = document.getElementById('tab-btn-' + name);
-  if (_tabBtn) _tabBtn.classList.add('active');
-  location.hash = name === 'lessons' ? '' : name;
+// ── 收藏子页：词汇收藏 / 句子收藏共用「我的收藏」这一个导航项（任务书 §3.2）──
+const CET_FAVORITES_PANE_KEY = 'cet-favorites-pane';
 
-  if (name === 'vocab' && !_vocabLoaded) {
+function cetFavoritesPane() {
+  try {
+    const saved = localStorage.getItem(CET_FAVORITES_PANE_KEY);
+    return saved === 'sentences' ? 'sentences' : 'vocab';
+  } catch (_) { return 'vocab'; }
+}
+
+function cetSetFavoritesPane(pane) {
+  const target = pane === 'sentences' ? 'sentences' : 'vocab';
+  try { localStorage.setItem(CET_FAVORITES_PANE_KEY, target); } catch (_) {}
+  switchTab(target, {nav: 'favorites'});
+}
+
+// switchTab(name, opts)
+//   name: lessons | vocab | sentences | resources | favorites
+//   opts.keepHash  true = 不改 location.hash（交给 cet-mode.js 的路由统一处理）
+//   opts.nav       要高亮的导航项 key（「我的收藏」下含 vocab / sentences 两个子页）
+function switchTab(name, opts) {
+  const options = opts || {};
+  let pane = name;
+  let navKey = options.nav || name;
+  if (name === 'favorites') {
+    pane = cetFavoritesPane();
+    navKey = 'favorites';
+  } else if (name === 'vocab' || name === 'sentences') {
+    if (!options.nav) navKey = 'favorites';
+  }
+  const paneEl = document.getElementById('tab-' + pane);
+  if (!paneEl) {
+    // 目标视图不存在（旧链接 / 已收束页面）：回首页，绝不停在空白页
+    if (pane !== 'lessons') switchTab('lessons', {keepHash: true});
+    return;
+  }
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.remove('active');
+    if (b.hasAttribute('aria-selected')) b.setAttribute('aria-selected', 'false');
+  });
+  paneEl.classList.add('active');
+  const _tabBtn = document.getElementById('tab-btn-' + navKey);
+  if (_tabBtn) {
+    _tabBtn.classList.add('active');
+    if (_tabBtn.hasAttribute('aria-selected')) _tabBtn.setAttribute('aria-selected', 'true');
+  }
+  if (!options.keepHash) {
+    // CET 模式下「我的收藏」统一写 #favorites；通用模式沿用原 hash 语义
+    const hashValue = navKey === 'lessons' ? '' : navKey;
+    const nextHash = hashValue ? '#' + hashValue : '';
+    if (location.hash !== nextHash) location.hash = hashValue;
+  }
+  document.querySelectorAll('[data-cet-favorites-pane]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.cetFavoritesPane === pane);
+  });
+
+  if (pane === 'vocab' && !_vocabLoaded) {
     _vocabLoaded = true;
     initVocab();
-  } else if (name === 'sentences' && !_sentencesLoaded) {
+  } else if (pane === 'sentences' && !_sentencesLoaded) {
     _sentencesLoaded = true;
     loadSentenceReview();
-  } else if (name === 'resources') {
+  } else if (pane === 'resources') {
     const status = document.getElementById('resource-status');
     if (status) status.textContent = '';
     loadResources();
     loadWordlistConfigUI();
     if (!window._aiSettingsLoaded) { window._aiSettingsLoaded = true; loadAiSettings(); }
   }
-  updateHeaderStat(name);
+  updateHeaderStat(pane);
 }
 
 const USER_WORDLIST_SELECTION_KEY = 'phase_a_user_wordlists';
@@ -2778,6 +3030,7 @@ async function uploadResource(type) {
 
 function updateHeaderStat(tab) {
   const el = document.getElementById('header-stat');
+  if (!el) return; // 防 null：CET 模式精简头部时也不能抛异常
   if (tab === 'lessons') {
     const activeCount = _courseLibrary.filter(course => !course.archived).length;
     el.textContent = activeCount ? `${activeCount} 门课程` : '';
@@ -4430,7 +4683,7 @@ function renderSentenceReviewList() {
             <button type="button" onclick="toggleSentenceOriginal(${sentence.id})" aria-pressed="${originalHidden}">${originalHidden ? '显示原文' : '隐藏原文'}</button>
             <button type="button" class="listen-understood${listeningResult === 'understood' ? ' active' : ''}" onclick="recordSentenceListeningResult(${sentence.id},'understood')" aria-pressed="${listeningResult === 'understood'}">听懂</button>
             <button type="button" class="listen-missed${listeningResult === 'not_understood' ? ' active' : ''}" onclick="recordSentenceListeningResult(${sentence.id},'not_understood')" aria-pressed="${listeningResult === 'not_understood'}">听不懂</button>
-            <button type="button" class="listen-retell${_sentenceRetellOpenId === Number(sentence.id) ? ' active' : ''}" onclick="toggleSentenceRetell(${sentence.id})">🎙 复述</button>
+            ${CET.feature('free_retell') ? `<button type="button" class="listen-retell${_sentenceRetellOpenId === Number(sentence.id) ? ' active' : ''}" onclick="toggleSentenceRetell(${sentence.id})">🎙 复述</button>` : ''}
           </span>
           <button type="button" onclick="toggleSentenceLibraryTagEditor(${sentence.id})">🏷 标签</button>
           <button type="button" onclick="toggleSentenceRow(${sentence.id})">${expanded ? '收起' : '展开'}</button>
@@ -4775,14 +5028,15 @@ function renderSentenceAnalysisPanel(sentence, errorMessage='') {
     <div class="sentence-analysis-grid">
       <div class="sentence-analysis-item"><span class="sentence-analysis-label">A · 难度与结构</span>${esc(data.pattern_name || '正在识别')} · ${esc(data.cefr_level || '—')}</div>
       <div class="sentence-analysis-item"><span class="sentence-analysis-label">B · 表达功能</span>${esc(data.function_cn || 'AI 将说明这个结构为什么这样用。')}</div>
-      <div class="sentence-analysis-item"><span class="sentence-analysis-label">C · 雅思复用</span>${esc(data.ielts_reuse || 'AI 将给出适合迁移的场景。')}</div>
+      ${CET.feature('ielts_reuse') ? `<div class="sentence-analysis-item"><span class="sentence-analysis-label">C · 雅思复用</span>${esc(data.ielts_reuse || 'AI 将给出适合迁移的场景。')}</div>` : ''}
       <div class="sentence-analysis-item"><span class="sentence-analysis-label">D · 参考迁移</span>${data.template_example ? esc(data.template_example) : '生成后显示参考表达。'}</div>
     </div>
   </section>`;
 }
 
 function renderSentencePatternPractice(sentence, errorMessage='') {
-  if (window.eltCredits) setTimeout(() => eltCredits.annotate(), 0);
+  // CET 模式积分入口已收束：不发起 /api/credits/rates（任务书 §3.3 + Lead D-HOME-2）
+  if (window.eltCredits && CET.feature('credits_account')) setTimeout(() => eltCredits.annotate(), 0);
   const scenario = sentencePatternScenario(sentence);
   const answer = String(sentence._pattern_answer || '');
   const pattern = sentencePatternTemplate(sentence);
@@ -5649,7 +5903,7 @@ function resolveVocabContextSentence(entry, context, analysis) {
 }
 
 function buildVocabCard(word, entry) {
-  if (window.eltCredits) setTimeout(() => eltCredits.annotate(), 0);
+  if (window.eltCredits && CET.feature('credits_account')) setTimeout(() => eltCredits.annotate(), 0);
   const st  = reviewStatus(entry);
   const an  = entry.cached_analysis || {};
   const ipa = an.ipa || '';
@@ -5689,7 +5943,8 @@ function buildVocabCard(word, entry) {
   const contextItems = contexts.map((c,index)=>{
     return `<div class="context-item${index === contextIndex ? ' active' : ''}" role="button" tabindex="0" onclick="selectVocabContext(event,decodeURIComponent('${encodedWord}'),${index})" onkeydown="if(event.key==='Enter'){selectVocabContext(event,decodeURIComponent('${encodedWord}'),${index});}"><span class="context-lesson">${esc(c.lesson||'收藏语境')}</span>${highlightVocabTarget(c.sentence||'',word)}</div>`;
   }).join('');
-  const ielts = an.ielts_note?`<div class="detail-section"><div class="detail-label">雅思注释</div><div class="ielts-note">${renderVocabReadingText(an.ielts_note)}</div></div>`:'';
+  const ielts = (CET.feature('ielts_reuse') && an.ielts_note)
+    ? `<div class="detail-section"><div class="detail-label">雅思注释</div><div class="ielts-note">${renderVocabReadingText(an.ielts_note)}</div></div>` : '';
   const usage = an.usage?`<div class="detail-section"><div class="detail-label">用法</div><div class="detail-value">${renderVocabReadingText(an.usage)}</div></div>`:'';
   const derivedReturnUrl = context.lesson_id
     ? `/workspace/${context.lesson_id}/${context.mode === 'reading' ? '' : 'intensive'}${context.sentence_key != null ? `?sentence_key=${encodeURIComponent(context.sentence_key)}` : ''}`
@@ -5736,14 +5991,14 @@ function buildVocabCard(word, entry) {
     </div>
     <div class="word-details">
       <div class="word-card-learning">
-      <div class="detail-section">
+      ${CET.feature('memory_story') ? `<div class="detail-section">
         <button type="button"
                 class="story-pick-btn${_storyWordSet.has(word) ? ' active' : ''}"
                 data-story-word="${esc(word)}"
                 onclick="toggleStoryWord(event,decodeURIComponent('${encodeURIComponent(word)}'))">
           ${_storyWordSet.has(word) ? '✓ 已加入记忆故事' : '＋ 加入记忆故事'}
         </button>
-      </div>
+      </div>` : ''}
       ${hasDeepAnalysis ? '' : `<div class="detail-section ai-analysis-empty">
         <div class="detail-label">AI 词语解析</div>
         <p class="detail-value">这个${targetType}还没有生成深度解析。</p>
@@ -7532,15 +7787,734 @@ function onWhisperModelChange(val) {
   if (dashWarn) dashWarn.style.display = (val === 'paraformer' && !_dashscopeKeyConfigured) ? '' : 'none';
 }
 
-// ── Init ──────────────────────────────────────
-loadLessons();
-loadHomeReviewNote();
-loadAiSettings();
-autoResumeJob();
+// ══════════════════════════════════════════════════════════════
+// CET 底座：材料库（P1）+ 本地导入（P2 界面）+ 导航收束
+// 配置全部来自 window.CET（= backend/webapp/cet_mode.py 同一份配置）。
+// 收束的模块**不初始化**，因此不会发起后台请求（任务书 §3.3）。
+// ══════════════════════════════════════════════════════════════
+const CET_LIB_PAGE_SIZE = 15;
+let _cetLibrary = [];
+let _cetPage = 1;
+let _cetLevel = 'all';
+let _cetSummary = null;
+let _cetImportBusy = false;
 
-// Hash routing on load
-const _hash = location.hash.replace('#','');
-if (['vocab', 'sentences', 'resources'].includes(_hash)) switchTab(_hash);
+function cetLevelLabel(level) {
+  return ({cet4: '四级', cet6: '六级'})[level] || CET.copy('unspecified_level', '待分类');
+}
+
+function cetLevelClass(level) {
+  return level === 'cet4' ? 'cet-level-cet4' : level === 'cet6' ? 'cet-level-cet6' : 'cet-level-none';
+}
+
+function cetFmtDuration(sec) {
+  const total = Math.max(0, Math.round(Number(sec) || 0));
+  if (!total) return '未标注';
+  const m = Math.floor(total / 60), s = total % 60;
+  return m > 0 ? `${m}分${s ? s + '秒' : ''}` : `${s}秒`;
+}
+
+// 素材类别：来自材料自身 tags；缺失显示「未标注」，不猜（任务书 P1）
+function cetCategoryLabel(item) {
+  return item.category || '未标注';
+}
+
+// 可用状态：来自真实能力，不编造进度或掌握度
+function cetAvailability(item) {
+  if (item.archived) return {key: 'archived', label: '已归档'};
+  if (item.subtitleStatus === 'pending') return {key: 'pending', label: '正在准备原文'};
+  if (item.subtitleStatus === 'failed') return {key: 'failed', label: '原文准备失败'};
+  if (!item.hasAudio) return {key: 'no-audio', label: '音频缺失'};
+  if (item.audioReachable === false) return {key: 'audio-missing', label: '音频文件不可读'};
+  if (!item.hasTimeline) return {key: 'audio-only', label: '仅音频 · 暂无逐句定位'};
+  return {key: 'ready', label: '可逐句精听'};
+}
+
+// 年份/月份/套次/题型：本轮没有对应数据列，一律显示「未标注」，不猜（Lead 定案 Q2）
+function cetMetaLine(item) {
+  const parts = [
+    `级别 ${cetLevelLabel(item.level)}`,
+    `时长 ${cetFmtDuration(item.durationSec)}`,
+    `类别 ${cetCategoryLabel(item)}`,
+  ];
+  if (item.sentenceCount) parts.push(`${item.sentenceCount} 句`);
+  if (item.questionCount) parts.push(`${item.questionCount} 题`);
+  return parts.join(' · ');
+}
+
+function cetUndatedNote() {
+  return '年份 / 月份 / 套次 / 题型：未标注';
+}
+
+function cetItemTitle(item) {
+  return item.title || `听力材料 ${item.lessonId}`;
+}
+
+function cetManageMenu(item) {
+  return `
+    <div class="course-menu">
+      <button type="button" class="course-menu-trigger" aria-label="材料管理" data-cet-menu-trigger>⋯</button>
+      <div class="course-menu-popover" hidden>
+        <button type="button" data-cet-lesson="${item.lessonId}" data-cet-manage="open">打开材料</button>
+        <button type="button" data-cet-lesson="${item.lessonId}" data-cet-manage="rename">修改信息</button>
+        <button type="button" data-cet-lesson="${item.lessonId}" data-cet-manage="classify">手动归类</button>
+        <button type="button" data-cet-lesson="${item.lessonId}" data-cet-manage="archive">${item.archived ? '取消归档' : '归档'}</button>
+      </div>
+    </div>`;
+}
+
+function cetCardActions(item) {
+  const open = `<button class="course-action primary" type="button"
+      data-cet-lesson="${item.lessonId}" data-cet-open="1">打开</button>`;
+  const classify = item.level === 'unspecified'
+    ? `<button class="course-action" type="button" data-cet-lesson="${item.lessonId}" data-cet-manage="classify">待分类 · 归类</button>`
+    : '';
+  return `${open}${classify}${cetManageMenu(item)}`;
+}
+
+function cetBuildCard(item) {
+  const availability = cetAvailability(item);
+  const progress = Number(item.progress?.progressPercent || 0);
+  return `
+  <article class="lesson-card cet-material-card${item.archived ? ' archived-card' : ''}" data-cet-lesson="${item.lessonId}">
+    <div class="card-body">
+      <div class="card-meta">
+        <span class="cet-level-badge ${cetLevelClass(item.level)}">${esc(cetLevelLabel(item.level))}</span>
+        <span class="source-label">${esc(cetCategoryLabel(item))}</span>
+        <span class="cet-availability cet-availability-${availability.key}">${esc(availability.label)}</span>
+      </div>
+      <div class="card-title" title="${esc(cetItemTitle(item))}">${esc(cetItemTitle(item))}</div>
+      <div class="card-stats"><span class="stat-chip">${esc(cetMetaLine(item))}</span></div>
+      <div class="cet-undated">${esc(cetUndatedNote())}</div>
+      ${progress > 0 ? `<div class="recent-progress" title="学习进度 ${progress}%"><span style="width:${progress}%"></span></div>` : ''}
+    </div>
+    <div class="recent-card-actions cet-card-actions">${cetCardActions(item)}</div>
+  </article>`;
+}
+
+function cetMatches(item) {
+  const query = (document.getElementById('course-search')?.value || '').trim().toLowerCase();
+  const level = _cetLevel;
+  const category = document.getElementById('cet-category-filter')?.value || 'all';
+  const status = document.getElementById('course-status-filter')?.value || 'active';
+  const mode = document.getElementById('course-mode-filter')?.value || 'all';
+  const tag = document.getElementById('course-tag-filter')?.value || 'all';
+  if (level !== 'all' && item.level !== level) return false;
+  if (category !== 'all') {
+    const label = item.category || 'none';
+    if (category === 'none' ? item.category : label !== category) return false;
+  }
+  if (status !== 'all' && (status === 'archived') !== Boolean(item.archived)) return false;
+  if (mode === 'listening' && !item.hasAudio) return false;
+  if (tag !== 'all' && !(item.tags || []).some(t => String(t).toLowerCase() === tag.toLowerCase())) return false;
+  if (query) {
+    const haystack = `${item.title || ''} ${(item.tags || []).join(' ')} ${item.materialId || ''}`.toLowerCase();
+    if (!haystack.includes(query)) return false;
+  }
+  return true;
+}
+
+function cetRenderTagFilter() {
+  const select = document.getElementById('course-tag-filter');
+  if (!select) return;
+  const current = select.value || 'all';
+  const seen = new Set();
+  const tags = [];
+  for (const item of _cetLibrary) {
+    for (const tag of item.tags || []) {
+      const key = String(tag).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tags.push(tag);
+    }
+  }
+  select.innerHTML = '<option value="all">全部标签</option>'
+    + tags.map(tag => `<option value="${esc(tag)}">#${esc(tag)}</option>`).join('');
+  select.value = tags.some(tag => tag === current) ? current : 'all';
+}
+
+function cetRenderRecent() {
+  const grid = document.getElementById('lesson-grid');
+  if (!grid) return;
+  const started = _cetLibrary
+    .filter(item => !item.archived && item.progress?.started)
+    .slice(0, 4);
+  const countEl = document.getElementById('recent-course-count');
+  if (countEl) countEl.textContent = started.length ? `${started.length} 份` : '';
+  grid.innerHTML = started.length
+    ? started.map(cetBuildCard).join('')
+    : '<div class="empty-state"><p>还没有学习记录。打开一份材料就会出现在这里。</p></div>';
+  const active = _cetLibrary.filter(item => !item.archived);
+  // 优先「有学习记录」的材料；没有学习记录时给出第一份材料作为入口（不虚构进度）
+  const latest = active.find(item => item.progress?.started) || active[0] || null;
+  cetUpdateContinue(latest);
+}
+
+function cetUpdateContinue(item) {
+  const link = document.getElementById('continue-lesson-link');
+  const note = document.getElementById('continue-lesson-note');
+  if (!link || !note) return;
+  if (!item) {
+    link.setAttribute('href', '#');
+    link.classList.add('is-empty');
+    note.textContent = '还没有听力材料，先导入一份本地音频。';
+    return;
+  }
+  link.classList.remove('is-empty');
+  link.setAttribute('href', item.lessonUrl || '#');
+  const progress = Number(item.progress?.progressPercent || 0);
+  note.textContent = progress > 0
+    ? `${cetItemTitle(item)} · 已学 ${progress}%`
+    : `${cetItemTitle(item)} · 尚未开始`;
+}
+
+function cetRenderLibrary() {
+  const list = document.getElementById('course-library-list');
+  if (!list) return;
+  cetRenderTagFilter();
+  const rows = _cetLibrary.filter(cetMatches);
+  const pageCount = Math.max(1, Math.ceil(rows.length / CET_LIB_PAGE_SIZE));
+  _cetPage = Math.min(Math.max(1, _cetPage), pageCount);
+  const start = (_cetPage - 1) * CET_LIB_PAGE_SIZE;
+  const pageRows = rows.slice(start, start + CET_LIB_PAGE_SIZE);
+  const emptyHint = _cetLibrary.length
+    ? '没有符合当前条件的材料。'
+    : `${CET.copy('empty_library', '还没有听力材料。导入一份本地音频开始学习。')}`;
+  // 空库时不再重复放「导入」按钮：首屏的空库入口是唯一显式入口（任务书 P1 第 6 条）
+  list.innerHTML = pageRows.length
+    ? pageRows.map(cetBuildCard).join('')
+    : `<div class="empty-state"><p>${esc(emptyHint)}</p></div>`;
+  const label = document.getElementById('course-page-label');
+  if (label) label.textContent = `第 ${_cetPage} / ${pageCount} 页 · ${rows.length} 份`;
+  const prev = document.getElementById('course-page-prev');
+  const next = document.getElementById('course-page-next');
+  if (prev) prev.disabled = _cetPage <= 1;
+  if (next) next.disabled = _cetPage >= pageCount;
+}
+
+function cetRenderSummary() {
+  const el = document.getElementById('cet-library-summary');
+  const emptyBox = document.getElementById('cet-empty-library');
+  const active = _cetLibrary.filter(item => !item.archived);
+  if (emptyBox) emptyBox.hidden = active.length > 0;
+  if (!el) return;
+  if (!active.length) { el.textContent = ''; return; }
+  // 服务端概览优先；拿不到时按已加载材料现算（同一口径，不编造）
+  const by = _cetSummary?.byLevel || {
+    cet4: active.filter(i => i.level === 'cet4').length,
+    cet6: active.filter(i => i.level === 'cet6').length,
+  };
+  const pending = _cetSummary?.pendingClassification
+    ?? active.filter(i => i.level === 'unspecified').length;
+  const archived = _cetSummary?.archived
+    ?? _cetLibrary.filter(i => i.archived).length;
+  const parts = [`四级 ${by.cet4 || 0} 份`, `六级 ${by.cet6 || 0} 份`];
+  if (pending) parts.push(`${CET.copy('unspecified_level', '待分类')} ${pending} 份 · 可在材料卡片上手动归类`);
+  if (archived) parts.push(`已归档 ${archived} 份`);
+  el.textContent = parts.join(' · ');
+}
+
+async function cetLoadLibrary() {
+  const list = document.getElementById('course-library-list');
+  try {
+    const [listResp, summaryResp] = await Promise.all([
+      fetch('/api/cet/base/materials?include_archived=true', {cache: 'no-store'}),
+      fetch('/api/cet/base/materials/summary', {cache: 'no-store'}).catch(() => null),
+    ]);
+    if (!listResp.ok) throw new Error(`材料库接口返回 ${listResp.status}`);
+    const data = await listResp.json();
+    _cetLibrary = Array.isArray(data.items) ? data.items : [];
+    _cetSummary = summaryResp && summaryResp.ok ? await summaryResp.json() : null;
+    _cetPage = 1;
+    cetRenderRecent();
+    cetRenderLibrary();
+    cetRenderSummary();
+    updateHeaderStat('lessons');
+  } catch (error) {
+    // 端点不存在（Lead 尚未注册）时降级到现有课程库接口，保证首页可用
+    const fallback = await cetLoadLibraryFallback();
+    if (fallback) return;
+    if (list) {
+      list.innerHTML = `<div class="empty-state"><p>材料库读取失败：${esc(error.message)}</p>`
+        + '<button type="button" class="primary" onclick="cetLoadLibrary()">重试</button></div>';
+    }
+    const grid = document.getElementById('lesson-grid');
+    if (grid) grid.innerHTML = `<div class="empty-state"><p>材料库读取失败：${esc(error.message)}</p></div>`;
+  }
+}
+
+// 兜底：底座端点未注册时用现有 v2 课程库接口拼出同一视图（不改后端）
+async function cetLoadLibraryFallback() {
+  try {
+    const resp = await fetch('/api/v2/lessons/library?include_archived=1', {cache: 'no-store'});
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    _cetLibrary = (data.lessons || []).map(course => {
+      const tags = Array.isArray(course.tags) ? course.tags : [];
+      const lower = tags.map(t => String(t).toLowerCase());
+      const level = (lower.includes('cet6') || lower.includes('六级')) ? 'cet6'
+        : (lower.includes('cet4') || lower.includes('四级')) ? 'cet4' : 'unspecified';
+      const categoryMap = {'真题': '真题', '练习': '练习', '样例': '样例', '开发夹具': '开发夹具'};
+      const category = tags.map(t => categoryMap[t]).find(Boolean) || null;
+      const sentences = Number(course.subtitle_count || 0);
+      const position = Number(course.progress_percent || 0);
+      return {
+        lessonId: Number(course.id),
+        materialId: `v2-${course.id}`,
+        title: course.title || '',
+        level, category, tags,
+        durationSec: Number(course.duration || 0),
+        lessonUrl: `/workspace/${course.id}`,
+        archived: Boolean(course.archived),
+        hasAudio: Boolean(course.media_url),
+        audioReachable: Boolean(course.media_url),
+        hasTimeline: sentences > 0,
+        sentenceCount: sentences,
+        questionCount: null,
+        subtitleStatus: course.subtitle_status || '',
+        progress: {
+          progressPercent: position,
+          lastPositionSeconds: 0,
+          // 「最近学习」只认真实学习进度，不把「创建过」当学习过（任务书 P3）
+          started: position > 0,
+        },
+      };
+    });
+    _cetSummary = null;
+    _cetPage = 1;
+    cetRenderRecent();
+    cetRenderLibrary();
+    cetRenderSummary();
+    updateHeaderStat('lessons');
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// ── 材料管理：修改信息 / 手动归类 / 归档恢复（P1）────────────
+async function cetPatchMaterial(lessonId, patch) {
+  let resp = await fetch(`/api/cet/base/materials/${lessonId}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(patch),
+  });
+  if (resp.status === 404) {
+    // 兜底：底座端点未注册时走现有库接口（只支持 title/archived/tags）
+    const body = {};
+    if (patch.title !== undefined) body.title = patch.title;
+    if (patch.archived !== undefined) body.archived = patch.archived;
+    if (patch.level !== undefined || patch.category !== undefined) {
+      const item = _cetLibrary.find(x => Number(x.lessonId) === Number(lessonId));
+      const tags = (item?.tags || []).filter(tag => {
+        const key = String(tag).toLowerCase();
+        return !['cet4','cet6','四级','六级','真题','练习','样例','开发夹具'].includes(key);
+      });
+      if (patch.level && patch.level !== 'unspecified') tags.unshift(patch.level);
+      if (patch.category) tags.push(patch.category);
+      body.tags = tags.slice(0, 10);
+    }
+    resp = await fetch(`/api/v2/lessons/library/${lessonId}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+  }
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const detail = data.detail;
+    throw new Error(typeof detail === 'string' ? detail : (detail?.message || '材料更新失败'));
+  }
+  return data;
+}
+
+async function cetManageMaterial(lessonId, action) {
+  const item = _cetLibrary.find(x => Number(x.lessonId) === Number(lessonId));
+  if (!item) return;
+  if (action === 'open') { window.location.assign(item.lessonUrl || `/workspace/${lessonId}`); return; }
+  if (action === 'rename') {
+    const title = await appPrompt('修改材料信息', item.title || '', '标题会显示在材料卡片和听力工作区');
+    if (title === null || title.trim() === String(item.title || '').trim()) return;
+    if (!title.trim()) { alert('标题不能为空'); return; }
+    await cetPatchMaterial(lessonId, {title: title.trim()});
+  } else if (action === 'classify') {
+    const level = await appPrompt(
+      '手动归类级别', item.level === 'unspecified' ? '' : cetLevelLabel(item.level),
+      '填 cet4 / cet6 / 四级 / 六级 之一；留空 = 待分类。不按标题猜级别。');
+    if (level === null) return;
+    const raw = level.trim().toLowerCase();
+    const normalized = ['cet4','四级','4'].includes(raw) ? 'cet4'
+      : ['cet6','六级','6'].includes(raw) ? 'cet6'
+      : raw === '' ? 'unspecified' : null;
+    if (!normalized) { alert('只支持 cet4 / cet6 / 四级 / 六级，或留空表示待分类'); return; }
+    await cetPatchMaterial(lessonId, {level: normalized});
+  } else if (action === 'archive') {
+    const next = !item.archived;
+    if (!confirm(next ? '归档这份材料？之后可在「已归档」筛选里找回，数据保留。' : '取消归档这份材料？')) return;
+    await cetPatchMaterial(lessonId, {archived: next});
+  }
+  await cetLoadLibrary();
+}
+
+// ── 本地导入（P2 界面）：优先底座端点，404 时降级到现有上传链路 ──
+function cetImportFormatNote() {
+  fetch('/api/cet/base/import/formats', {cache: 'no-store'})
+    .then(resp => resp.ok ? resp.json() : null)
+    .then(data => {
+      if (!data) return;
+      const audioEl = document.getElementById('cet-audio-formats');
+      if (audioEl && Array.isArray(data.audio) && data.audio.length) {
+        audioEl.textContent = `支持 ${data.audio.join(' / ')}`;
+      }
+      const subEl = document.getElementById('cet-subtitle-formats');
+      if (subEl && Array.isArray(data.subtitle) && data.subtitle.length) {
+        subEl.textContent = `${data.subtitle.join(' / ')}：带时间轴的可逐句定位；纯文本只作原文，不伪造时间戳`;
+      }
+    })
+    .catch(() => { /* 格式清单拿不到就保留默认文案，不影响导入 */ });
+}
+
+function cetOnAudioPicked() {
+  const input = document.getElementById('cet-audio-input');
+  const badge = document.getElementById('cet-audio-badge');
+  const note = document.getElementById('cet-audio-note');
+  const file = input?.files?.[0];
+  if (!badge || !note) return;
+  badge.textContent = file ? file.name : '未选择';
+  note.textContent = file
+    ? `${(file.size / 1048576).toFixed(1)} MB`
+    : '只有音频也能导入并整段播放';
+}
+
+function cetOnSubtitlePicked() {
+  const input = document.getElementById('cet-subtitle-input');
+  const badge = document.getElementById('cet-subtitle-badge');
+  const note = document.getElementById('cet-subtitle-note');
+  const file = input?.files?.[0];
+  if (!badge || !note) return;
+  badge.textContent = file ? file.name : '未选择';
+  note.textContent = file ? file.name : '不选也能导入，导入后显示「暂无逐句定位」';
+  const check = document.getElementById('cet-import-check');
+  if (check) check.hidden = true;
+}
+
+function cetSetImportProgress(percent, label) {
+  const wrap = document.getElementById('cet-import-progress');
+  const fill = document.getElementById('cet-import-progress-fill');
+  const text = document.getElementById('cet-import-progress-label');
+  if (!wrap || !fill || !text) return;
+  wrap.classList.remove('hidden');
+  fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+  text.textContent = label;
+}
+
+function cetHideImportProgress() {
+  document.getElementById('cet-import-progress')?.classList.add('hidden');
+}
+
+function cetShowImportErrors(errors, message) {
+  const box = document.getElementById('cet-import-errors');
+  if (!box) return;
+  const rows = (errors || []).map(err => {
+    const where = err.line ? `第 ${err.line} 行` : (err.index ? `第 ${err.index} 条` : '');
+    return `<li>${esc(where ? where + '：' : '')}${esc(err.message || err.reason || '')}</li>`;
+  }).join('');
+  box.innerHTML = `<div class="cet-error-title">${esc(message || '导入失败')}</div>`
+    + (rows ? `<ul>${rows}</ul>` : '');
+  box.hidden = false;
+}
+
+function cetClearImportErrors() {
+  const box = document.getElementById('cet-import-errors');
+  if (box) { box.hidden = true; box.innerHTML = ''; }
+}
+
+function cetFocusImport() {
+  const panel = document.getElementById('cet-import-panel');
+  if (!panel) return;
+  const form = document.getElementById('cet-import-form');
+  if (form) form.classList.remove('hidden');
+  panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+  document.getElementById('cet-audio-input')?.focus?.();
+  document.getElementById('cet-import-btn')?.focus?.();
+}
+
+function cetToggleImport() {
+  const form = document.getElementById('cet-import-form');
+  const toggle = document.getElementById('cet-import-toggle');
+  if (!form || !toggle) return;
+  const collapsed = form.classList.toggle('hidden');
+  toggle.textContent = collapsed ? '展开 ▼' : '收起 ▲';
+}
+
+function cetImportFormData() {
+  const audio = document.getElementById('cet-audio-input')?.files?.[0];
+  if (!audio) throw new Error('请先选择音频文件');
+  const form = new FormData();
+  form.append('audio', audio, audio.name);
+  const subtitle = document.getElementById('cet-subtitle-input')?.files?.[0];
+  if (subtitle) form.append('subtitle', subtitle, subtitle.name);
+  form.append('title', (document.getElementById('cet-title-input')?.value || '').trim());
+  form.append('level', document.getElementById('cet-level-input')?.value || 'unspecified');
+  form.append('category', document.getElementById('cet-category-input')?.value || '');
+  return form;
+}
+
+async function cetValidateImport() {
+  if (_cetImportBusy) return;
+  cetClearImportErrors();
+  const check = document.getElementById('cet-import-check');
+  let form;
+  try { form = cetImportFormData(); }
+  catch (error) { cetShowImportErrors([], error.message); return; }
+  _cetImportBusy = true;
+  const btn = document.getElementById('cet-validate-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '校验中…'; }
+  try {
+    const resp = await fetch('/api/cet/base/import/validate', {method: 'POST', body: form});
+    const data = await resp.json().catch(() => ({}));
+    if (resp.status === 404) {
+      if (check) {
+        check.hidden = false;
+        check.textContent = '当前服务未提供导入校验接口，可直接点「导入并打开材料」，导入时会做同样的校验。';
+      }
+      return;
+    }
+    if (!resp.ok) {
+      const detail = data.detail || {};
+      cetShowImportErrors(detail.errors, detail.message || '校验失败');
+      return;
+    }
+    if (check) {
+      check.hidden = false;
+      check.textContent = data.ok
+        ? `校验通过：${data.timed ? `带时间轴，${data.sentenceCount} 句` : '无逐句时间轴（纯文本/仅音频）'}`
+          + (data.audioDurationSec ? ` · 音频约 ${cetFmtDuration(data.audioDurationSec)}` : '')
+          + (data.warnings?.length ? ` · ${data.warnings.join('；')}` : '')
+        : '校验未通过，请看下方错误。';
+    }
+    if (!data.ok) cetShowImportErrors(data.errors, '校验未通过');
+  } catch (error) {
+    cetShowImportErrors([], `校验请求失败：${error.message}`);
+  } finally {
+    _cetImportBusy = false;
+    if (btn) { btn.disabled = false; btn.textContent = '仅校验'; }
+  }
+}
+
+async function cetStartImport() {
+  if (_cetImportBusy) return;
+  cetClearImportErrors();
+  let form;
+  try { form = cetImportFormData(); }
+  catch (error) { cetShowImportErrors([], error.message); return; }
+  _cetImportBusy = true;
+  const btn = document.getElementById('cet-import-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '导入中…'; }
+  cetSetImportProgress(20, '正在上传音频…');
+  try {
+    const resp = await fetch('/api/cet/base/import', {method: 'POST', body: form});
+    if (resp.status === 404) {
+      await cetImportFallback(form);
+      return;
+    }
+    const data = await resp.json().catch(() => ({}));
+    if (resp.status === 422) {
+      const detail = data.detail || {};
+      cetShowImportErrors(detail.errors, detail.message || '导入校验未通过');
+      cetHideImportProgress();
+      return;
+    }
+    if (!resp.ok) {
+      const detail = data.detail;
+      throw new Error(typeof detail === 'string' ? detail : (detail?.message || `导入失败（${resp.status}）`));
+    }
+    cetSetImportProgress(100, data.duplicate ? '已有同一材料，正在打开…' : '导入完成，正在打开…');
+    if (data.warnings?.length) cetShowImportErrors([], `导入完成，但请注意：${data.warnings.join('；')}`);
+    const url = data.lessonUrl || (data.lesson?.id ? `/workspace/${data.lesson.id}` : '');
+    if (url) { window.location.assign(url); return; }
+    await cetAfterImport();
+  } catch (error) {
+    cetHideImportProgress();
+    cetShowImportErrors([], error.message || '导入失败');
+  } finally {
+    _cetImportBusy = false;
+    if (btn) { btn.disabled = false; btn.textContent = '导入并打开材料'; }
+  }
+}
+
+// 兜底链路：底座端点未注册时用现有上传设施（冻结约定 §4 的 6 步）
+async function cetImportFallback(form) {
+  cetSetImportProgress(30, '正在上传音频…');
+  const audio = form.get('audio');
+  const upload = new FormData();
+  upload.append('file', audio, audio.name);
+  const upResp = await fetch('/api/v2/lessons/media-uploads', {method: 'POST', body: upload});
+  const upData = await upResp.json().catch(() => ({}));
+  if (!upResp.ok) throw new Error(upData.detail || '音频上传失败');
+  cetSetImportProgress(60, '正在创建材料…');
+  const startResp = await fetch('/api/v2/lessons/start', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID()},
+    body: JSON.stringify({
+      source_type: 'uploaded_media',
+      upload_id: upData.upload_id,
+      whisper_model: 'large-v3',
+      translate: false,
+    }),
+  });
+  const startData = await startResp.json().catch(() => ({}));
+  if (!startResp.ok) throw new Error(startData.detail || '材料创建失败');
+  const lessonId = startData.lesson?.id;
+  if (!lessonId) throw new Error('材料创建完成，但没有返回课程 id');
+  const level = form.get('level') || 'unspecified';
+  const category = form.get('category') || '';
+  const tags = [];
+  if (level !== 'unspecified') tags.push(level);
+  if (category) tags.push(category);
+  const title = (form.get('title') || '').trim();
+  const patch = {};
+  if (title) patch.title = title;
+  if (tags.length) patch.tags = tags;
+  if (Object.keys(patch).length) {
+    await fetch(`/api/v2/lessons/library/${lessonId}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(patch),
+    }).catch(() => {});
+  }
+  cetSetImportProgress(100, '导入完成，正在打开…');
+  window.location.assign(startData.workspace_url || `/workspace/${lessonId}`);
+}
+
+async function cetAfterImport() {
+  cetHideImportProgress();
+  cetResetImport();
+  await cetLoadLibrary();
+}
+
+function cetResetImport() {
+  for (const id of ['cet-audio-input', 'cet-subtitle-input']) {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  }
+  for (const id of ['cet-audio-badge', 'cet-subtitle-badge']) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '未选择';
+  }
+  const titleEl = document.getElementById('cet-title-input');
+  if (titleEl) titleEl.value = '';
+  const note = document.getElementById('cet-audio-note');
+  if (note) note.textContent = '只有音频也能导入并整段播放';
+  const subNote = document.getElementById('cet-subtitle-note');
+  if (subNote) subNote.textContent = '不选也能导入，导入后显示「暂无逐句定位」';
+  cetClearImportErrors();
+  const check = document.getElementById('cet-import-check');
+  if (check) check.hidden = true;
+  cetHideImportProgress();
+}
+
+// ── CET 模式初始化：只初始化保留的功能（任务书 §3.3）──────────
+function cetInitLibraryUI() {
+  if (!document.getElementById('cet-import-panel')) return;
+  cetImportFormatNote();
+  document.querySelectorAll('[data-cet-level]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _cetLevel = btn.dataset.cetLevel || 'all';
+      _cetPage = 1;
+      document.querySelectorAll('[data-cet-level]').forEach(other => {
+        const active = other === btn;
+        other.classList.toggle('active', active);
+        other.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      const levelFilter = document.getElementById('cet-level-filter');
+      if (levelFilter) levelFilter.value = _cetLevel;
+      cetRenderLibrary();
+    });
+  });
+  for (const id of ['cet-level-filter', 'cet-category-filter', 'course-mode-filter', 'course-status-filter', 'course-tag-filter']) {
+    document.getElementById(id)?.addEventListener('change', () => {
+      if (id === 'cet-level-filter') {
+        _cetLevel = document.getElementById('cet-level-filter')?.value || 'all';
+        document.querySelectorAll('[data-cet-level]').forEach(other => {
+          const active = other.dataset.cetLevel === _cetLevel;
+          other.classList.toggle('active', active);
+          other.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+      }
+      _cetPage = 1;
+      cetRenderLibrary();
+    });
+  }
+  document.getElementById('course-search')?.addEventListener('input', () => {
+    _cetPage = 1;
+    cetRenderLibrary();
+  });
+  document.getElementById('course-page-prev')?.addEventListener('click', () => {
+    _cetPage -= 1;
+    cetRenderLibrary();
+  });
+  document.getElementById('course-page-next')?.addEventListener('click', () => {
+    _cetPage += 1;
+    cetRenderLibrary();
+  });
+
+  const tabPane = document.getElementById('tab-lessons');
+  tabPane?.addEventListener('click', async event => {
+    const menuTrigger = event.target.closest('[data-cet-menu-trigger]');
+    if (menuTrigger) {
+      const popover = menuTrigger.closest('.course-menu')?.querySelector('.course-menu-popover');
+      if (popover) {
+        const willOpen = popover.hidden;
+        closeAllCourseMenus();
+        popover.hidden = !willOpen;
+      }
+      return;
+    }
+    const openBtn = event.target.closest('[data-cet-open]');
+    if (openBtn) {
+      const item = _cetLibrary.find(x => Number(x.lessonId) === Number(openBtn.dataset.cetLesson));
+      if (item) window.location.assign(item.lessonUrl || `/workspace/${item.lessonId}`);
+      return;
+    }
+    const manageBtn = event.target.closest('[data-cet-manage]');
+    if (manageBtn) {
+      closeAllCourseMenus();
+      try {
+        await cetManageMaterial(manageBtn.dataset.cetLesson, manageBtn.dataset.cetManage);
+      } catch (error) {
+        alert(error.message || '材料操作失败');
+      }
+    }
+  });
+}
+
+
+// ── Init ──────────────────────────────────────
+// 任务书 §3.3：收束的模块**不初始化**，因此不会发起后台请求。
+// 这些判断都读 window.CET（= backend/webapp/cet_mode.py 同一份配置）。
+const CET_READING = CET.feature('reading_course');
+const CET_LINK_IMPORT = CET.feature('link_import');
+const CET_CREDITS = CET.feature('credits_account');
+const CET_TTS_COURSE = CET.feature('text_to_speech_course');
+
+if (CET.enabled()) {
+  cetInitLibraryUI();
+  cetLoadLibrary();
+} else {
+  loadLessons();
+}
+loadHomeReviewNote();
+if (CET.feature('settings_core')) loadAiSettings();
+// 链接导入/网盘/阅读课程退出后，这些恢复与探测都不再发起
+if (CET_LINK_IMPORT) autoResumeJob();
+if (CET.feature('player') && CET_LINK_IMPORT) initBaiduPanCard();
+
+// Hash 路由：CET 模式下由 cet-mode.js 统一接管（含 #favorites / 前进后退 / 未知 hash 兜底）
+if (!CET.enabled()) {
+  const _hash = location.hash.replace('#','');
+  if (['vocab', 'sentences', 'resources'].includes(_hash)) switchTab(_hash);
+}
 
 // ── 自动恢复运行中的 job（刷新后重连）────────────
 async function autoResumeJob() {
@@ -7989,7 +8963,9 @@ document.addEventListener('click', () => {
   const pop = document.getElementById('user-menu-pop');
   if (pop) pop.style.display = 'none';
 });
-initAuthBadge();
+// CET 模式：登录/积分/个人档案与链接导入都已收束，initAuthBadge 的探测不再需要。
+// 通用模式保持原行为（原版回归）。**不改后端鉴权与安全配置**，只是不发这些请求。
+if (CET.feature('credits_account') || CET.feature('link_import')) initAuthBadge();
 </script>
 <div id="review-popover">
   <span>调整复习：</span>

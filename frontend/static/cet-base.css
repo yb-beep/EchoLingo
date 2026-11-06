@@ -1,0 +1,322 @@
+/* cet-base.css — 四六级专用底座增量样式
+ *
+ * 原则（任务书 §0 / §3）：
+ *   1. **沿用原前端风格，不重做视觉设计**。这里只做增量：复用 index.html
+ *      内联样式已定义的 --bg/--surface/--ink/--muted/--line/--brand/--radius/--shadow
+ *      等变量，不引入新配色体系、不换字体、不改全局排版。
+ *   2. 收束后的布局不留空洞：被移除的模块不占位（Jinja 不渲染，不是 CSS 遮挡）。
+ *   3. 窄窗口（375 / 768）主要操作可见可达、无横向溢出。
+ *
+ * 只作用于 CET 模式新增的节点（.cet-*）与收束后需要微调的原节点。
+ */
+
+/* ── 首屏：级别切换 ───────────────────────────────────────── */
+.cet-hero { padding-bottom: 18px; }
+
+.cet-hero-copy h2 { margin-bottom: 6px; }
+
+.cet-level-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 14px;
+}
+
+.cet-level-btn {
+  min-height: 36px;
+  padding: 6px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition: border-color .15s, background .15s, color .15s;
+}
+
+.cet-level-btn:hover { border-color: var(--brand); color: var(--brand); }
+
+.cet-level-btn.active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+}
+
+.cet-level-btn:focus-visible,
+.cet-continue-card:focus-visible,
+.cet-material-card:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* ── 首屏：继续学习（显眼位置） ───────────────────────────── */
+.cet-continue-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brand);
+  border-radius: 10px;
+  background: var(--surface-alt);
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.cet-continue-card:hover {
+  border-color: var(--brand);
+  box-shadow: var(--shadow);
+}
+
+.cet-continue-card.is-empty {
+  border-left-color: var(--line);
+  background: var(--surface);
+}
+
+.cet-continue-label {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.cet-continue-card.is-empty .cet-continue-label {
+  background: var(--surface-alt);
+  color: var(--muted);
+}
+
+.cet-continue-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cet-continue-mark {
+  flex-shrink: 0;
+  color: var(--brand);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* ── 首屏：空库唯一入口（不出现满屏占位模块） ─────────────── */
+.cet-empty-library {
+  margin-top: 14px;
+  padding: 20px 18px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  text-align: center;
+}
+
+.cet-empty-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.cet-empty-note {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.cet-empty-action { min-height: 40px; padding: 8px 22px; }
+
+/* ── 导入面板 ─────────────────────────────────────────────── */
+.cet-import-panel { margin-bottom: 24px; }
+
+.cet-import-panel #cet-import-form.hidden { display: none; }
+
+.cet-import-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.cet-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cet-field > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cet-field > input,
+.cet-field > select {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  min-width: 0;
+  width: 100%;
+}
+
+.cet-field > input:focus,
+.cet-field > select:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
+.cet-import-check {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-alt);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.cet-import-errors {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #7c2d12;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.cet-import-errors .cet-error-title { font-weight: 700; margin-bottom: 4px; }
+.cet-import-errors ul { margin: 0; padding-left: 18px; }
+
+/* ── 材料卡片 ─────────────────────────────────────────────── */
+.cet-material-card .card-body { padding: 14px 16px 12px; }
+
+.cet-material-card .card-meta {
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.cet-level-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+.cet-level-cet4 { background: #e7f2ea; color: #1f5130; }
+.cet-level-cet6 { background: #e8eefb; color: #23478a; }
+.cet-level-none { background: #fdf3e0; color: #8a6d1d; }
+
+.cet-availability {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.7;
+  white-space: nowrap;
+  background: var(--surface-alt);
+  color: var(--muted);
+}
+
+.cet-availability-ready { background: #e7f2ea; color: #1f5130; }
+.cet-availability-audio-only { background: #fdf3e0; color: #8a6d1d; }
+.cet-availability-no-audio,
+.cet-availability-audio-missing,
+.cet-availability-failed { background: #fef2f2; color: #a33b2f; }
+.cet-availability-pending { background: #eef2ed; color: #4b5563; }
+
+.cet-undated {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* 卡片动作：打开 / 待分类归类 / ⋯ 菜单。窄窗口也不溢出 */
+.cet-card-actions {
+  grid-template-columns: minmax(56px, 1fr) auto auto;
+  align-items: center;
+}
+
+.cet-card-actions .course-menu { justify-self: end; }
+
+/* ── 材料库概览 ───────────────────────────────────────────── */
+.cet-library-summary {
+  padding: 0 20px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.cet-library-summary:not(:empty) { padding-top: 10px; }
+
+/* ── 我的收藏：词汇收藏 / 句子收藏 共用一个导航项 ─────────── */
+.cet-favorites-tabs {
+  margin-bottom: 14px;
+}
+
+.cet-favorites-tabs button { min-height: 34px; }
+
+/* ── 路由兜底提示（旧链接落到首页时说明去了哪里） ─────────── */
+.cet-route-notice {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 10px 24px;
+  border-bottom: 1px solid #eadfbd;
+  background: #fbf7e9;
+  color: #75673d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cet-route-notice[hidden] { display: none; }
+
+/* ── 收束后布局微调：避免空洞 ─────────────────────────────── */
+.cet-hero + .cet-import-panel { margin-top: 18px; }
+
+/* 空库时最近学习区块不显示大块占位（只有一句说明，不虚构统计） */
+#tab-lessons .recent-section .empty-state { padding: 28px 20px; }
+#tab-lessons .course-library-list .empty-state { padding: 32px 20px; }
+
+/* ── 窄窗口：主要操作必须可见可达、无横向溢出 ─────────────── */
+@media (max-width: 768px) {
+  .cet-import-grid { grid-template-columns: 1fr; }
+  .cet-continue-title { white-space: normal; }
+  .cet-route-notice { padding: 10px 12px; }
+  .cet-library-summary { padding: 0 14px; }
+  .cet-library-summary:not(:empty) { padding-top: 8px; }
+  .cet-level-switch { gap: 6px; }
+  .cet-level-btn { flex: 1 1 calc(50% - 6px); padding: 6px 10px; }
+}
+
+@media (max-width: 420px) {
+  .cet-level-btn { flex: 1 1 100%; }
+  .cet-continue-card { flex-wrap: wrap; gap: 8px; }
+  .cet-continue-title { flex-basis: 100%; order: 3; }
+  .cet-card-actions { grid-template-columns: 1fr auto; }
+  .cet-card-actions .course-action:nth-child(2) { grid-column: 1 / -1; }
+}
+
+/* 通用模式（ELT_CET_MODE=0）下这些节点不存在，样式自然不生效。 */

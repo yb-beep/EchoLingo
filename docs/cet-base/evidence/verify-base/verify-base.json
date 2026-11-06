@@ -1,0 +1,491 @@
+{
+  "base": "http://127.0.0.1:5187",
+  "repo": "/Users/a1111/Documents/ChatGPT/EchoLingo-cet",
+  "head": "46ce08db5b450f5f1c94f8a537bbb450eb9eb62a",
+  "passed": 60,
+  "failed": 0,
+  "skipped": 0,
+  "total": 60,
+  "items": [
+    {
+      "tid": "T01",
+      "item": "健康检查可用",
+      "pass": true,
+      "expected": "200 + JSON",
+      "actual": "200 keys=['ai_key', 'api_keys', 'auth_enabled', 'dicts', 'environment', 'ffmpeg']",
+      "evidence": ""
+    },
+    {
+      "tid": "T01",
+      "item": "无 key 时健康检查不阻断",
+      "pass": true,
+      "expected": "200（key 缺失不影响）",
+      "actual": "key 字段=missing",
+      "evidence": ""
+    },
+    {
+      "tid": "T01",
+      "item": "SQLite 检查通过",
+      "pass": true,
+      "expected": "available=True",
+      "actual": "{\"path\": \"/var/folders/3s/jtl620xn4gg3qw3mfq8lvh9c0000gn/T/cet-verify-data-53mmjd1n/vocab.db\", \"exists\": true, \"accessib",
+      "evidence": ""
+    },
+    {
+      "tid": "T01",
+      "item": "FFmpeg 检查通过",
+      "pass": true,
+      "expected": "available=True",
+      "actual": "{\"available\": true, \"path\": \"/opt/homebrew/bin/ffmpeg\"}",
+      "evidence": ""
+    },
+    {
+      "tid": "T01",
+      "item": "空库首页可打开",
+      "pass": true,
+      "expected": "200 + HTML >500 字符",
+      "actual": "200 len=398134",
+      "evidence": ""
+    },
+    {
+      "tid": "T01",
+      "item": "空库材料列表为空且不报错",
+      "pass": true,
+      "expected": "200 + items=[]",
+      "actual": "200 items=[]",
+      "evidence": ""
+    },
+    {
+      "tid": "T01",
+      "item": "首页无虚假加载文案（渲染文本）",
+      "pass": true,
+      "expected": "无虚假加载文案",
+      "actual": "命中=[]",
+      "evidence": ""
+    },
+    {
+      "tid": "T01",
+      "item": "空库有导入入口",
+      "pass": true,
+      "expected": "含「导入/上传」",
+      "actual": "found=True",
+      "evidence": ""
+    },
+    {
+      "tid": "T01",
+      "item": "不强制模型配置",
+      "pass": true,
+      "expected": "无强制 key 提示",
+      "actual": "命中=False",
+      "evidence": ""
+    },
+    {
+      "tid": "T01",
+      "item": "CET 模式配置可用",
+      "pass": true,
+      "expected": "200 + features",
+      "actual": "200 keys=['copy', 'enabled', 'features', 'levels', 'nav']",
+      "evidence": ""
+    },
+    {
+      "tid": "T01",
+      "item": "收束项已登记",
+      "pass": true,
+      "expected": "retired_keys 非空",
+      "actual": "11 项: ['link_import', 'reading_course', 'text_to_speech_course', 'video_learning', 'memory_story']",
+      "evidence": ""
+    },
+    {
+      "tid": "T15",
+      "item": "样例材料导入成功",
+      "pass": true,
+      "expected": "退出码 0",
+      "actual": "完成。启动后用 GET /api/cet/materials 确认。",
+      "evidence": ""
+    },
+    {
+      "tid": "T02",
+      "item": "材料列表返回数组",
+      "pass": true,
+      "expected": "200 + items[]",
+      "actual": "200 count=2",
+      "evidence": ""
+    },
+    {
+      "tid": "T02",
+      "item": "存在四级材料",
+      "pass": true,
+      "expected": "含 level=cet4",
+      "actual": "levels=['cet4', 'cet6']",
+      "evidence": ""
+    },
+    {
+      "tid": "T02",
+      "item": "存在六级材料",
+      "pass": true,
+      "expected": "含 level=cet6",
+      "actual": "levels=['cet4', 'cet6']",
+      "evidence": ""
+    },
+    {
+      "tid": "T02",
+      "item": "级别筛选 cet4 结果纯净",
+      "pass": true,
+      "expected": "全部 level=cet4",
+      "actual": "200 count=1 all_match=True",
+      "evidence": ""
+    },
+    {
+      "tid": "T02",
+      "item": "级别筛选 cet6 结果纯净",
+      "pass": true,
+      "expected": "全部 level=cet6",
+      "actual": "200 count=1 all_match=True",
+      "evidence": ""
+    },
+    {
+      "tid": "T02",
+      "item": "待分类可查询",
+      "pass": true,
+      "expected": "200（可空）",
+      "actual": "200 count=0",
+      "evidence": ""
+    },
+    {
+      "tid": "T02",
+      "item": "标题搜索可用",
+      "pass": true,
+      "expected": "200 + 数组（片段=四级样例）",
+      "actual": "200 count=2",
+      "evidence": ""
+    },
+    {
+      "tid": "T02",
+      "item": "学习进度可写可读",
+      "pass": true,
+      "expected": "7.5",
+      "actual": "read=7.5",
+      "evidence": ""
+    },
+    {
+      "tid": "T03",
+      "item": "支持格式清单可读",
+      "pass": true,
+      "expected": "audio/subtitle 清单非空",
+      "actual": "audio=6 subtitle=4",
+      "evidence": ""
+    },
+    {
+      "tid": "T03",
+      "item": "SRT 在带时间轴格式内",
+      "pass": true,
+      "expected": ".srt ∈ subtitleTimed",
+      "actual": "['.srt', '.vtt', '.json']",
+      "evidence": ""
+    },
+    {
+      "tid": "T03",
+      "item": "纯文本标为无时间轴",
+      "pass": true,
+      "expected": ".txt ∈ plainText",
+      "actual": "['.txt']",
+      "evidence": ""
+    },
+    {
+      "tid": "T03",
+      "item": "合法 SRT 解析为逐句时间轴",
+      "pass": true,
+      "expected": "2 段 + timed=True + 无错误",
+      "actual": "segments=2 timed=True errors=0",
+      "evidence": ""
+    },
+    {
+      "tid": "T03",
+      "item": "SRT 时间戳解析正确",
+      "pass": true,
+      "expected": "start=0.01 end=3.49",
+      "actual": "start=0.01 end=3.49",
+      "evidence": ""
+    },
+    {
+      "tid": "T03",
+      "item": "SRT 文本正确去空白",
+      "pass": true,
+      "expected": "It's getting late.",
+      "actual": "\"It's getting late.\"",
+      "evidence": ""
+    },
+    {
+      "tid": "T03",
+      "item": "带 BOM 的 SRT 仍可解析",
+      "pass": true,
+      "expected": "2 段无错误",
+      "actual": "segments=2 errors=0",
+      "evidence": ""
+    },
+    {
+      "tid": "T04",
+      "item": "音频格式清单非空",
+      "pass": true,
+      "expected": ">=1 种音频格式",
+      "actual": "['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac']",
+      "evidence": ""
+    },
+    {
+      "tid": "T04",
+      "item": "无字幕不伪造时间轴",
+      "pass": true,
+      "expected": "timed=False, segments=[]",
+      "actual": "timed=False segments=0",
+      "evidence": ""
+    },
+    {
+      "tid": "T05",
+      "item": "纯文本只作原文不伪造时间轴",
+      "pass": true,
+      "expected": "timed=False, segments=[], paragraphs=2",
+      "actual": "timed=False segs=0 paras=2",
+      "evidence": ""
+    },
+    {
+      "tid": "T05",
+      "item": "错误时间轴被拒：结束时间不大于开始",
+      "pass": true,
+      "expected": "errors 含 end_not_after_start",
+      "actual": "reasons=['end_not_after_start']",
+      "evidence": ""
+    },
+    {
+      "tid": "T05",
+      "item": "错误定位到具体条目：结束时间不大于开始",
+      "pass": true,
+      "expected": "message + line/index",
+      "actual": "line=2 index=1 msg=第 1 条（第 2 行）结束时间不大于开始时间：5.000 → 3.000",
+      "evidence": ""
+    },
+    {
+      "tid": "T05",
+      "item": "错误时间轴被拒：时间轴倒序",
+      "pass": true,
+      "expected": "errors 含 out_of_order",
+      "actual": "reasons=['out_of_order']",
+      "evidence": ""
+    },
+    {
+      "tid": "T05",
+      "item": "错误定位到具体条目：时间轴倒序",
+      "pass": true,
+      "expected": "message + line/index",
+      "actual": "line=6 index=2 msg=第 2 条（第 6 行）开始时间 5.000s 早于上一条（第 1 条）的结束时间 12.000s，时间轴必须递增",
+      "evidence": ""
+    },
+    {
+      "tid": "T05",
+      "item": "错误时间轴被拒：超出音频时长",
+      "pass": true,
+      "expected": "errors 含 beyond_audio",
+      "actual": "reasons=['beyond_audio']",
+      "evidence": ""
+    },
+    {
+      "tid": "T05",
+      "item": "错误定位到具体条目：超出音频时长",
+      "pass": true,
+      "expected": "message + line/index",
+      "actual": "line=2 index=1 msg=第 1 条（第 2 行）结束时间 540.000s 超出音频时长 80.500s",
+      "evidence": ""
+    },
+    {
+      "tid": "T05",
+      "item": "坏文件被拒且不静默成功",
+      "pass": true,
+      "expected": "errors 非空 + segments 空",
+      "actual": "errors=2 segs=0",
+      "evidence": ""
+    },
+    {
+      "tid": "T05",
+      "item": "空字幕不报假成功",
+      "pass": true,
+      "expected": "segments=[]",
+      "actual": "segments=0 errors=1",
+      "evidence": ""
+    },
+    {
+      "tid": "T05",
+      "item": "音频 SHA-256 稳定可复现",
+      "pass": true,
+      "expected": "64 hex 且两次一致",
+      "actual": "f343c64c697dfed6… len=64",
+      "evidence": ""
+    },
+    {
+      "tid": "T04",
+      "item": "常见音频后缀被接受",
+      "pass": true,
+      "expected": "mp3/m4a 允许",
+      "actual": "mp3=True m4a=True",
+      "evidence": ""
+    },
+    {
+      "tid": "T04",
+      "item": "非音频后缀被拒",
+      "pass": true,
+      "expected": "exe 拒绝",
+      "actual": "False",
+      "evidence": ""
+    },
+    {
+      "tid": "T07",
+      "item": "播放器已挂载",
+      "pass": true,
+      "expected": "存在 media 元素",
+      "actual": "{\"src\": \"http://127.0.0.1:5187/output/v2_assets/cet/cet4-sample-hope-wish.mp3\", \"duration\": 80.53, \"paused\": true, \"readyState\": 4}",
+      "evidence": ""
+    },
+    {
+      "tid": "T07",
+      "item": "拖动定位真实生效",
+      "pass": true,
+      "expected": "currentTime≈5.0",
+      "actual": "{\"seek\": 5, \"rate\": 1.5, \"paused\": true, \"duration\": 80.53}",
+      "evidence": ""
+    },
+    {
+      "tid": "T07",
+      "item": "倍速真实生效",
+      "pass": true,
+      "expected": "playbackRate=1.5",
+      "actual": "1.5",
+      "evidence": ""
+    },
+    {
+      "tid": "T07",
+      "item": "音频时长有效",
+      "pass": true,
+      "expected": "duration > 10s",
+      "actual": "80.53",
+      "evidence": ""
+    },
+    {
+      "tid": "T07",
+      "item": "音源非空",
+      "pass": true,
+      "expected": "非空音频地址",
+      "actual": "http://127.0.0.1:5187/output/v2_assets/cet/cet4-sample-hope-wish.mp3",
+      "evidence": ""
+    },
+    {
+      "tid": "T08",
+      "item": "原文已渲染",
+      "pass": true,
+      "expected": "原文文本 >20 字符",
+      "actual": "{\"sel\": \"#subtitle-timeline\", \"len\": 730}",
+      "evidence": ""
+    },
+    {
+      "tid": "T08",
+      "item": "CET 词表高亮渲染",
+      "pass": true,
+      "expected": "带高亮词的句子（['sentences']）应渲染出高亮",
+      "actual": "{\"count\": 1, \"sample\": [\"sentences★\"]}",
+      "evidence": ""
+    },
+    {
+      "tid": "T07",
+      "item": "工作区截图已存",
+      "pass": true,
+      "expected": "截图文件存在",
+      "actual": "/tmp/vbfull/t07-workspace.png",
+      "evidence": ""
+    },
+    {
+      "tid": "T07",
+      "item": "无致命 JS 运行时错误",
+      "pass": true,
+      "expected": "无 pageerror / 5xx",
+      "actual": "[]",
+      "evidence": ""
+    },
+    {
+      "tid": "T07",
+      "item": "无 409 接口冲突",
+      "pass": true,
+      "expected": "工作区不应出现 409",
+      "actual": "无",
+      "evidence": ""
+    },
+    {
+      "tid": "T12",
+      "item": "首页标题为 CET 口径",
+      "pass": true,
+      "expected": "含「四六级」或「听力」",
+      "actual": "EchoLingo · 四六级听力",
+      "evidence": ""
+    },
+    {
+      "tid": "T12",
+      "item": "泛化入口已退出（可见性判定）",
+      "pass": true,
+      "expected": "无可见的泛化入口文案",
+      "actual": "可见命中=[]",
+      "evidence": ""
+    },
+    {
+      "tid": "T12",
+      "item": "导航已收束为听力/收藏/设置",
+      "pass": true,
+      "expected": "无「个人档案/课程/词汇/句子库」",
+      "actual": "导航=['🎧 听力材料', '⭐ 我的收藏', '⚙️ 设置'] 残留=[]",
+      "evidence": ""
+    },
+    {
+      "tid": "T12",
+      "item": "收藏页可打开且有内容",
+      "pass": true,
+      "expected": ">30 字符",
+      "actual": "352 字符",
+      "evidence": ""
+    },
+    {
+      "tid": "T12",
+      "item": "设置页可打开且有内容",
+      "pass": true,
+      "expected": ">30 字符",
+      "actual": "690 字符",
+      "evidence": ""
+    },
+    {
+      "tid": "T14",
+      "item": "桌面 1440x900 无横向溢出",
+      "pass": true,
+      "expected": "scrollWidth <= clientWidth+4",
+      "actual": "{\"scrollW\": 1440, \"clientW\": 1440, \"canScroll\": false}",
+      "evidence": ""
+    },
+    {
+      "tid": "T14",
+      "item": "桌面窄 1280x800 无横向溢出",
+      "pass": true,
+      "expected": "scrollWidth <= clientWidth+4",
+      "actual": "{\"scrollW\": 1280, \"clientW\": 1280, \"canScroll\": false}",
+      "evidence": ""
+    },
+    {
+      "tid": "T14",
+      "item": "平板 768x1024 无横向溢出",
+      "pass": true,
+      "expected": "scrollWidth <= clientWidth+4",
+      "actual": "{\"scrollW\": 768, \"clientW\": 768, \"canScroll\": true}",
+      "evidence": ""
+    },
+    {
+      "tid": "T14",
+      "item": "窄窗口 375x780 无横向溢出",
+      "pass": true,
+      "expected": "scrollWidth <= clientWidth+4",
+      "actual": "{\"scrollW\": 375, \"clientW\": 375, \"canScroll\": true}",
+      "evidence": ""
+    }
+  ]
+}

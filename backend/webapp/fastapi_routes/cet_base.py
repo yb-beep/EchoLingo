@@ -226,11 +226,16 @@ async def import_material(
     category: str = Form(default=""),
     subtitle: UploadFile | None = File(default=None),
     allow_duplicate: bool = Form(default=False),
+    auto_split: bool = Form(default=False),
 ):
     """导入本地材料（P2）：音频必填，字幕/文本可选。
 
-    返回 `{duplicate, lesson, lessonUrl, material, subtitle, warnings}`。
+    返回 `{duplicate, lesson, lessonUrl, material, subtitle, autoSplit, warnings}`。
     校验失败返回 422 且带逐条 errors（含条目序号与行号），**不留下任何材料**。
+
+    `auto_split`（P3-1）：「用本地模型自动切句（无需 API key）」，
+    **默认 false**。为 true 时服务层还会再校验一次（有字幕 → 422 硬拒），
+    前端 disabled 只是体验层，不是安全边界。
     """
     audio_payload = await audio.read()
     if not audio_payload:
@@ -253,6 +258,7 @@ async def import_material(
             subtitle_bytes=subtitle_payload,
             subtitle_filename=subtitle_name,
             allow_duplicate=allow_duplicate,
+            auto_split=auto_split,
         )
     except cet_import.ImportValidationError as exc:
         raise HTTPException(

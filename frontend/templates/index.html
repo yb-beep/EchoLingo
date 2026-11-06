@@ -1689,6 +1689,24 @@
             <span class="reading-upload-note" id="cet-subtitle-note">不选也能导入，导入后显示「暂无逐句定位」</span>
           </div>
           <div id="cet-import-check" class="cet-import-check" hidden aria-live="polite"></div>
+
+          {# P3-1：可选的本地自动切句。**默认不勾**（不写 checked）。
+             只有「没有任何用户字幕」时才允许勾选 —— 有 SRT/VTT/句子 JSON 时
+             由 cetSyncAutoSplitOption() 置 disabled 并说明原因，
+             后端 import_local_material 还会再硬校验一次（不能只靠前端）。
+             faster_whisper 不可用时同样 disabled（能力由 /import/formats 的
+             autoSplit 字段下发，不在这里写死）。
+             样式内联：本区块不得改 cet-base.css（那是包4 的文件）。 #}
+          <div id="cet-auto-split-box"
+               style="margin-top:10px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface-alt); font-size:12px; line-height:1.6;">
+            <label id="cet-auto-split-label" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; color:var(--ink);">
+              <input type="checkbox" id="cet-auto-split" onchange="cetOnAutoSplitToggle()">
+              <span>用本地模型自动切句（无需 API key）</span>
+            </label>
+            <div id="cet-auto-split-note" style="margin-top:4px; color:var(--muted, #667);">
+              仅音频或纯文本原文可用：会用本机模型生成逐句时间轴，导入后稍等片刻即可逐句精听。
+            </div>
+          </div>
         </section>
       </div>
       <div class="gen-action-row">
@@ -8203,6 +8221,9 @@ async function cetManageMaterial(lessonId, action) {
 }
 
 // ── 本地导入（P2 界面）：优先底座端点，404 时降级到现有上传链路 ──
+// P3-1：自动切句的能力与可用性。`null` = 还没探测到（保守：不允许勾）。
+let _cetAutoSplitCapability = null;
+
 function cetImportFormatNote() {
   fetch('/api/cet/base/import/formats', {cache: 'no-store'})
     .then(resp => resp.ok ? resp.json() : null)
@@ -8216,8 +8237,96 @@ function cetImportFormatNote() {
       if (subEl && Array.isArray(data.subtitle) && data.subtitle.length) {
         subEl.textContent = `${data.subtitle.join(' / ')}：带时间轴的可逐句定位；纯文本只作原文，不伪造时间戳`;
       }
+      // 能力来自后端探测（faster_whisper 是否装了、模型是否在本地、ffmpeg 是否可用）
+      _cetAutoSplitCapability = data.autoSplit || {available: false, reason: '当前服务未提供自动切句能力。'};
+      cetSyncAutoSplitOption();
     })
-    .catch(() => { /* 格式清单拿不到就保留默认文案，不影响导入 */ });
+    .catch(() => {
+      // 拿不到能力信息 → 保守禁用，并如实说明（不能假装可用）
+      _cetAutoSplitCapability = {
+        available: false,
+        reason: '无法读取本机自动切句能力（导入格式接口不可用）。',
+      };
+      cetSyncAutoSplitOption();
+    });
+}
+
+// 判断「用户选的这个附件是不是带时间轴的字幕」。
+// 只有纯文本 .txt 是允许与自动切句共存的（走文本对齐）；
+// SRT / VTT / 句子 JSON 都必须禁用自动切句（后端也会硬拒）。
+function cetSubtitleIsTimed(file) {
+  if (!file) return false;
+  const name = String(file.name || '').toLowerCase();
+  return name.endsWith('.srt') || name.endsWith('.vtt') || name.endsWith('.json');
+}
+
+// 同步「自动切句」选项的可用状态：disabled + 原因文案，一处决策。
+// 三种禁用原因（优先级从高到低）：
+//   1. 已选带时间轴的字幕 → 说明会冲突（这是 P3-1 的核心约束）
+//   2. 后端探测到 faster_whisper/ffmpeg 不可用 → 说明缺什么、怎么装
+//   3. 还没探测到能力 → 保守禁用
+function cetSyncAutoSplitOption() {
+  const box = document.getElementById('cet-auto-split-box');
+  const input = document.getElementById('cet-auto-split');
+  const label = document.getElementById('cet-auto-split-label');
+  const note = document.getElementById('cet-auto-split-note');
+  if (!box || !input || !note) return;
+
+  const subtitleFile = document.getElementById('cet-subtitle-input')?.files?.[0] || null;
+  const hasTimedSubtitle = cetSubtitleIsTimed(subtitleFile);
+  const capability = _cetAutoSplitCapability;
+
+  let disabled = false;
+  let reason = '';
+  if (hasTimedSubtitle) {
+    disabled = true;
+    reason = '已选择带时间轴的字幕（SRT / VTT / 句子 JSON），不能再启用自动切句：'
+      + '本地转写会覆盖你上传的字幕时间轴。想自动切句请只传音频，或改传纯文本原文（.txt）。';
+  } else if (!capability) {
+    disabled = true;
+    reason = '正在检查本机自动切句能力…';
+  } else if (!capability.available) {
+    disabled = true;
+    reason = capability.reason || '本机当前无法使用本地模型自动切句。';
+    if (capability.hint) reason += ` ${capability.hint}`;
+  } else if (capability.hint) {
+    // 可用但模型未下载：允许勾选，但如实提示首次会下载
+    reason = capability.hint;
+  } else {
+    reason = '仅音频或纯文本原文可用：会用本机模型生成逐句时间轴，导入后稍等片刻即可逐句精听。';
+  }
+
+  input.disabled = disabled;
+  if (disabled) {
+    // 禁用时必须**取消勾选**：留着勾选态提交上去会被后端 422 拒，
+    // 用户看到的却是「我明明勾了却不生效」。
+    input.checked = false;
+    input.setAttribute('aria-disabled', 'true');
+    box.style.opacity = '0.65';
+    if (label) label.style.cursor = 'not-allowed';
+  } else {
+    input.removeAttribute('aria-disabled');
+    box.style.opacity = '1';
+    if (label) label.style.cursor = 'pointer';
+  }
+  note.textContent = reason;
+  note.dataset.reason = disabled ? 'disabled' : 'enabled';
+}
+
+function cetOnAutoSplitToggle() {
+  const input = document.getElementById('cet-auto-split');
+  const note = document.getElementById('cet-auto-split-note');
+  if (!input || !note) return;
+  const capability = _cetAutoSplitCapability;
+  if (input.checked && capability?.available) {
+    const hasText = Boolean(document.getElementById('cet-subtitle-input')?.files?.[0]);
+    note.textContent = hasText
+      ? '将按你上传的原文做「文本对齐」：句子文本用你的原文，只补时间轴。'
+      : '将用本机模型做「纯转写」：句子文本来自识别结果，可能有少量错字。';
+    note.dataset.reason = 'checked';
+    return;
+  }
+  cetSyncAutoSplitOption();
 }
 
 function cetOnAudioPicked() {
@@ -8242,6 +8351,8 @@ function cetOnSubtitlePicked() {
   note.textContent = file ? file.name : '不选也能导入，导入后显示「暂无逐句定位」';
   const check = document.getElementById('cet-import-check');
   if (check) check.hidden = true;
+  // 换了附件 → 自动切句的可勾状态要跟着变（选了 SRT 就禁用）
+  cetSyncAutoSplitOption();
 }
 
 function cetSetImportProgress(percent, label) {
@@ -8303,6 +8414,12 @@ function cetImportFormData() {
   form.append('title', (document.getElementById('cet-title-input')?.value || '').trim());
   form.append('level', document.getElementById('cet-level-input')?.value || 'unspecified');
   form.append('category', document.getElementById('cet-category-input')?.value || '');
+  // P3-1：默认不勾 → 不传 true，后端默认值就是 false。
+  // 这里只在**真正可勾且用户勾了**时才提交 true，避免 disabled 残留的勾选态
+  // 被提交上去（后端会 422，用户会困惑「为什么勾了不生效」）。
+  const autoSplitEl = document.getElementById('cet-auto-split');
+  const autoSplit = Boolean(autoSplitEl && autoSplitEl.checked && !autoSplitEl.disabled);
+  form.append('auto_split', autoSplit ? 'true' : 'false');
   return form;
 }
 
@@ -8375,7 +8492,17 @@ async function cetStartImport() {
       const detail = data.detail;
       throw new Error(typeof detail === 'string' ? detail : (detail?.message || `导入失败（${resp.status}）`));
     }
-    cetSetImportProgress(100, data.duplicate ? '已有同一材料，正在打开…' : '导入完成，正在打开…');
+    // P3-1：自动切句是**后台任务**，导入本身已完成。
+    // 文案要说清「已开始、稍后变可逐句」，不能让用户以为已经能逐句听了。
+    const autoSplitQueued = Boolean(data.autoSplit?.queued);
+    cetSetImportProgress(
+      100,
+      data.duplicate
+        ? '已有同一材料，正在打开…'
+        : autoSplitQueued
+          ? '导入完成，已在后台自动切句，正在打开…'
+          : '导入完成，正在打开…',
+    );
     if (data.warnings?.length) cetShowImportErrors([], `导入完成，但请注意：${data.warnings.join('；')}`);
     const url = data.lessonUrl || (data.lesson?.id ? `/workspace/${data.lesson.id}` : '');
     if (url) { window.location.assign(url); return; }
@@ -8457,6 +8584,10 @@ function cetResetImport() {
   cetClearImportErrors();
   const check = document.getElementById('cet-import-check');
   if (check) check.hidden = true;
+  // P3-1：重置时自动切句必须回到「不勾」的默认态（默认不勾是硬要求）
+  const autoSplitEl = document.getElementById('cet-auto-split');
+  if (autoSplitEl) autoSplitEl.checked = false;
+  cetSyncAutoSplitOption();
   cetHideImportProgress();
 }
 
@@ -8464,6 +8595,10 @@ function cetResetImport() {
 function cetInitLibraryUI() {
   if (!document.getElementById('cet-import-panel')) return;
   cetImportFormatNote();
+  // P3-1：先按「能力未探测」的保守态渲染（disabled + 「正在检查…」），
+  // 探测结果回来后再由 cetImportFormatNote 的 then 分支放开。
+  // 顺序不能反：先允许勾再禁用会让用户看到选项闪一下变灰。
+  cetSyncAutoSplitOption();
   document.querySelectorAll('[data-cet-level]').forEach(btn => {
     btn.addEventListener('click', () => {
       _cetLevel = btn.dataset.cetLevel || 'all';

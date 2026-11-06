@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import importlib.util
 import io
 import json
+import os
 import re
 import shutil
 import threading
@@ -718,6 +720,8 @@ def prepare_subtitle(
         # P3-2：说话人标记清洗报告。无标记时为空列表（行为不变）
         "speakerMarkers": [],
         "speakerMarkerCount": 0,
+        # P3-1：纯文本的行级结构（供自动切句的文本对齐用；timed 分支为空）
+        "sourceLines": [],
     }
 
     if fmt == "text":
@@ -728,12 +732,14 @@ def prepare_subtitle(
         # 先按行剥标记，再交给 `split_plain_text` 保持原有分段语义不变。
         cleaned_lines: list[str] = []
         marker_report: list[dict[str, Any]] = []
+        raw_lines: list[str] = []          # 清洗前的原始非空行（供文本对齐用）
         normalized = str(raw_text or "").lstrip("\ufeff")
         for raw_line in normalized.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
             line = re.sub(r"\s+", " ", raw_line).strip()
             if not line:
                 cleaned_lines.append("")   # 保留空行 = 保留原分段边界
                 continue
+            raw_lines.append(line)
             cleaned_text, markers = clean_speaker_markers(line)
             cleaned_lines.append(cleaned_text)
             for marker in markers:
@@ -755,6 +761,16 @@ def prepare_subtitle(
         result["sentenceCount"] = len(paragraphs)
         result["speakerMarkers"] = marker_report[:_MAX_MARKER_REPORT]
         result["speakerMarkerCount"] = len(marker_report)
+        # P3-1：自动切句（文本对齐）需要**行级结构 + 未合并的标记结构**。
+        # 两个坑都要避开：
+        #   1. `split_plain_text` 会把没有空行的连续行合并成一段（段落语义，
+        #      对「阅读稿」正确），32 行的原文 TXT 通常没有空行 → 合并成 1 段，
+        #      对齐时看不到行边界；
+        #   2. 若这里存**已清洗合并**的行（`…will happen? What?`），
+        #      P3-2 的「标记回声去重」就失效了（标记已被吃掉、无法判断哪段是回声）。
+        # 所以存**清洗前的原始行**，让 `_text_to_sentences` 自己做清洗 + 回声去重。
+        # 这些行不参与落库，只供对齐用。
+        result["sourceLines"] = list(raw_lines)
         return result
 
     if fmt == "json":
@@ -815,6 +831,217 @@ def audio_suffix_allowed(filename: str) -> bool:
     return Path(str(filename or "")).suffix.lower() in SUPPORTED_AUDIO_EXTS
 
 
+# ── 本地自动切句能力探测（P3-1）──────────────────────────────
+#
+# 「用本地模型自动切句（无需 API key）」是**可选**能力：默认关闭，
+# 且必须能在界面灰掉而不是让用户点了才报错。所以能力探测要能在
+# **不加载模型**的前提下回答「这台机器现在能不能做」。
+#
+# 探测三件事（缺一不可）：
+#   1. `faster_whisper` 能否 import（未装 → 灰掉）
+#   2. HF 缓存里有没有**可用的模型权重**（只有 config/tokenizer 不算：
+#      本轮实测 `models--Systran--faster-whisper-small` 缺 `model.bin`，
+#      光看目录存在会误报「可用」，然后转写时卡在联网下载）
+#   3. ffmpeg 是否存在（非音频容器要抽音轨）
+#
+# 全程不 import faster_whisper 的 C 扩展、不加载模型 —— 探测必须是毫秒级，
+# 否则每次打开首页都要等几秒。
+
+# 自动切句的默认模型。选 `large-v3-turbo` 而不是 `large-v3`：
+# 本机实测 105s 音频 turbo = 41s 转写 / large-v3 约 3 倍慢，
+# 而 turbo 的英文句级准确度对「切句」这个用途足够（句子边界不依赖极致精度）。
+# 允许用 `ELT_CET_AUTO_SPLIT_MODEL` 覆盖。
+DEFAULT_AUTO_SPLIT_MODEL = "large-v3-turbo"
+
+# 探测候选模型（按优先级）。界面显示第一个可用项的模型名。
+_AUTO_SPLIT_MODEL_CANDIDATES = (
+    "large-v3-turbo", "turbo", "large-v3", "medium", "small", "base", "tiny",
+)
+
+# 自动切句的转写线程数：与既有 `whisper_alignment` 的保守取值一致，
+# 避免把用户的机器占满（那会让「后台任务」变成「前台卡死」）。
+_AUTO_SPLIT_CPU_THREADS = max(1, min(4, (os.cpu_count() or 2)))
+
+
+def _hf_cache_roots() -> list[Path]:
+    """HuggingFace 缓存根目录候选（与 /health 的探测口径一致）。"""
+    roots: list[Path] = []
+    env_cache = (os.environ.get("HUGGINGFACE_HUB_CACHE") or "").strip()
+    if env_cache:
+        roots.append(Path(env_cache))
+    hf_home = (os.environ.get("HF_HOME") or "").strip()
+    if hf_home:
+        roots.append(Path(hf_home) / "hub")
+    roots.append(Path.home() / ".cache" / "huggingface" / "hub")
+    unique: list[Path] = []
+    for root in roots:
+        if root not in unique:
+            unique.append(root)
+    return unique
+
+
+def _model_repo_ids(model_name: str) -> list[str]:
+    """模型名 → 可能的 HF 仓库目录名（`models--<org>--<name>`）。
+
+    faster-whisper 的 `_MODELS` 映射决定实际仓库：`large-v3` 是 Systran，
+    `large-v3-turbo`/`turbo` 是 mobiuslabsgmbh。这里硬编码这两组已知映射，
+    不 import faster_whisper（那会拉起 C 扩展，探测就不再是毫秒级）。
+    """
+    known = {
+        "large-v3": ["Systran/faster-whisper-large-v3"],
+        "large-v2": ["Systran/faster-whisper-large-v2"],
+        "large-v1": ["Systran/faster-whisper-large-v1"],
+        "large": ["Systran/faster-whisper-large-v3"],
+        "large-v3-turbo": ["mobiuslabsgmbh/faster-whisper-large-v3-turbo"],
+        "turbo": ["mobiuslabsgmbh/faster-whisper-large-v3-turbo"],
+        "distil-large-v3": ["Systran/faster-distil-whisper-large-v3"],
+        "distil-medium.en": ["Systran/faster-distil-whisper-medium.en"],
+        "distil-small.en": ["Systran/faster-distil-whisper-small.en"],
+    }
+    if model_name in known:
+        return known[model_name]
+    return [
+        f"Systran/faster-whisper-{model_name}",
+        f"mobiuslabsgmbh/faster-whisper-{model_name}",
+    ]
+
+
+def _model_weights_present(model_name: str) -> dict[str, Any]:
+    """该模型在 HF 缓存里是否有**完整权重**（`model.bin` 非空）。
+
+    只看目录存在不够：本轮实测 small 的 snapshot 只有 config/tokenizer，
+    没有 model.bin，误判成可用会让转写卡在联网下载。
+    """
+    for repo_id in _model_repo_ids(model_name):
+        cache_dir = "models--" + repo_id.replace("/", "--")
+        for root in _hf_cache_roots():
+            candidate = root / cache_dir
+            if not candidate.is_dir():
+                continue
+            snapshots_root = candidate / "snapshots"
+            snapshots = (
+                sorted(
+                    [p for p in snapshots_root.glob("*") if p.is_dir()],
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                if snapshots_root.is_dir()
+                else []
+            )
+            for snapshot in snapshots:
+                weights = snapshot / "model.bin"
+                try:
+                    if weights.is_file() and weights.stat().st_size > 0:
+                        return {
+                            "present": True,
+                            "cacheDir": str(candidate),
+                            "snapshotDir": str(snapshot),
+                            "weightsBytes": weights.stat().st_size,
+                        }
+                except OSError:
+                    continue
+    return {"present": False, "cacheDir": "", "snapshotDir": "", "weightsBytes": 0}
+
+
+def faster_whisper_installed() -> bool:
+    """`faster_whisper` 是否可 import（用 find_spec，不真的 import）。"""
+    try:
+        return importlib.util.find_spec("faster_whisper") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def ffmpeg_available() -> bool:
+    try:
+        from sources.media_bins import find_ffmpeg
+
+        return bool(find_ffmpeg())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def auto_split_capability(*, refresh: bool = False) -> dict[str, Any]:
+    """「本地自动切句」能力探测（毫秒级，不加载模型）。
+
+    返回：
+    ```
+    {
+      "available": bool,            # 现在能不能用（界面据此决定是否灰掉）
+      "installed": bool,            # faster_whisper 是否装了
+      "ffmpeg": bool,               # ffmpeg 是否可用
+      "model": "large-v3-turbo",    # 将使用的模型（available=True 时有效）
+      "modelCached": bool,          # 该模型权重是否在本地缓存
+      "reason": "",                 # available=False 时的人话原因
+      "hint": "",                   # 可选修复提示
+    }
+    ```
+    """
+    global _AUTO_SPLIT_CAPABILITY
+    if not refresh and _AUTO_SPLIT_CAPABILITY is not None:
+        return dict(_AUTO_SPLIT_CAPABILITY)
+
+    installed = faster_whisper_installed()
+    ffmpeg = ffmpeg_available()
+    requested = (os.environ.get("ELT_CET_AUTO_SPLIT_MODEL") or "").strip()
+    candidates = (requested,) if requested else _AUTO_SPLIT_MODEL_CANDIDATES
+
+    model = ""
+    cached = False
+    weights_bytes = 0
+    for name in candidates:
+        if not name:
+            continue
+        info = _model_weights_present(name)
+        if info["present"]:
+            model, cached, weights_bytes = name, True, info["weightsBytes"]
+            break
+
+    if not installed:
+        result = {
+            "available": False, "installed": False, "ffmpeg": ffmpeg,
+            "model": "", "modelCached": False, "weightsBytes": 0,
+            "reason": "本机未安装 faster-whisper，无法用本地模型自动切句。",
+            "hint": "安装后重启服务即可：pip install faster-whisper",
+        }
+    elif not ffmpeg:
+        result = {
+            "available": False, "installed": True, "ffmpeg": False,
+            "model": "", "modelCached": cached, "weightsBytes": weights_bytes,
+            "reason": "未找到 ffmpeg，无法为自动切句提取音轨。",
+            "hint": "安装 ffmpeg 后重启服务。",
+        }
+    elif not cached:
+        # 权重不在本地缓存：仍然**不灰掉**，因为 faster-whisper 会自动下载。
+        # 但要把「首次会自动下载几百 MB」如实告诉用户 —— 不假装是瞬时任务。
+        result = {
+            "available": True, "installed": True, "ffmpeg": True,
+            "model": requested or DEFAULT_AUTO_SPLIT_MODEL,
+            "modelCached": False, "weightsBytes": 0,
+            "reason": "",
+            "hint": (
+                f"模型 {requested or DEFAULT_AUTO_SPLIT_MODEL} 尚未下载到本地，"
+                "首次使用会自动下载（需要联网，几百 MB），之后不再下载。"
+            ),
+        }
+    else:
+        result = {
+            "available": True, "installed": True, "ffmpeg": True,
+            "model": model, "modelCached": True, "weightsBytes": weights_bytes,
+            "reason": "", "hint": "",
+        }
+    _AUTO_SPLIT_CAPABILITY = result
+    return dict(result)
+
+
+_AUTO_SPLIT_CAPABILITY: dict[str, Any] | None = None
+
+
+def reset_auto_split_capability_cache() -> None:
+    """清探测缓存（测试用；也让环境变量变更后能立刻生效）。"""
+    global _AUTO_SPLIT_CAPABILITY
+    _AUTO_SPLIT_CAPABILITY = None
+
+
 def supported_formats() -> dict[str, Any]:
     """给界面显示的真实支持格式清单（每一项都有实测用例）。"""
     return {
@@ -828,6 +1055,10 @@ def supported_formats() -> dict[str, Any]:
             ".json": "仓库句子 JSON（sentences 数组，含 start/end），可逐句定位",
             ".txt": "纯文本原文，只作听力稿，不生成逐句时间轴",
         },
+        # P3-1：界面据此决定「自动切句」选项是否可勾、以及灰掉的原因文案。
+        # 每次请求都重新探测（探测本身是毫秒级的目录 stat，不加载模型），
+        # 这样装完 faster-whisper 或下完模型后刷新页面就生效，不必重启。
+        "autoSplit": auto_split_capability(refresh=True),
     }
 
 
@@ -972,7 +1203,550 @@ def _audio_probe(audio_bytes: bytes, filename: str) -> tuple[float | None, str]:
             pass
 
 
+# ── 本地自动切句（P3-1）──────────────────────────────────────
+#
+# 目标场景（任务书 P3-1 的原话）：真实真题最常见是「MP3 + 原文 TXT」。
+# 这种组合现在导入后 `subtitle_status='unavailable'`，不能逐句听。
+#
+# 两条路径，**有原文优先对齐**（这是任务书的明确要求）：
+#
+#   A. 有原文 TXT → **文本对齐**：原文句子已经是对的，缺的只是时间轴。
+#      用 faster-whisper 取**词级时间戳**（`word_timestamps=True`），
+#      再把原文句子投影到词时间轴上（`mfa_alignment.project_words_to_sentences`，
+#      与既有 MFA/whisper 对齐层同一套投影，不是新写一套）。
+#      → 好处：句子文本**完全来自用户原文**，不会被 ASR 改写；
+#        错字、专有名词、数字都保持用户给的样子。
+#
+#   B. 没有原文 → **纯转写**：直接按 whisper 的分段结果切句。
+#      → 文本来自 ASR（可能有错字），但没有原文时这是唯一选择。
+#
+# **为什么不直接复用 `start_local_lesson(transcript_path=...)`**（任务书提示的那条）：
+# 那条路径最终走到 `sources.baidu.build_local_video_lesson`，它用
+# `parse_subtitle_file(transcript)` 解析原文 —— 而那个解析器**只认 SRT/VTT 的
+# `-->` 行**，喂纯文本返回**空列表**（本轮实测：纯文本 → `[]`）。
+# 所以「把 TXT 当 transcript_path 传进去」会得到一个空时间轴，
+# 既不是文本对齐也不是转写，是个静默失败。这也是为什么这里自己做
+# 「原文 → 句子 → 词级投影」，而不是照抄那条路径。
+
+# 自动切句任务的进程内注册表：lesson_id → 任务状态。
+# 只用于「同一课程不重复排队」与状态查询；**不作为进度真相来源**——
+# 进度的真相是 `v2_lessons.subtitle_status`（前端已经在轮询它）。
+_AUTO_SPLIT_TASKS: dict[int, dict[str, Any]] = {}
+_AUTO_SPLIT_TASKS_GUARD = threading.Lock()
+
+# 自动切句失败时写进 `subtitle_error` 的文案前缀。
+# 前端 `cetAvailability()` 对 `failed` 显示「原文准备失败」，
+# 这里只补**具体原因**，不诱导重试转写（任务书明确要求）。
+_AUTO_SPLIT_ERROR_PREFIX = "自动切句失败"
+
+
+def auto_split_state(lesson_id: int) -> dict[str, Any]:
+    """查询某课程的自动切句任务状态（进程内；重启后为空，属正常）。"""
+    with _AUTO_SPLIT_TASKS_GUARD:
+        state = _AUTO_SPLIT_TASKS.get(int(lesson_id))
+        return dict(state) if state else {}
+
+
+def _set_auto_split_state(lesson_id: int, **changes: Any) -> None:
+    with _AUTO_SPLIT_TASKS_GUARD:
+        entry = _AUTO_SPLIT_TASKS.setdefault(int(lesson_id), {})
+        entry.update(changes)
+
+
+def _resolve_lesson_media_path(lesson: dict[str, Any]) -> Path | None:
+    """把课程的 `media_url` 解析成本机文件（复用 cet_materials 的同一份解析）。"""
+    from webapp.services import cet_materials
+
+    media_url = str(lesson.get("media_url") or "")
+    if not media_url:
+        return None
+    return cet_materials.resolve_media_path(media_url)
+
+
+def _text_to_sentences(text: str) -> list[str]:
+    """把原文纯文本切成「句子」列表（用于文本对齐的 target）。
+
+    与 `split_plain_text` 的区别：这里要的是**句子**不是段落。
+    规则：先按行拆，再按句末标点拆；行首说话人标记先剥掉（P3-2 同一套规则）。
+    空行不作为句界（段落边界在「逐句听」里没有意义）。
+
+    **标记回声去重也在这里做**（本轮 E2E 实测发现的真实缺陷）：
+    从句子 JSON 拼出来的 TXT 第 22 行同样是
+    `…will happen? / W: What?`，第 23 行是 `What?`。
+    只按标记拆 + 按标点切，会得到两个 `What?`（33 句 vs 原文 32 行）。
+    所以这里与 `_apply_speaker_cleaning` 用**同一条规则**：
+    拆出的尾巴若与**下一行**的首句逐字相同 → 是回声，丢弃。
+    """
+    lines: list[list[dict[str, str]]] = []
+    normalized = str(text or "").lstrip("\ufeff")
+    for raw_line in normalized.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            continue
+        parts = split_speaker_markers(line)
+        if parts:
+            lines.append(parts)
+
+    sentences: list[str] = []
+    for position, parts in enumerate(lines):
+        next_first = ""
+        if position + 1 < len(lines) and lines[position + 1]:
+            next_first = _normalize_for_compare(lines[position + 1][0]["text"])
+
+        kept = list(parts)
+        # 只对「拆出来的尾巴」做回声判定：首段是这一行自己的内容，永不删
+        while len(kept) > 1 and next_first and _normalize_for_compare(kept[-1]["text"]) == next_first:
+            kept.pop()
+
+        for part in kept:
+            # 按句末标点切，保留标点（不吞掉，用户原文要原样显示）
+            for piece in re.findall(r"[^.!?]+(?:[.!?]+|$)", part["text"]):
+                piece = piece.strip()
+                if piece:
+                    sentences.append(piece)
+    return sentences
+
+
+def _transcribe_words_local(audio_path: Path, model_name: str) -> list[dict[str, Any]]:
+    """用本地 faster-whisper 取词级时间戳 `[{label,start,end}]`（秒）。
+
+    **测试注入点**：单元测试 monkeypatch 本函数，避免每次真跑模型。
+    """
+    from faster_whisper import WhisperModel
+
+    model = WhisperModel(
+        model_name,
+        device="cpu",
+        compute_type="int8",
+        cpu_threads=_AUTO_SPLIT_CPU_THREADS,
+        num_workers=1,
+    )
+    segments, _info = model.transcribe(
+        str(audio_path), language="en", vad_filter=True, word_timestamps=True,
+    )
+    words: list[dict[str, Any]] = []
+    for segment in segments:
+        for word in segment.words or []:
+            label = str(word.word or "").strip()
+            if not label or word.start is None or word.end is None:
+                continue
+            words.append({
+                "label": label, "start": float(word.start), "end": float(word.end),
+            })
+    return words
+
+
+def _transcribe_segments_local(
+    audio_path: Path, model_name: str,
+) -> list[dict[str, Any]]:
+    """用本地 faster-whisper 取**句级**分段 `[{start,end,text}]`（无原文时的路径 B）。
+
+    **测试注入点**：单元测试 monkeypatch 本函数。
+    """
+    from faster_whisper import WhisperModel
+
+    model = WhisperModel(
+        model_name,
+        device="cpu",
+        compute_type="int8",
+        cpu_threads=_AUTO_SPLIT_CPU_THREADS,
+        num_workers=1,
+    )
+    segments, _info = model.transcribe(
+        str(audio_path), language="en", vad_filter=True,
+    )
+    out: list[dict[str, Any]] = []
+    for segment in segments:
+        text = re.sub(r"\s+", " ", str(segment.text or "")).strip()
+        if not text:
+            continue
+        out.append({
+            "start": float(segment.start or 0),
+            "end": float(segment.end or 0),
+            "text": text,
+        })
+    return out
+
+
+def align_text_to_words(
+    sentences: list[str], words: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """把原文句子投影到词级时间轴上（路径 A 的核心，**纯函数、可单测**）。
+
+    用 `difflib.SequenceMatcher` 对齐「原句的词序列」与「ASR 的词序列」，
+    与 `mfa_alignment.project_words_to_sentences` 同一思路，但这里是
+    **独立实现**：那个函数吃的是 `translation_units`（要有 `index`/`text`
+    等字段）与 MFA 风格的词（`label`/`start`/`end`/`phones`），
+    而且它会做 `coverage >= 0.55` 的阈值判断与 `pause_*` 计算。
+    自动切句只需要「每句的起止时间」，用完整投影层会引入不必要的字段依赖。
+
+    返回 `[{index,start,end,text,coverage}]`，时间轴保证：
+    - 单调递增、`end > start`
+    - 不越出音频（末句 end 不超过最后词的 end）
+    - 对齐覆盖率低的句子仍然给出时间（按字符比例插值），但 `coverage` 如实报低
+
+    无词数据 → 返回空列表（调用方据此判失败，不伪造时间轴）。
+    """
+    from difflib import SequenceMatcher
+
+    token_re = re.compile(r"[A-Za-z0-9]+(?:['\-][A-Za-z0-9]+)*")
+
+    if not words or not sentences:
+        return []
+
+    def normalize(token: str) -> str:
+        return re.sub(r"[^a-z0-9']", "", str(token or "").lower())
+
+    # 展平：原句的每个词 → (句序号, 词)
+    expected: list[tuple[int, str]] = []
+    for sentence_index, sentence in enumerate(sentences):
+        for token in token_re.findall(str(sentence or "")):
+            normalized = normalize(token)
+            if normalized:
+                expected.append((sentence_index, normalized))
+
+    observed = [
+        (index, normalize(word.get("label", "")))
+        for index, word in enumerate(words)
+    ]
+    observed = [(index, token) for index, token in observed if token]
+
+    if not expected or not observed:
+        return []
+
+    matcher = SequenceMatcher(
+        None,
+        [token for _, token in expected],
+        [token for _, token in observed],
+        autojunk=False,
+    )
+    expected_to_observed: dict[int, int] = {}
+    for expected_start, observed_start, size in matcher.get_matching_blocks():
+        for offset in range(size):
+            expected_to_observed[expected_start + offset] = observed[observed_start + offset][0]
+
+    expected_by_sentence: dict[int, list[int]] = {}
+    for expected_index, (sentence_index, _token) in enumerate(expected):
+        expected_by_sentence.setdefault(sentence_index, []).append(expected_index)
+
+    audio_end = float(words[-1]["end"]) if words else 0.0
+    out: list[dict[str, Any]] = []
+    cursor = 0.0
+    for sentence_index, sentence in enumerate(sentences):
+        expected_indexes = expected_by_sentence.get(sentence_index, [])
+        matched_words = [
+            words[expected_to_observed[index]]
+            for index in expected_indexes
+            if index in expected_to_observed
+        ]
+        coverage = len(matched_words) / max(1, len(expected_indexes))
+
+        if matched_words:
+            start = float(matched_words[0]["start"])
+            end = float(matched_words[-1]["end"])
+        else:
+            # 完全没对齐上：按「剩余音频 / 剩余句数」给一个不越界的位置，
+            # 保证逐句听仍能跳转；coverage=0 如实暴露「这句是估的」。
+            remaining_sentences = max(1, len(sentences) - sentence_index)
+            span = max(0.4, (audio_end - cursor) / remaining_sentences)
+            start, end = cursor, min(audio_end, cursor + span)
+
+        start = max(cursor, start)
+        end = max(start + 0.05, min(end, audio_end) if audio_end > start else end)
+        cursor = end
+        out.append({
+            "index": sentence_index,
+            "start": round(start, 4),
+            "end": round(end, 4),
+            "text": str(sentence or "").strip(),
+            "coverage": round(coverage, 4),
+        })
+    return out
+
+
+def build_segments_from_text_alignment(
+    text: str, words: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """原文 + 词级时间戳 → 可落库的句子段（路径 A 的组装步骤）。"""
+    sentences = _text_to_sentences(text)
+    if not sentences:
+        return []
+    aligned = align_text_to_words(sentences, words)
+    return [
+        {
+            "index": item["index"],
+            "start": float(item["start"]),
+            "end": float(item["end"]),
+            "text": item["text"],
+        }
+        for item in aligned
+        if item["text"]
+    ]
+
+
+def build_segments_from_transcription(
+    transcription: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """纯转写结果 → 可落库的句子段（路径 B 的组装步骤）。
+
+    做两件归一：剥行首说话人标记（P3-2 同一套规则）、去掉相邻完全重复段
+    （whisper 在静音边界偶发重复输出同一句）。
+    """
+    segments: list[dict[str, Any]] = []
+    previous_text = ""
+    for item in transcription:
+        text, _markers = clean_speaker_markers(str(item.get("text") or ""))
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            continue
+        if _normalize_for_compare(text) == _normalize_for_compare(previous_text):
+            continue
+        start = float(item.get("start") or 0)
+        end = float(item.get("end") or 0)
+        if end <= start:
+            end = start + 0.05
+        segments.append({
+            "index": len(segments),
+            "start": round(start, 4),
+            "end": round(end, 4),
+            "text": text,
+        })
+        previous_text = text
+    return segments
+
+
+def _finish_auto_split(
+    lesson_id: int,
+    *,
+    segments: list[dict[str, Any]],
+    path_used: str,
+    text_source: str,
+) -> None:
+    """自动切句成功：写字幕 + 状态收敛为 ready。"""
+    _write_segments(lesson_id, segments)
+    finalize_lesson_status(lesson_id, has_timeline=True)
+    # `finalize_lesson_status` 会把 subtitle_error 清空；把「怎么来的」记进
+    # sidecar（不改 schema），供界面/排查用
+    _write_auto_split_meta(
+        lesson_id,
+        {
+            "mode": "auto_split",
+            "path": path_used,
+            "textSource": text_source,
+            "sentenceCount": len(segments),
+            "model": auto_split_capability().get("model") or DEFAULT_AUTO_SPLIT_MODEL,
+        },
+    )
+
+
+def _write_auto_split_meta(lesson_id: int, payload: dict[str, Any]) -> None:
+    path = speaker_markers_path(lesson_id)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        (path.parent / "auto_split.json").write_text(
+            json.dumps({"lessonId": int(lesson_id), **payload}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def read_auto_split_meta(lesson_id: int) -> dict[str, Any]:
+    path = speaker_markers_path(lesson_id)
+    if path is None:
+        return {}
+    target = path.parent / "auto_split.json"
+    if not target.is_file():
+        return {}
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _auto_split_worker(
+    lesson_id: int,
+    *,
+    transcript_text: str,
+    model_name: str,
+) -> None:
+    """后台线程：自动切句。**任何失败都写明确原因，不冒成 pending 悬挂。**
+
+    状态流转（复用既有枚举，不新造）：
+        pending（= 前端「正在准备原文」）
+          → ready（= 「可逐句精听」）
+          → failed（= 「原文准备失败」）+ subtitle_error 写具体原因
+    """
+    from webapp.services import cet_materials
+
+    try:
+        lesson = db.get_v2_lesson(int(lesson_id))
+        if not lesson:
+            return
+        audio_path = _resolve_lesson_media_path(lesson)
+        if audio_path is None or not audio_path.is_file():
+            raise RuntimeError("课程音频文件不可读，无法自动切句")
+
+        has_text = bool(str(transcript_text or "").strip())
+        _set_auto_split_state(
+            lesson_id, status="running", path=("text_alignment" if has_text else "transcribe"),
+        )
+
+        if has_text:
+            words = _transcribe_words_local(audio_path, model_name)
+            segments = build_segments_from_text_alignment(transcript_text, words)
+            if not segments:
+                raise RuntimeError(
+                    "已读取原文但无法与音频对齐（原文与录音内容差异过大？）"
+                )
+            _finish_auto_split(
+                lesson_id, segments=segments,
+                path_used="text_alignment", text_source="user_transcript",
+            )
+        else:
+            transcription = _transcribe_segments_local(audio_path, model_name)
+            segments = build_segments_from_transcription(transcription)
+            if not segments:
+                raise RuntimeError("本地模型没有识别出任何语音内容（录音可能全是静音）")
+            _finish_auto_split(
+                lesson_id, segments=segments,
+                path_used="transcribe", text_source="local_asr",
+            )
+
+        _set_auto_split_state(
+            lesson_id, status="ready", sentenceCount=len(segments),
+        )
+        print(
+            f"[cet-import] lesson {lesson_id}: 自动切句完成，"
+            f"{len(segments)} 句（{_auto_split_path_label(has_text)}）",
+            flush=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        reason = str(exc) or type(exc).__name__
+        # 关键：写成 failed + 明确原因。
+        # 不写 pending（前端会永远显示「正在准备原文」）；
+        # 也不留空 error（用户只看到「原文准备失败」却不知道为什么）。
+        try:
+            db.set_v2_lesson_status(
+                int(lesson_id),
+                subtitle_status="failed",
+                subtitle_error=f"{_AUTO_SPLIT_ERROR_PREFIX}：{reason}",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        _set_auto_split_state(lesson_id, status="failed", error=reason)
+        print(f"[cet-import] lesson {lesson_id}: 自动切句失败：{reason}", flush=True)
+        # 失败也刷新一下材料视图（让前端卡片上的「原文准备失败」立刻可见）
+        try:
+            cet_materials.material_item(db.get_v2_lesson(int(lesson_id)) or {})
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _auto_split_path_label(has_text: bool) -> str:
+    return "文本对齐" if has_text else "纯转写"
+
+
+def enqueue_auto_split(
+    lesson_id: int, *, transcript_text: str, model_name: str | None = None,
+) -> dict[str, Any]:
+    """排队自动切句（后台线程，不阻塞导入请求）。
+
+    先把状态置 `pending`（= 前端「正在准备原文」）再起线程 ——
+    顺序不能反：如果先起线程，线程可能在状态置 pending 之前就写完 ready，
+    然后被这里的 pending 覆盖，前端就永远停在「正在准备原文」。
+    """
+    model = (model_name or auto_split_capability().get("model")
+             or DEFAULT_AUTO_SPLIT_MODEL)
+    db.set_v2_lesson_status(int(lesson_id), subtitle_status="pending", subtitle_error="")
+    _set_auto_split_state(
+        lesson_id, status="queued", model=model,
+        path=("text_alignment" if str(transcript_text or "").strip() else "transcribe"),
+    )
+    db.spawn_with_db_context(
+        _auto_split_worker,
+        int(lesson_id),
+        transcript_text=transcript_text,
+        model_name=model,
+        name=f"cet-auto-split-{lesson_id}",
+    )
+    return {
+        "queued": True,
+        "lessonId": int(lesson_id),
+        "model": model,
+        "path": "text_alignment" if str(transcript_text or "").strip() else "transcribe",
+    }
+
+
 # ── 导入主流程 ──────────────────────────────────────────────
+
+
+def _validate_auto_split_request(
+    *,
+    auto_split: bool,
+    prepared: dict[str, Any] | None,
+    subtitle_present: bool,
+) -> dict[str, Any]:
+    """P3-1 的后端硬校验：决定「自动切句」这次到底排不排队。
+
+    返回 `{"queue": bool, "reason": str, "transcriptText": str}`。
+    校验失败**抛 `ImportValidationError`**（422 + 明确 reason），
+    不是静默忽略 —— 否则用户勾了却没生效，界面还显示成功，是更坏的体验。
+
+    三条判定：
+    1. `auto_split=False`（默认）→ 不排队，**不产生任何副作用**，行为与返修前一致；
+    2. 有任何用户字幕（SRT/VTT/句子 JSON，即 `prepared["timed"]=True`）→ **拒绝**。
+       这是任务书「从根上避开转写覆盖用户字幕竞态」的落点：
+       不是「尽量别覆盖」，而是这条请求根本不允许存在；
+    3. 纯文本 TXT 是**允许**的，并且是**优先路径**（文本对齐）；
+       仅音频（无任何附件）也允许，走纯转写。
+
+    `faster_whisper`/ffmpeg 不可用 → 拒绝并给安装提示（前端也会灰掉，
+    但直接调 API 的人必须也拿到明确原因）。
+    """
+    if not auto_split:
+        return {"queue": False, "reason": "", "transcriptText": ""}
+
+    # 2. 有用户字幕 → 硬拒
+    if prepared is not None and prepared.get("timed"):
+        fmt = str(prepared.get("format") or "").strip() or "字幕"
+        raise ImportValidationError([{
+            "index": 0, "line": 0,
+            "reason": "auto_split_conflicts_with_subtitle",
+            "message": (
+                f"已提供带时间轴的{fmt.upper() if fmt.isascii() else fmt}字幕，"
+                "不能再启用自动切句：本地转写会覆盖你上传的字幕时间轴。"
+                "如需自动切句，请不要上传字幕文件（只传音频，或只传纯文本原文）。"
+            ),
+        }], message="自动切句与已上传字幕冲突")
+
+    # 3. 能力探测
+    capability = auto_split_capability()
+    if not capability.get("available"):
+        raise ImportValidationError([{
+            "index": 0, "line": 0,
+            "reason": "auto_split_unavailable",
+            "message": capability.get("reason") or "本机无法使用本地模型自动切句。",
+        }], message="本地自动切句不可用")
+
+    transcript_text = ""
+    if prepared is not None and prepared.get("paragraphs"):
+        # 有原文 TXT：优先文本对齐，句子文本完全来自用户原文。
+        # 用**行级**结构而不是合并后的段落：原文 TXT 常无空行，
+        # `paragraphs` 会被合并成 1 段，对齐时就丢了行边界。
+        lines = prepared.get("sourceLines") or prepared["paragraphs"]
+        transcript_text = "\n".join(str(item) for item in lines)
+
+    return {
+        "queue": True,
+        "reason": "",
+        "transcriptText": transcript_text,
+        "path": "text_alignment" if transcript_text.strip() else "transcribe",
+    }
+
 
 # 说话人标记的 sidecar 文件名。放在课程资产目录下
 # （`output/v2_assets/<lesson_id>/speaker_markers.json`），与媒体同目录。
@@ -1143,6 +1917,7 @@ def import_local_material(
     subtitle_bytes: bytes | None = None,
     subtitle_filename: str = "",
     allow_duplicate: bool = False,
+    auto_split: bool = False,
 ) -> dict[str, Any]:
     """导入一份本地材料（音频 + 可选字幕/文本）。
 
@@ -1156,11 +1931,26 @@ def import_local_material(
       "lesson": {...材料库视图...},
       "lessonUrl": "/workspace/<id>",
       "material": {...},
-      "subtitle": {"format","timed","sentenceCount","errors"},
+      "subtitle": {"format","timed","sentenceCount","errors","speakerMarkerCount"},
+      "autoSplit": {...},          # P3-1：是否排队了本地自动切句
       "warnings": [...],
       "supportedFormats": {...},
     }
     ```
+
+    `auto_split`（P3-1，**默认 False**）：
+    「用本地模型自动切句（无需 API key）」。默认关闭时本函数的全部行为与
+    返修前**完全一致**（现有 70 条 `test_cet_base_import` 守着）。只有同时满足
+    下面三条才真正排队：
+      1. `auto_split=True`；
+      2. **没有任何用户字幕**（SRT/VTT/句子 JSON）—— 有字幕时后端**硬拒**，
+         不靠前端 disabled。理由：转写会覆盖用户时间轴
+         （`docs/cet-base/导入与材料.md` §3.5 记录的竞态），从根上禁止比
+         「谁先跑完」可靠；
+      3. `faster_whisper` 与 ffmpeg 可用（`auto_split_capability()`）。
+
+    有原文 TXT 时走**文本对齐**（句子文本完全来自用户原文），
+    没有原文才走**纯转写**（句子文本来自 ASR）。
     """
     from webapp.services import cet_materials, v2_lessons as lesson_service
 
@@ -1258,6 +2048,16 @@ def import_local_material(
             subtitle_info["errors"], message="字幕校验未通过，未导入任何内容"
         )
 
+    # ── 3.5 自动切句（P3-1）的**后端硬校验** ──
+    # 前端会把选项 disabled，但那只防住「按正常路径点按钮的人」。
+    # 直接调 API、脚本、并发请求都能绕过前端，所以这里必须再判一次。
+    # 判在「建课之前」：拒绝时没有任何 lesson / upload 残留，与其它校验失败同构。
+    auto_split_decision = _validate_auto_split_request(
+        auto_split=auto_split,
+        prepared=prepared,
+        subtitle_present=subtitle_bytes is not None,
+    )
+
     # ── 4. 查重 + 上传 + 建课（普通导入在同一临界区里串行化）──
     # BASE-03 缺陷 A：查重与建课必须原子。旧实现两者分离，两个并发请求都
     # 查到「无重复」后各建一份，双双返回 duplicate=false。
@@ -1283,6 +2083,7 @@ def import_local_material(
             prepared=prepared,
             subtitle_info=subtitle_info,
             warnings=warnings,
+            auto_split_decision=auto_split_decision,
         )
 
     # ① 快路径：已有同音频同标题材料 → 直接回已有
@@ -1310,6 +2111,7 @@ def import_local_material(
             subtitle_info=subtitle_info,
             warnings=warnings,
             dedupe_after_create=True,
+            auto_split_decision=auto_split_decision,
         )
 
 
@@ -1326,6 +2128,7 @@ def _create_new_material(
     subtitle_info: dict[str, Any],
     warnings: list[str],
     dedupe_after_create: bool = False,
+    auto_split_decision: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """上传 + 建课 + 写字幕，返回新材料的导入结果。
 
@@ -1399,6 +2202,23 @@ def _create_new_material(
                     f"已清洗 {len(markers)} 处行首说话人标记（如「/ W:」），"
                     f"标记原文保留在课程元数据 speaker_markers.json。"
                 )
+
+        # ── 7.5 P3-1：排队本地自动切句（默认不排队）──
+        # 排在建课+写字幕**之后**：先让材料以「暂无逐句定位」的可用状态落地，
+        # 再由后台任务把它推进到 ready。反过来做会让导入响应等待转写
+        # （105s 音频约 41s），违背「导入立即返回」的既有体验。
+        if auto_split_decision and auto_split_decision.get("queue"):
+            auto_split_result = enqueue_auto_split(
+                lesson_id,
+                transcript_text=str(auto_split_decision.get("transcriptText") or ""),
+            )
+            path_label = ("文本对齐" if auto_split_result["path"] == "text_alignment"
+                          else "纯转写")
+            warnings.append(
+                f"已在后台开始用本地模型自动切句（{path_label}，"
+                f"模型 {auto_split_result['model']}）。"
+                "完成后材料会变成「可逐句精听」，期间可以整段播放。"
+            )
     except ImportValidationError:
         if lesson_id is not None:
             _rollback_lesson(lesson_id)
@@ -1424,12 +2244,23 @@ def _create_new_material(
 
     refreshed = db.get_v2_lesson(lesson_id) or lesson
     material = cet_materials.material_item(refreshed)
+    auto_split_result: dict[str, Any] = {"queued": False, "reason": ""}
+    if auto_split_decision and auto_split_decision.get("queue"):
+        state = auto_split_state(lesson_id)
+        auto_split_result = {
+            "queued": True,
+            "lessonId": int(lesson_id),
+            "model": state.get("model") or "",
+            "path": state.get("path") or "",
+            "status": state.get("status") or "queued",
+        }
     return {
         "duplicate": False,
         "lesson": material,
         "lessonUrl": material["lessonUrl"],
         "material": material,
         "subtitle": subtitle_info,
+        "autoSplit": auto_split_result,
         "warnings": warnings,
         "supportedFormats": supported_formats(),
     }

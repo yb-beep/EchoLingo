@@ -3,7 +3,11 @@
 > 生成时间：2026-11-05
 > 工作树：`/tmp/wt-base-qa`　分支：`codex/cet-base-qa`
 > 本文件回答一个问题：**哪些测试失败是本轮施工之前就存在的？**
-> 结论：真实基线是 **3 failed + 1 error**，不是流传的「41 failed」。下文给出两个口径的完整证据与根因。
+> 结论：真实基线是 **3 failed**（无 error），不是流传的「41 failed」。下文给出两个口径的完整证据与根因。
+>
+> **版本说明**：本文初稿写于 `0d4d6cc`（当时含 P0.4 conftest 隔离护栏，结果 3 failed + 1 error）。
+> 该护栏随后在 `c41d8a4` 被 revert，材料与导入板块并入后测试总数增加。
+> 当前数字以 `ee01ed8` 之后为准：**3 failed / 688 passed / 4 skipped / 0 error**。
 
 ---
 
@@ -11,8 +15,8 @@
 
 | 口径 | 命令 | 结果 | 可信？ |
 | --- | --- | --- | --- |
-| ❌ 带 `ELT_USER_DB` | `ELT_USER_DB=/tmp/x/vocab.db pytest -q` | 41 failed / 559 passed / 4 skipped | **不可信**，测试被环境变量互相污染 |
-| ✅ 不带 `ELT_USER_DB` | `ELT_CONFIG_DIR=/tmp/x/config pytest -q` | **3 failed / 597 passed / 4 skipped / 1 error** | **正确口径** |
+| ❌ 带 `ELT_USER_DB` | `ELT_USER_DB=/tmp/x/vocab.db pytest -q` | 76 failed / 615 passed / 4 skipped | **不可信**，测试被环境变量互相污染 |
+| ✅ 不带 `ELT_USER_DB` | `ELT_CONFIG_DIR=/tmp/x/config pytest -q` | **3 failed / 688 passed / 4 skipped / 0 error** | **正确口径** |
 
 **HEAD 相对基线 901db90 没有引入任何新失败**（详见 §4 双向差集）。
 
@@ -166,8 +170,11 @@ ELT_CONFIG_DIR=/tmp/cb-base/config .venv/bin/python -m pytest -q \
 **结果（连跑 3 次完全一致，非 flaky）**：
 
 ```
-3 failed, 597 passed, 4 skipped, 1 error in 52.16s
+3 failed, 688 passed, 4 skipped in 53.66s
 ```
+
+> 早期在 `0d4d6cc` 上还多一个 `1 error`（conftest 隔离护栏抓到子进程写正式库）。
+> 该护栏在 `c41d8a4` 被 revert，因此现在没有 error，但**正式库又会被污染**（见 §2.4）。
 
 ### 2.1 失败 1 —— `test_baidu_pan.py::test_download_file_verifies_artifact`
 
@@ -202,19 +209,36 @@ ELT_CONFIG_DIR=/tmp/cb-base/config .venv/bin/python -m pytest -q \
 | **是否本轮引入** | 否。基线 901db90 同样失败。 |
 | **能否修** | 非我板块。修法应是测试侧兼容：`getattr(route, "path", None)` 或改用 `app.openapi()["paths"]`。**建议报 Lead 决定**（见 §5）。 |
 
-### 2.4 ERROR —— `test_youtube_v2_helpers.py::test_store_media_segments_persists_subtitles_and_reading_projection`
+### 2.4 关于那个 ERROR（护栏已被 revert，但泄漏仍在）
+
+**现象（`0d4d6cc` 时期）**：`ERROR at teardown`，报
+`AssertionError: 正式库 resources/vocab.db 在测试期间被修改了！`，
+挂在 `tests/test_youtube_v2_helpers.py::test_store_media_segments_...` 上。
+
+**真相**：那不是该测试失败，而是 P0.4 新增的 conftest 护栏
+（`_forbid_production_db_writes`）在 session 结束时发现正式库被改动，
+把错误挂在了**最后一个用例**头上。真正元凶经逐文件扫描定位为
+**`tests/test_public_single_user_compat.py`**（唯一 POLLUTER）：
+
+该测试在**子进程**里 `import fastapi_server; create_app()`，
+子进程不继承父进程 conftest 的 `db.DB_PATH` 重定向，回落到默认
+`resources/vocab.db` 并建库（544768 字节）。
+
+**当前状态（`ee01ed8` 之后）**：该护栏已在 `c41d8a4` 被 revert，
+所以不再有 error —— **但泄漏本身没有消失**：
+
+```bash
+rm -f resources/vocab.db*
+ELT_CONFIG_DIR=/tmp/x/config .venv/bin/python -m pytest -q --ignore=tests/test_cet_listening_ui.py
+ls resources/vocab.db        # → 文件被创建了
+```
 
 | 项 | 内容 |
 | --- | --- |
-| **失败表象** | `ERROR at teardown`：`AssertionError: 正式库 resources/vocab.db 在测试期间被修改了！` |
-| **位置** | `tests/conftest.py:56`（`_forbid_production_db_writes` session fixture） |
-| **根因** | **这不是测试自身失败，是 Lead 新增的数据隔离护栏抓到了真实泄漏**。`test_public_single_user_compat` 在**子进程**里 `import fastapi_server; create_app()`，子进程不继承父进程 conftest 的 `db.DB_PATH` 重定向，回落到默认 `resources/vocab.db` 并建库。护栏在 session 结束时发现正式库被创建/修改，于是在**最后一个用例**上报 teardown error。 |
-| **归属** | **护栏 + 环境**。护栏行为正确（确实发生了写正式库），但表现形式是「错误挂在无关用例上」，容易误导。 |
-| **是否本轮引入** | 是（护栏由 `0d4d6cc` 引入），但**它抓到的是既有泄漏**，不是新增缺陷。 |
-| **证据** | 逐文件扫描确认唯一污染源：<br>`POLLUTER: tests/test_public_single_user_compat.py` |
-| **影响** | 跑全量后 `resources/vocab.db` 会被创建（544768 字节）。该文件在 `.gitignore:49` 中，不会误提交。 |
-
----
+| **归属** | 测试侧（`test_public_single_user_compat` 子进程） |
+| **是否本轮引入** | 否，既有行为 |
+| **影响** | 全量跑完仓库里会留 `resources/vocab.db`。该文件在 `.gitignore:49`，不会误提交；但会让「正式库是否被动过」的核查变含糊 |
+| **建议** | 子进程脚本里显式 `db.DB_PATH = <tmp>`（治本），或该用例加 skip 注明原因 |
 
 ## 3. 基线 vs HEAD 双向差集（证明本轮零新增失败）
 
@@ -224,10 +248,15 @@ ELT_CONFIG_DIR=/tmp/cb-base/config .venv/bin/python -m pytest -q \
 
 两个 SHA 各跑两次，结果稳定：
 
-| SHA | 带 `ELT_USER_DB` | 不带 `ELT_USER_DB` |
+| SHA | 带 `ELT_USER_DB` | 不带 `ELT_USER_DB`（正确口径） |
 | --- | --- | --- |
-| `901db90`（基线） | 43 failed / 556 passed / 4 skipped | **5 failed** / 594 passed / 4 skipped |
-| `0d4d6cc`（HEAD） | 41 failed / 559 passed / 4 skipped | **3 failed** / 597 passed / 4 skipped / 1 error |
+| `901db90`（基线） | 43 failed / 556 passed | **5 failed** / 594 passed |
+| `0d4d6cc`（中途） | 41 failed / 559 passed | **3 failed** / 597 passed / 1 error |
+| `ee01ed8`（当前集成） | 76 failed / 615 passed | **3 failed** / 688 passed / 0 error |
+
+> 通过数从 594 增到 688，是材料与导入板块新增了 `test_cet_base_import.py`
+> 与 `test_cet_base_materials.py` 等用例，不是「修好了很多旧失败」。
+> **失败集始终是同样的 3 项**，这才是关键。
 
 ```bash
 comm -13 <基线失败集> <HEAD失败集>   # HEAD 新增的失败 → 空
@@ -255,9 +284,9 @@ rm -rf output/* logs/* resources/vocab.db*
 ELT_CONFIG_DIR=/tmp/verify/config \
   .venv/bin/python -m pytest -q --ignore=tests/test_cet_listening_ui.py
 
-# 期望：3 failed, 597 passed, 4 skipped, 1 error
+# 期望：3 failed, 688 passed, 4 skipped
 #   3 failed = §2.1 §2.2 §2.3（环境/依赖，非本轮引入）
-#   1 error  = §2.4（护栏抓到 public_single_user_compat 子进程写正式库）
+#   跑完会留下 resources/vocab.db（§2.4 子进程泄漏，已 gitignore）
 ```
 
 **环境**：macOS 27.0.1 · Python 3.11.16 · FastAPI 0.162.0 · Starlette 1.10.0 · ffprobe 9.0.2
@@ -266,12 +295,12 @@ ELT_CONFIG_DIR=/tmp/verify/config \
 
 ## 5. 给 Lead / 独立验收方的 3 条建议
 
-1. **验收报告里不要写「41 failed」**。独立验收方按同一命令会跑出 3 failed，数字对不上反而像我们造数据。正确写法：**基线 3 failed + 1 error，全部为环境/依赖因素，本轮零新增失败**。
+1. **验收报告里不要写「41 failed」**。独立验收方按同一命令会跑出 3 failed，数字对不上反而像我们造数据。正确写法：**基线 3 failed，全部为环境/依赖因素，本轮零新增失败**。
 
 2. **`ELT_USER_DB` 只用于起服务做数据隔离，禁止用于跑 pytest**。已在 `docs/cet-base/使用与启动.md` 专设一节说明。
 
-3. **`test_public_single_user_compat` 的子进程泄漏值得修**（属 Lead/P0.4 范围，非我板块）。两个可选修法：
-   - 子进程脚本里显式 `db.DB_PATH = <tmp>`（最直接）；
+3. **`test_public_single_user_compat` 的子进程泄漏仍未修**（护栏 revert 后重新暴露）。两个可选修法：
+   - 子进程脚本里显式 `db.DB_PATH = <tmp>`（最直接，治本）；
    - 或该用例加 `@pytest.mark.skip(reason="子进程不继承 conftest DB 重定向")`。
 
    不修的话，全量跑完会在仓库里留下 `resources/vocab.db`（已 gitignore，但会让「正式库是否被动过」的核查变得含糊）。

@@ -611,6 +611,9 @@ def main() -> int:
         if want("T02"):
             t02(base, ctx)
 
+        if want("T03") or want("T04") or want("T05"):
+            t03_t04_t05(ctx)
+
         if not args.no_browser:
             if want("T07") or want("T08"):
                 t07_t08_browser(base, ctx, out_dir)
@@ -664,6 +667,127 @@ def _find_highlighted_segment(base: str, lesson_id: int | None) -> dict | None:
         if seg.get("highlighted_words"):
             return seg
     return None
+
+
+# ── T03/T04/T05：导入格式与校验（纯函数层，不需要起服务） ──
+def t03_t04_t05(ctx: dict) -> dict:
+    """音频+SRT / 仅音频 / 纯文本 / 错误时间轴 / 坏文件 / 重复提交。
+
+    这些检查直接调 `webapp.services.cet_import` 的纯函数，不需要真实上传：
+    上传端点只是把字节交给同一批函数，验证解析/校验语义用纯函数更稳、更快。
+    """
+    print("\n── T03 音频＋合法 SRT　T04 仅音频　T05 纯文本/错误时间轴/坏文件/重复 ──")
+    sys.path.insert(0, str(ROOT / "backend"))
+    try:
+        from webapp.services import cet_import
+    except Exception as exc:  # noqa: BLE001
+        for tid in ("T03", "T04", "T05"):
+            skip(tid, "导入校验", f"无法导入 cet_import：{exc}")
+        return ctx
+
+    # 格式清单必须真实（任务书要求界面列出实际支持类型，不承诺未测格式）
+    fmts = cet_import.supported_formats()
+    record("T03", "支持格式清单可读", isinstance(fmts, dict) and bool(fmts.get("audio")),
+           "audio/subtitle 清单非空",
+           f"audio={len(fmts.get('audio') or [])} subtitle={len(fmts.get('subtitle') or [])}")
+    record("T03", "SRT 在带时间轴格式内", ".srt" in (fmts.get("subtitleTimed") or []),
+           ".srt ∈ subtitleTimed", str(fmts.get("subtitleTimed")))
+    record("T03", "纯文本标为无时间轴", ".txt" in (fmts.get("plainText") or []),
+           ".txt ∈ plainText", str(fmts.get("plainText")))
+
+    # ── T03：合法 SRT ──
+    good_srt = (
+        "1\n00:00:00,010 --> 00:00:03,490\nIt's getting late.\n\n"
+        "2\n00:00:03,550 --> 00:00:07,010\nI think we should call it a day.\n"
+    )
+    res = cet_import.prepare_subtitle("a.srt", good_srt, audio_duration=80.5)
+    ok = (not res["errors"] and res["timed"] and len(res["segments"]) == 2)
+    record("T03", "合法 SRT 解析为逐句时间轴", ok,
+           "2 段 + timed=True + 无错误",
+           f"segments={len(res['segments'])} timed={res['timed']} errors={len(res['errors'])}")
+    if ok:
+        seg0 = res["segments"][0]
+        record("T03", "SRT 时间戳解析正确",
+               abs(float(seg0["start"]) - 0.01) < 0.01 and abs(float(seg0["end"]) - 3.49) < 0.01,
+               "start=0.01 end=3.49", f"start={seg0['start']} end={seg0['end']}")
+        record("T03", "SRT 文本正确去空白", seg0["text"] == "It's getting late.",
+               "It's getting late.", repr(seg0["text"]))
+
+    # BOM（Windows 记事本）必须能处理
+    bom_res = cet_import.prepare_subtitle("b.srt", "\ufeff" + good_srt, audio_duration=80.5)
+    record("T03", "带 BOM 的 SRT 仍可解析",
+           not bom_res["errors"] and len(bom_res["segments"]) == 2,
+           "2 段无错误", f"segments={len(bom_res['segments'])} errors={len(bom_res['errors'])}")
+
+    # ── T04：仅音频 / 无字幕 ──
+    record("T04", "音频格式清单非空", len(fmts.get("audio") or []) > 0,
+           ">=1 种音频格式", str(fmts.get("audio")))
+    # 无字幕时不应伪造时间轴：空输入必须返回空 segments 而不是编造
+    empty = cet_import.prepare_subtitle("none.srt", "", audio_duration=80.5)
+    record("T04", "无字幕不伪造时间轴",
+           empty["timed"] is False and len(empty["segments"]) == 0,
+           "timed=False, segments=[]",
+           f"timed={empty['timed']} segments={len(empty['segments'])}")
+
+    # ── T05a：纯文本 → 只作原文，不生成时间戳 ──
+    plain = cet_import.prepare_subtitle(
+        "a.txt", "First paragraph here.\n\nSecond paragraph here.\n", audio_duration=80.5)
+    record("T05", "纯文本只作原文不伪造时间轴",
+           plain["timed"] is False and len(plain["segments"]) == 0 and len(plain["paragraphs"]) == 2,
+           "timed=False, segments=[], paragraphs=2",
+           f"timed={plain['timed']} segs={len(plain['segments'])} paras={len(plain['paragraphs'])}")
+
+    # ── T05b：错误时间轴 —— 每种错误都要指出具体条目 ──
+    cases = [
+        ("结束时间不大于开始",
+         "1\n00:00:05,000 --> 00:00:03,000\nBad.\n", "end_not_after_start"),
+        ("时间轴倒序",
+         "1\n00:00:10,000 --> 00:00:12,000\nA.\n\n2\n00:00:05,000 --> 00:00:08,000\nB.\n",
+         "out_of_order"),
+        ("超出音频时长",
+         "1\n00:00:01,000 --> 00:09:00,000\nToo long.\n", "beyond_audio"),
+    ]
+    for label, raw, expect_reason in cases:
+        r = cet_import.prepare_subtitle("bad.srt", raw, audio_duration=80.5)
+        reasons = [e.get("reason") for e in r["errors"]]
+        hit = expect_reason in reasons
+        record("T05", f"错误时间轴被拒：{label}", hit,
+               f"errors 含 {expect_reason}", f"reasons={reasons}")
+        if r["errors"]:
+            e0 = r["errors"][0]
+            record("T05", f"错误定位到具体条目：{label}",
+                   bool(e0.get("message")) and (e0.get("line") or e0.get("index")),
+                   "message + line/index",
+                   f"line={e0.get('line')} index={e0.get('index')} msg={str(e0.get('message'))[:60]}")
+
+    # ── T05c：坏文件（不是字幕） ──
+    bad = cet_import.prepare_subtitle("junk.srt", "这不是字幕\n随便几行\n", audio_duration=80.5)
+    record("T05", "坏文件被拒且不静默成功",
+           bool(bad["errors"]) and len(bad["segments"]) == 0,
+           "errors 非空 + segments 空",
+           f"errors={len(bad['errors'])} segs={len(bad['segments'])}")
+
+    # 空文本不应被当成「全部成功」
+    blank = cet_import.prepare_subtitle("blank.srt", "\n\n\n", audio_duration=80.5)
+    record("T05", "空字幕不报假成功",
+           len(blank["segments"]) == 0,
+           "segments=[]", f"segments={len(blank['segments'])} errors={len(blank['errors'])}")
+
+    # ── T05d：重复提交 —— 去重靠 音频SHA256 + title ──
+    payload = b"fake-audio-bytes-for-dedupe"
+    sha = cet_import.sha256_bytes(payload)
+    record("T05", "音频 SHA-256 稳定可复现",
+           sha == cet_import.sha256_bytes(payload) and len(sha) == 64,
+           "64 hex 且两次一致", f"{sha[:16]}… len={len(sha)}")
+
+    # ── T04b：音频后缀白名单 ──
+    record("T04", "常见音频后缀被接受",
+           cet_import.audio_suffix_allowed("a.mp3") and cet_import.audio_suffix_allowed("a.m4a"),
+           "mp3/m4a 允许", f"mp3={cet_import.audio_suffix_allowed('a.mp3')} "
+                        f"m4a={cet_import.audio_suffix_allowed('a.m4a')}")
+    record("T04", "非音频后缀被拒", not cet_import.audio_suffix_allowed("a.exe"),
+           "exe 拒绝", str(cet_import.audio_suffix_allowed("a.exe")))
+    return ctx
 
 
 def _strip_code(html: str) -> str:

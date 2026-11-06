@@ -151,16 +151,45 @@ def test_teammate_module_references_are_preserved():
     assert html.index("/static/cet-listening.js") < html.index("const LESSON_ID")
 
 
-def test_base_player_does_not_own_space_key():
-    """空格键归队友卡点模块；底座播放器不得注册全局空格快捷键。"""
+def test_base_player_space_key_ownership_is_three_state():
+    """返修2 P2：空格归属改为三态，不再是「一律不碰」。
+
+    权威契约（主代理定，包2/包5/审核方共用）：
+
+        CET 模式 + 队友关闭 → 底座注册 Space/←/→/R/L，ownsSpaceKey = true
+        CET 模式 + 队友开启 → 底座一个都不注册，          ownsSpaceKey = false
+        通用模式(ELT_CET_MODE=0) → 不注册（原版无快捷键）， ownsSpaceKey = false
+
+    旧用例（test_base_player_does_not_own_space_key）锁的是「一律让出」的旧契约，
+    与 P2-1「队友不在时工作区没有任何播放快捷键」直接冲突，已随契约演进改写。
+    行为验证见 tests/test_cet_fix2_p2_hotkeys.py（真实浏览器 + HTMLMediaElement）。
+    """
     js = _text(CET_PLAYER)
-    assert "ownsSpaceKey: false" in js, "未声明不拥有空格键"
-    # 不得出现把 Space 映射成播放/暂停的监听
-    space_handlers = re.findall(r"key(?:down|up)\s*===\s*['\"]\s?['\"]", js)
-    assert not space_handlers, f"底座注册了空格键处理：{space_handlers}"
-    assert "'Space'" not in js and '"Space"' not in js
-    assert "code === 'Space'" not in js
-    # 底座只提供查询接口，由队友模块决定是否启用
+
+    # 1. 归属判定必须同时看 CET 模式与队友模块状态，不能是常量
+    assert "function hotkeyActive()" in js, "缺少快捷键归属判定函数"
+    assert "return CET_ON && !cetListeningEnabled();" in js, "归属判定未同时考虑 CET_ON 与队友模块"
+
+    # 2. ownsSpaceKey 必须是 getter（反映当前实际状态），不是对外暴露的字面量
+    assert "get ownsSpaceKey()" in js, "ownsSpaceKey 仍是常量，无法反映三态"
+    # 对外接口区（window.__cetPlayer 对象字面量）里不得再出现裸的 ownsSpaceKey: false
+    export_block = js[js.index("window.__cetPlayer = {"):]
+    assert "ownsSpaceKey: false," not in export_block, "对外接口仍把 ownsSpaceKey 写死为 false"
+    # 内部状态初值允许是 false（挂载前未接管），但必须由 syncHotkeyOwnership 改写
+    assert "S.ownsSpaceKey = active;" in js, "ownsSpaceKey 未与实际注册状态同步"
+
+    # 3. 注册/注销成对出现，且由 syncHotkeyOwnership 统一驱动
+    assert "function syncHotkeyOwnership()" in js
+    assert "document.addEventListener('keydown', onHotkeyKeyDown)" in js, "关闭态未注册 keydown"
+    assert "document.removeEventListener('keydown', onHotkeyKeyDown)" in js, "让出时未注销 keydown"
+
+    # 4. 幂等标记（P2-4）：重复 mount 不能重复绑定
+    assert "S.keydownBound" in js, "keydown 绑定缺少幂等标记"
+
+    # 5. 让出态/通用模式在 handler 入口就返回，不做任何播放操作
+    assert "if (!hotkeyActive()) return;" in js, "handler 未在入口处守卫归属"
+
+    # 6. 底座只提供查询接口，队友模块仍可据此判断
     assert "cetListeningEnabled" in js
 
 
@@ -239,3 +268,105 @@ def test_workspace_scripts_order_keeps_credits_before_use():
     first_use = min(m.start() for m in re.finditer(r"eltCredits\.", html))
     assert include_at != -1
     assert include_at < first_use
+
+
+# ── 返修2 包2：底座快捷键静态契约（P2-1…P2-4）───────────────────
+# 行为验证在 tests/test_cet_fix2_p2_hotkeys.py（真实浏览器 + HTMLMediaElement）。
+# 这里只锁「代码里必须有的结构与必须没有的反模式」，跑得快、不依赖服务。
+
+
+def test_p2_hotkeys_cover_all_five_keys():
+    """P2-1：关闭态要接管 Space / ← / → / R / L 五个键。"""
+    js = _text(CET_PLAYER)
+    assert "function onHotkeyKeyDown(event)" in js, "缺少 keydown 处理函数"
+    # Space（用 e.code 判定，不受输入法/键盘布局影响）
+    assert "event.code === 'Space'" in js, "未处理 Space"
+    # 左右方向键
+    assert "event.key === 'ArrowLeft'" in js and "event.key === 'ArrowRight'" in js, "未处理 ←/→"
+    # R 重听当前句
+    assert "event.key === 'r' || event.key === 'R'" in js, "未处理 R"
+    # L 句循环开关
+    assert "event.key === 'l' || event.key === 'L'" in js, "未处理 L"
+
+
+def test_p2_hotkeys_respect_focus_guard():
+    """P2-1：焦点在 input/textarea/contenteditable 时不响应，也不 preventDefault。"""
+    js = _text(CET_PLAYER)
+    assert "function isTypingTarget(target)" in js, "缺少输入焦点守卫"
+    for needle in ("'input'", "'textarea'", "'select'", "isContentEditable"):
+        assert needle in js, f"焦点守卫未覆盖 {needle}"
+    # 守卫必须在 preventDefault 之前（否则输入框里按空格会被吞掉）
+    guard_at = js.index("if (isTypingTarget(event.target)) return;")
+    first_prevent = js.index("event.preventDefault();", guard_at - 3000)
+    assert guard_at < first_prevent or first_prevent > guard_at, "焦点守卫晚于 preventDefault"
+
+
+def test_p2_hotkeys_skip_modified_and_repeated_keys():
+    """带 Ctrl/Cmd/Alt 的组合键属于浏览器/系统快捷键，不能抢；长按不连发。"""
+    js = _text(CET_PLAYER)
+    assert "event.ctrlKey || event.metaKey || event.altKey" in js, "未排除修饰键组合"
+    assert js.count("if (event.repeat) return;") >= 3, "长按未做连发抑制（Space/R/L 各一处）"
+
+
+def test_p2_sentence_loop_uses_ws_timeline_not_dom():
+    """P2-1：句子边界从 window.__ws 取（唯一数据来源），不解析 DOM。"""
+    js = _text(CET_PLAYER)
+    assert "function sentences()" in js
+    assert "Array.isArray(api.sentences) ? api.sentences : []" in js, "未从 __ws.sentences 取句子"
+    # 句循环：跨过句尾 seek 回句首
+    assert "function enforceLoop()" in js, "缺少句循环执行体"
+    assert "now >= end - LOOP_EPSILON" in js, "句尾判定不是 currentTime >= 句尾"
+    assert "seekToSeconds(start)" in js, "句循环未回到句首"
+    # 防抖：回跳后短暂静音，避免 timeupdate 反复 seek
+    assert "LOOP_GUARD_MS" in js and "loopGuardUntil" in js, "句循环缺少防抖窗"
+    # 精确驱动：rAF 逐帧比对（timeupdate 粒度 ~250ms 会多播下一句开头）
+    assert "function startLoopWatcher()" in js and "requestAnimationFrame" in js
+
+
+def test_p2_loop_anchor_survives_crossing_sentence_end():
+    """句循环必须锚定「开启时那一句」，不能跟着 activeSentenceIndex 漂走。"""
+    js = _text(CET_PLAYER)
+    assert "function setLoopAnchor(index)" in js, "缺少句循环锚点"
+    assert "S.loopAnchor" in js
+    # 锚点存的是 start/end 数值，不是索引查询结果
+    assert "start: Number(unit.start || 0)" in js and "end: Number(unit.end" in js
+    # 越过句尾那一刻 activeSentenceIndex 已指向下一句，所以只能用锚点
+    assert "const {start, end} = S.loopAnchor;" in js
+
+
+def test_p2_hotkey_hint_is_rendered_by_player_not_template():
+    """P2-3：「⌨ 快捷键」提示由 cet-player.js 自建，不依赖 workspace.html 插片段。"""
+    js = _text(CET_PLAYER)
+    assert "⌨ 快捷键" in js, "缺少快捷键提示文案"
+    assert "cet-hotkey-hint" in js and "cet-hotkey-panel" in js
+    # 只在关闭态（底座接管态）显示
+    assert "const show = Boolean(S.ownsSpaceKey);" in js, "提示未跟随接管状态显隐"
+    # hover + 点击两种展开方式都要有
+    assert "mouseenter" in js and "'click'" in js
+    # 提示面板要能被读屏与键盘识别
+    assert "aria-expanded" in js and "aria-controls" in js
+    # 明确：不需要往 workspace.html 插任何片段
+    assert "cet-hotkey-hint" not in _text(WORKSPACE), (
+        "workspace.html 里出现了 cet-hotkey-hint —— 包2 的实现约定是自建，"
+        "若包1 也插了同 id 元素会重复"
+    )
+
+
+def test_p2_ownership_syncs_when_teammate_mounts_late():
+    """P2-2：队友模块可能晚于底座挂载，归属必须在运行期重判。"""
+    js = _text(CET_PLAYER)
+    # mount() 里定一次
+    assert "syncHotkeyOwnership();" in js
+    # 状态条刷新与周期补绑里也要重判（队友 boot() 要等两个接口才 mount）
+    assert js.count("syncHotkeyOwnership();") >= 3, "归属只在 mount 判了一次，队友晚挂载会漏判"
+    # 让出时停掉句循环，避免和队友抢播放位置
+    assert "stopLoopWatcher();" in js
+    assert "底座让出播放快捷键" in js
+
+
+def test_p2_generic_mode_does_not_register_hotkeys():
+    """§0.6 通用模式回归：ELT_CET_MODE=0 时行为不变（原版没有这些快捷键）。"""
+    js = _text(CET_PLAYER)
+    # 归属判定的第一项就是 CET_ON，通用模式直接短路
+    assert "return CET_ON && !cetListeningEnabled();" in js
+    assert "if (!hotkeyActive()) return;" in js

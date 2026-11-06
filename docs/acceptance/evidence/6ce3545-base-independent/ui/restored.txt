@@ -1,0 +1,67 @@
+- banner:
+  - link "返回首页":
+    - /url: /
+    - generic: ←
+    - generic: 首页
+  - heading "独立复验六级样例" [level=1]
+  - generic: 原文就绪 · 32 句
+- main:
+  - region "video and current subtitle":
+    - generic "playback and subtitle controls":
+      - text: 字幕
+      - combobox "字幕":
+        - option "英文 + 点词查询" [selected]
+        - option "英文"
+        - option "中文" [disabled]
+        - option "中英双语" [disabled]
+        - option "隐藏字幕"
+      - text: 倍速
+      - combobox "倍速":
+        - option "0.5x"
+        - option "0.75x"
+        - option "1x" [selected]
+        - option "1.25x"
+        - option "1.5x"
+        - option "2x"
+      - button "精听"
+    - group "学习状态":
+      - text: 位置
+      - strong: 0:11
+      - text: /
+      - generic: 1:45
+      - text: 当前句
+      - strong: 5 / 33
+      - text: 本课收藏
+      - strong: "12"
+      - button "从头开始"
+    - region "current subtitle":
+      - strong: 当前句
+      - button "上一句": ‹
+      - generic: 5 / 33
+      - button "下一句": ›
+      - button "加入精读":
+        - text: 已加入精读
+      - button "Let's"
+      - button "do"
+      - button "two"
+      - button "more"
+      - button "hours★"
+      - generic "小时（；的复数形式）"
+      - text: ","
+      - button "please"
+      - text: .
+      - generic: 0:11 - 0:13 ｜ 1 行字幕
+  - complementary "learning workspace":
+    - tablist "学习工具":
+      - tab "句段导航" [selected]: 句段导航
+      - tab "收藏，共 12 项": 收藏
+    - heading "内容大纲" [level=2]
+    - generic: 按句段跳转，点句段可定位到对应原声。
+    - generic: 0:00 – 0:28
+    - generic: 开场 It's getting late and we're both displaying signs of weariness. I think we should call it a day and meet again tomorrow morning. We are so close. Don...
+    - generic: 0:28 – 1:05
+    - generic: 第 1 段：Don't get me wrong. Don't get me wrong—it's a great professional opportunity for me and a milestone for the company, but it's just been so long. Yeah, two months working...
+    - generic: 1:05 – 1:31
+    - generic: "第 2 段：I wasn't finished. When we are done with it and send it upstairs, what do you think will happen? / W: What? What? They'll argue about it for like a month. There's alway..."
+    - generic: 1:32 – 1:45
+    - generic: 第 3 段：The entire managerial hierarchy wants to see this project... And the board, too, is virtually unanimous in its support. Go on then, let's stop there and meet up again, same time tomorrow.

@@ -1,0 +1,13 @@
+== 停止四六级检测服务 ==
+  端口 57965（实例目录 /tmp/cet-base-6ce-boundary/logs/instances/57965）
+  底座：身份核验通过（PID 57847 监听 57965，DB /private/tmp/cet-base-6ce-boundary/b/vocab.db）
+  底座：已停止（PID 57847）
+  Mock API：无匹配实例（可能未启动）
+  底座：端口 57965 已释放
+  Mock API：端口 57966 已释放
+
+== 状态 ==
+  已停止，端口已释放，可直接再次启动：
+    scripts/qa/start_cet.sh --mock
+  数据保留（未删除，重启后可验证恢复）
+  查看所有实例：scripts/qa/stop_cet.sh --list

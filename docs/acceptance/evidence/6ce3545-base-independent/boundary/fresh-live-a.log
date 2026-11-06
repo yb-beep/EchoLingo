@@ -1,0 +1,60 @@
+==================================================================
+  四六级听力训练 · 启动检查
+  端口：57964   数据：/tmp/cet-base-6ce-boundary/a/vocab.db
+==================================================================
+
+-- 1. 运行环境 --
+  [OK] Python 3.11.16
+  [OK] ffprobe 9.0.2
+
+-- 2. 端口占用 --
+  [!]  端口 57964 上已有本项目底座在运行，且使用同一数据库（将复用，不重启）
+     DB: /tmp/cet-base-6ce-boundary/a/vocab.db
+
+-- 3. 数据隔离（只读检查）--
+  [OK] 目标库不是正式库（正式库：resources/vocab.db）
+  [OK] 隔离数据库已存在：/private/tmp/cet-base-6ce-boundary/a/vocab.db
+  [!]  该库正被活服务使用（--fresh/--reset 会被拒绝）：
+       PID 54661  端口 57964  （判据：health）
+       PID 56575  端口 57964  （判据：health）
+  [!]  有活进程正打开该库的文件句柄：
+       PID 56575  /private/tmp/cet-base-6ce-boundary/repo/.venv/bin/python backend/fastapi_server.py
+
+-- 4. 样例材料 --
+  [!]  cet6-202512-conv2 材料缺失
+  [!]  cet4-sample-hope-wish 材料缺失
+
+  材料音频不入库（体积与版权）。获取方式：
+    A. 向 C 索取 .cet-qa/media/*.mp3 与 *.sentences.source.json
+    B. 若本机有旧项目：
+       .venv/bin/python scripts/qa/prepare_audio.py --copy-from <路径>
+
+  期望 SHA-256（六级）：
+    de98e7de987d400cb05fe957f21b5a4fa57112df9676bdb4c3f6214ff8a34259
+
+  注意：材料缺失不阻断「空库启动」——只是没有样例可演示。
+
+-- 5. 前端接入 --
+  [OK] cet-listening.js
+  [OK] cet-listening.css
+  [OK] workspace.html 已引用卡点模块
+  [OK] 原 natural-tts 引用保留
+
+==================================================================
+  检查通过
+==================================================================
+
+-- 6. 数据目录写入（修改阶段）--
+  [!]  端口 57964 上有活服务正在使用同一个库 —— 拒绝清库
+     先停掉它：PORT=57964 scripts/qa/stop_cet.sh
+  [!]  以下活服务正在使用该库 —— 拒绝清库：
+       PID 54661  端口 57964  （判据：health）
+       PID 56575  端口 57964  （判据：health）
+     先停掉它们：PORT=<端口> scripts/qa/stop_cet.sh
+  [!]  以下活进程正打开该库的文件句柄 —— 拒绝清库：
+       PID 56575  /private/tmp/cet-base-6ce-boundary/repo/.venv/bin/python backend/fastapi_server.py
+
+==================================================================
+  拒绝执行：数据库仍被活服务使用，不能执行 --fresh/--reset
+  本次没有删除或修改任何数据库文件。
+==================================================================

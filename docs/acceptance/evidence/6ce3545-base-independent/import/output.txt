@@ -1,0 +1,44 @@
+{
+  "valid": {
+    "status": 200,
+    "level": null,
+    "category": null
+  },
+  "patchLevelOnly": {
+    "status": null,
+    "level": "cet6",
+    "category": "练习"
+  },
+  "patchCategoryOnly": {
+    "status": null,
+    "level": "cet4",
+    "category": "样例"
+  },
+  "archive": {
+    "status": null,
+    "level": "cet4",
+    "category": "样例"
+  },
+  "visibleArchivedCount": 0,
+  "restore": {
+    "status": null,
+    "level": "cet4",
+    "category": "样例"
+  },
+  "mixedInvalidJson": {
+    "status": 422,
+    "level": null,
+    "category": null
+  },
+  "nanJson": {
+    "status": 422,
+    "level": null,
+    "category": null
+  },
+  "invalidAudio": {
+    "status": 422,
+    "level": null,
+    "category": null
+  },
+  "concurrentCount": 1
+}

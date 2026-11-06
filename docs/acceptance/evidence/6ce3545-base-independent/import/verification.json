@@ -1,0 +1,86 @@
+{
+  "levelOnly": [
+    "cet6",
+    "练习",
+    "自定义保留"
+  ],
+  "categoryOnly": [
+    "cet6",
+    "自定义保留",
+    "样例"
+  ],
+  "clearLevel": [
+    "自定义保留",
+    "样例"
+  ],
+  "clearCategory": [
+    "自定义保留"
+  ],
+  "mixedNoWrites": {
+    "before": {
+      "v2_lessons": 3,
+      "v2_subtitle_segments": 2,
+      "v2_media_uploads": 3
+    },
+    "after": {
+      "v2_lessons": 3,
+      "v2_subtitle_segments": 2,
+      "v2_media_uploads": 3
+    },
+    "errors": [
+      {
+        "index": 2,
+        "line": 0,
+        "reason": "invalid_entry",
+        "message": "句子数组第 2 个元素不是句子对象（实际是 字符串「BROKEN」），无法读取 start/end/text"
+      },
+      {
+        "index": 3,
+        "line": 0,
+        "reason": "invalid_entry",
+        "message": "句子数组第 3 个元素不是句子对象（实际是 null），无法读取 start/end/text"
+      }
+    ]
+  },
+  "badAudioNoWrites": {
+    "status": 422,
+    "body": {
+      "detail": {
+        "code": "IMPORT_VALIDATION_FAILED",
+        "message": "音频文件无效",
+        "errors": [
+          {
+            "index": 0,
+            "line": 0,
+            "reason": "invalid_audio",
+            "message": "文件不是有效音频：bad.mp3 无法被解析为音视频；请确认它是真实的音频文件（支持 .mp3, .m4a, .wav, .ogg, .flac, .aac）"
+          }
+        ],
+        "errorCount": 1
+      }
+    },
+    "counts": {
+      "v2_lessons": 3,
+      "v2_subtitle_segments": 2,
+      "v2_media_uploads": 3
+    }
+  },
+  "concurrentSix": {
+    "lessonIds": [
+      4
+    ],
+    "duplicateFlags": [
+      true,
+      false,
+      true,
+      true,
+      true,
+      true
+    ],
+    "count": 1
+  },
+  "explicitDuplicate": {
+    "lessonId": 5,
+    "count": 2
+  }
+}

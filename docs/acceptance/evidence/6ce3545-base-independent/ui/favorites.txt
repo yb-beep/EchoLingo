@@ -1,0 +1,74 @@
+- heading "🎧 EchoLingo · 四六级听力" [level=1]
+- generic: 1 词
+- tablist "主导航":
+  - tab "🎧 听力材料"
+  - tab "⭐ 我的收藏" [active] [selected]
+  - tab "⚙️ 设置"
+- banner:
+  - generic: Vocabulary atelier
+  - heading "词汇收藏" [level=2]
+  - paragraph: 从听力材料里收藏的生词，按真实语境自评熟悉度，再决定是否展开词卡。
+  - button "继续词汇练习 →"
+- navigation "我的收藏":
+  - button "词汇收藏"
+  - button "句子收藏"
+- button "全部"
+- button "不认识"
+- button "模糊"
+- button "认识"
+- button "已归档"
+- button "已掌握"
+- button "四级"
+- button "六级"
+- button "生词本"
+- button "v2"
+- combobox "按词频档位筛选":
+  - option "全部词频" [selected]
+  - option "COCA ≤2000"
+  - option "COCA 2001–5000"
+  - option "COCA >5000"
+  - option "无词频数据"
+- combobox "按考试标签筛选":
+  - option "全部考试标签" [selected]
+  - option "四级"
+  - option "六级"
+- searchbox "搜索单词或短语…"
+- combobox:
+  - option "按掌握度+词频" [selected]
+  - option "按练习优先级"
+  - option "按最近收藏"
+  - option "按字母"
+- button "▶ 自动播放"
+- button "🔁 循环"
+- combobox "自动播放倍速":
+  - option "0.6×"
+  - option "0.8×"
+  - option "1×" [selected]
+  - option "1.25×"
+  - option "1.5×"
+- button "导出 ▾"
+- generic: hours
+- generic: 自评后显示释义
+- generic: 单词
+- button "🏷 编辑标签"
+- button "播放发音": 🔊
+- button "不认识"
+- button "模糊"
+- button "认识"
+- paragraph:
+  - button "Let's"
+  - button "do"
+  - button "two"
+  - button "more"
+  - button "hours"
+  - text: ","
+  - button "please"
+  - text: .
+- generic: 独立复验六级样例
+- generic: 1 / 1
+- button "🔊 播放整句"
+- button "✓ 已收藏"
+- button "展开词卡"
+- button "下一个 →"
+- link "← 返回原句":
+  - /url: /workspace/1/intensive

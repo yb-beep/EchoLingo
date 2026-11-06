@@ -1,0 +1,193 @@
+{
+  "enabled": true,
+  "features": {
+    "listening_library": {
+      "enabled": true,
+      "kept": true,
+      "label": "听力材料库",
+      "note": "CET 主入口：四级/六级筛选、搜索、最近学习、继续学习"
+    },
+    "local_import": {
+      "enabled": true,
+      "kept": true,
+      "label": "本地导入",
+      "note": "音频 + 可选 SRT/句子 JSON + 可选纯文本原文"
+    },
+    "player": {
+      "enabled": true,
+      "kept": true,
+      "label": "听力工作区",
+      "note": "播放/拖动/倍速/逐句回听/循环/原文联动"
+    },
+    "transcript": {
+      "enabled": true,
+      "kept": true,
+      "label": "原文",
+      "note": "听力稿显示、隐藏原文、译文切换（无译文明确说明）"
+    },
+    "dictionary": {
+      "enabled": true,
+      "kept": true,
+      "label": "查词",
+      "note": "离线词典优先，无 key 可用"
+    },
+    "word_favorites": {
+      "enabled": true,
+      "kept": true,
+      "label": "词汇收藏",
+      "note": "原词汇工坊的收藏部分，CET4/CET6 词表高亮"
+    },
+    "sentence_favorites": {
+      "enabled": true,
+      "kept": true,
+      "label": "句子收藏",
+      "note": "原句子库，保留回到原材料/原音频"
+    },
+    "progress_resume": {
+      "enabled": true,
+      "kept": true,
+      "label": "学习进度",
+      "note": "按材料恢复位置；完成态来自真实行为"
+    },
+    "settings_core": {
+      "enabled": true,
+      "kept": true,
+      "label": "设置",
+      "note": "默认级别、学习显示、词表、现有模型设置入口（不改用户配置）"
+    },
+    "ai_word_sentence_explain": {
+      "enabled": true,
+      "kept": true,
+      "label": "词句解释（次级操作）",
+      "note": "以当前句和材料为上下文，按需触发；无 key 不阻塞"
+    },
+    "link_import": {
+      "enabled": false,
+      "kept": false,
+      "label": "链接导入（B站/YouTube/网盘/网页）",
+      "note": "任务书 §3.3 明确退出；底层解析器保留不删"
+    },
+    "reading_course": {
+      "enabled": false,
+      "kept": false,
+      "label": "独立文章/PDF 阅读课程",
+      "note": "退出；听力稿改名为「原文」保留文本联动"
+    },
+    "text_to_speech_course": {
+      "enabled": false,
+      "kept": false,
+      "label": "文本生成朗读课程",
+      "note": "退出"
+    },
+    "video_learning": {
+      "enabled": false,
+      "kept": false,
+      "label": "泛英语视频学习入口",
+      "note": "退出；播放器保留纯音频用法"
+    },
+    "memory_story": {
+      "enabled": false,
+      "kept": false,
+      "label": "记忆故事",
+      "note": "退出"
+    },
+    "scenario_sentence": {
+      "enabled": false,
+      "kept": false,
+      "label": "情境造句",
+      "note": "退出"
+    },
+    "ielts_reuse": {
+      "enabled": false,
+      "kept": false,
+      "label": "雅思复用",
+      "note": "退出；逐句精读页同步清理文案"
+    },
+    "free_retell": {
+      "enabled": false,
+      "kept": false,
+      "label": "自由复述评分",
+      "note": "退出"
+    },
+    "ai_chat_general": {
+      "enabled": false,
+      "kept": false,
+      "label": "泛用 AI 聊天",
+      "note": "退出核心区域；词句解释保留在上下文"
+    },
+    "outline_generation": {
+      "enabled": false,
+      "kept": false,
+      "label": "内容大纲生成",
+      "note": "退出；不自动发起后台生成"
+    },
+    "credits_account": {
+      "enabled": false,
+      "kept": false,
+      "label": "积分/登录/个人档案",
+      "note": "本机单用户运行非基础依赖，隐藏入口；**不绕过鉴权、不改服务安全配置**"
+    },
+    "cet_listening_agent": {
+      "enabled": true,
+      "kept": false,
+      "label": "卡点陪练模块（队友交付）",
+      "note": "队友卡点/智能复习模块；底座独立运行默认不挂载，真正接入后开启"
+    }
+  },
+  "nav": [
+    {
+      "key": "lessons",
+      "label": "听力材料",
+      "hash": "",
+      "icon": "🎧"
+    },
+    {
+      "key": "favorites",
+      "label": "我的收藏",
+      "hash": "favorites",
+      "icon": "⭐"
+    },
+    {
+      "key": "resources",
+      "label": "设置",
+      "hash": "resources",
+      "icon": "⚙️"
+    }
+  ],
+  "copy": {
+    "site_title": "EchoLingo · 四六级听力",
+    "home_heading": "四六级听力材料",
+    "home_subtitle": "选择四级或六级，导入本地听力材料，逐句精听。",
+    "library_heading": "听力材料",
+    "workspace_title": "听力工作区",
+    "transcript_label": "原文",
+    "favorites_heading": "我的收藏",
+    "vocab_heading": "词汇收藏",
+    "sentences_heading": "句子收藏",
+    "settings_heading": "设置",
+    "empty_library": "还没有听力材料。导入一份本地音频开始学习。",
+    "unspecified_level": "待分类"
+  },
+  "wordlists": [
+    "builtin_cet4",
+    "builtin_cet6"
+  ],
+  "levels": [
+    "cet4",
+    "cet6",
+    "unspecified"
+  ],
+  "retired_keys": [
+    "link_import",
+    "reading_course",
+    "text_to_speech_course",
+    "video_learning",
+    "memory_story",
+    "scenario_sentence",
+    "ielts_reuse",
+    "free_retell",
+    "ai_chat_general",
+    "outline_generation",
+    "credits_account"
+  ]
+}

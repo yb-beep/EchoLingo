@@ -1,0 +1,63 @@
+- heading "🎧 EchoLingo · 四六级听力" [level=1]
+- generic: 1 句
+- tablist "主导航":
+  - tab "🎧 听力材料"
+  - tab "⭐ 我的收藏" [selected]
+  - tab "⚙️ 设置"
+- banner:
+  - generic: 句子精听
+  - heading "句子收藏" [level=2]
+  - paragraph: 在收藏句中直接播放、隐藏原文并记录是否听懂。
+  - strong: "1"
+  - text: 个收藏句
+- navigation "我的收藏":
+  - button "词汇收藏"
+  - button "句子收藏"
+- region "全部收藏句":
+  - heading "全部收藏句" [level=2]
+  - paragraph: 先设置播放方式，再按需要缩小句子范围。
+  - generic "播放设置":
+    - button "▶ 自动播放"
+    - button "🔁 循环"
+    - combobox "播放倍速":
+      - option "0.6×"
+      - option "0.8×"
+      - option "1×" [selected]
+      - option "1.25×"
+      - option "1.5×"
+    - button "🙈 隐藏原文"
+  - generic "句子筛选":
+    - searchbox "搜索收藏句"
+    - combobox "按收藏时间筛选":
+      - option "全部收藏" [selected]
+      - option "今日收藏"
+      - option "昨日收藏"
+      - option "本周内收藏"
+      - option "更早收藏"
+    - combobox "按听力结果筛选":
+      - option "全部听力结果" [selected]
+      - option "从未练过"
+      - option "上次听懂"
+      - option "上次听不懂"
+    - combobox "按归档状态筛选":
+      - option "未归档" [selected]
+      - option "已归档"
+      - option "全部状态"
+  - group "按课程筛选"
+  - group "按标签筛选"
+  - article:
+    - generic: Let's do two more hours, please.
+    - generic: 独立复验六级样例
+    - generic: 未打标签
+    - button "播放句子原音": 🔊 播放
+    - combobox "调整播放速度":
+      - option "0.6x"
+      - option "0.8x"
+      - option "1x" [selected]
+      - option "1.25x"
+    - button "隐藏原文"
+    - button "听懂"
+    - button "听不懂"
+    - button "🏷 标签"
+    - button "展开"
+    - generic: 从未练过

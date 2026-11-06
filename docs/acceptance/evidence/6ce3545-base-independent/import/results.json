@@ -1,0 +1,638 @@
+{
+  "valid": {
+    "status": 200,
+    "body": {
+      "duplicate": false,
+      "lesson": {
+        "lessonId": 1,
+        "materialId": "v2-1",
+        "title": "独立验收有效材料",
+        "level": "cet4",
+        "category": "练习",
+        "durationSec": 10.0,
+        "mediaUrl": "/output/v2_assets/1/audit.wav",
+        "mediaKind": "local_audio",
+        "lessonUrl": "/workspace/1",
+        "sourceType": "uploaded_media",
+        "sourceUrl": "upload:e713011aacae4357b10b6bcd5df80275",
+        "tags": [
+          "cet4",
+          "练习"
+        ],
+        "archived": false,
+        "createdAt": "2026-11-06T08:22:58.271131+00:00",
+        "updatedAt": "2026-11-06T08:22:58.277432+00:00",
+        "audioSha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e",
+        "availability": {
+          "hasAudio": true,
+          "audioReachable": true,
+          "hasTimeline": true,
+          "sentenceCount": 1,
+          "hasTranscript": true,
+          "readingBlockCount": 1,
+          "questionCount": 0,
+          "subtitleStatus": "ready",
+          "timelineStatus": "ready",
+          "isGenerating": false
+        },
+        "progress": {
+          "lastPositionSeconds": 0.0,
+          "lastSegmentIndex": 0,
+          "progressPercent": 0,
+          "lastActiveAt": "",
+          "started": false
+        },
+        "hasAudio": true,
+        "hasTimeline": true,
+        "sentenceCount": 1,
+        "questionCount": 0,
+        "subtitleStatus": "ready"
+      },
+      "lessonUrl": "/workspace/1",
+      "material": {
+        "lessonId": 1,
+        "materialId": "v2-1",
+        "title": "独立验收有效材料",
+        "level": "cet4",
+        "category": "练习",
+        "durationSec": 10.0,
+        "mediaUrl": "/output/v2_assets/1/audit.wav",
+        "mediaKind": "local_audio",
+        "lessonUrl": "/workspace/1",
+        "sourceType": "uploaded_media",
+        "sourceUrl": "upload:e713011aacae4357b10b6bcd5df80275",
+        "tags": [
+          "cet4",
+          "练习"
+        ],
+        "archived": false,
+        "createdAt": "2026-11-06T08:22:58.271131+00:00",
+        "updatedAt": "2026-11-06T08:22:58.277432+00:00",
+        "audioSha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e",
+        "availability": {
+          "hasAudio": true,
+          "audioReachable": true,
+          "hasTimeline": true,
+          "sentenceCount": 1,
+          "hasTranscript": true,
+          "readingBlockCount": 1,
+          "questionCount": 0,
+          "subtitleStatus": "ready",
+          "timelineStatus": "ready",
+          "isGenerating": false
+        },
+        "progress": {
+          "lastPositionSeconds": 0.0,
+          "lastSegmentIndex": 0,
+          "progressPercent": 0,
+          "lastActiveAt": "",
+          "started": false
+        },
+        "hasAudio": true,
+        "hasTimeline": true,
+        "sentenceCount": 1,
+        "questionCount": 0,
+        "subtitleStatus": "ready"
+      },
+      "subtitle": {
+        "format": "json",
+        "timed": true,
+        "sentenceCount": 1,
+        "errors": []
+      },
+      "warnings": [],
+      "supportedFormats": {
+        "audio": [
+          ".mp3",
+          ".m4a",
+          ".wav",
+          ".ogg",
+          ".flac",
+          ".aac"
+        ],
+        "subtitle": [
+          ".srt",
+          ".vtt",
+          ".json",
+          ".txt"
+        ],
+        "subtitleTimed": [
+          ".srt",
+          ".vtt",
+          ".json"
+        ],
+        "plainText": [
+          ".txt"
+        ],
+        "notes": {
+          ".srt": "推荐格式：带时间轴，可逐句定位",
+          ".vtt": "WebVTT，带时间轴，可逐句定位",
+          ".json": "仓库句子 JSON（sentences 数组，含 start/end），可逐句定位",
+          ".txt": "纯文本原文，只作听力稿，不生成逐句时间轴"
+        }
+      }
+    }
+  },
+  "patchLevelOnly": {
+    "lessonId": 1,
+    "materialId": "v2-1",
+    "title": "独立验收有效材料",
+    "level": "cet6",
+    "category": "练习",
+    "durationSec": 10.0,
+    "mediaUrl": "/output/v2_assets/1/audit.wav",
+    "mediaKind": "local_audio",
+    "lessonUrl": "/workspace/1",
+    "sourceType": "uploaded_media",
+    "sourceUrl": "upload:e713011aacae4357b10b6bcd5df80275",
+    "tags": [
+      "cet6",
+      "练习"
+    ],
+    "archived": false,
+    "createdAt": "2026-11-06T08:22:58.271131+00:00",
+    "updatedAt": "2026-11-06T08:22:58.285791+00:00",
+    "audioSha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e",
+    "availability": {
+      "hasAudio": true,
+      "audioReachable": true,
+      "hasTimeline": true,
+      "sentenceCount": 1,
+      "hasTranscript": true,
+      "readingBlockCount": 1,
+      "questionCount": 0,
+      "subtitleStatus": "ready",
+      "timelineStatus": "ready",
+      "isGenerating": false
+    },
+    "progress": {
+      "lastPositionSeconds": 0.0,
+      "lastSegmentIndex": 0,
+      "progressPercent": 0,
+      "lastActiveAt": "",
+      "started": false
+    },
+    "hasAudio": true,
+    "hasTimeline": true,
+    "sentenceCount": 1,
+    "questionCount": 0,
+    "subtitleStatus": "ready"
+  },
+  "patchCategoryOnly": {
+    "lessonId": 1,
+    "materialId": "v2-1",
+    "title": "独立验收有效材料",
+    "level": "cet4",
+    "category": "样例",
+    "durationSec": 10.0,
+    "mediaUrl": "/output/v2_assets/1/audit.wav",
+    "mediaKind": "local_audio",
+    "lessonUrl": "/workspace/1",
+    "sourceType": "uploaded_media",
+    "sourceUrl": "upload:e713011aacae4357b10b6bcd5df80275",
+    "tags": [
+      "cet4",
+      "样例"
+    ],
+    "archived": false,
+    "createdAt": "2026-11-06T08:22:58.271131+00:00",
+    "updatedAt": "2026-11-06T08:22:58.296276+00:00",
+    "audioSha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e",
+    "availability": {
+      "hasAudio": true,
+      "audioReachable": true,
+      "hasTimeline": true,
+      "sentenceCount": 1,
+      "hasTranscript": true,
+      "readingBlockCount": 1,
+      "questionCount": 0,
+      "subtitleStatus": "ready",
+      "timelineStatus": "ready",
+      "isGenerating": false
+    },
+    "progress": {
+      "lastPositionSeconds": 0.0,
+      "lastSegmentIndex": 0,
+      "progressPercent": 0,
+      "lastActiveAt": "",
+      "started": false
+    },
+    "hasAudio": true,
+    "hasTimeline": true,
+    "sentenceCount": 1,
+    "questionCount": 0,
+    "subtitleStatus": "ready"
+  },
+  "archive": {
+    "lessonId": 1,
+    "materialId": "v2-1",
+    "title": "独立验收有效材料",
+    "level": "cet4",
+    "category": "样例",
+    "durationSec": 10.0,
+    "mediaUrl": "/output/v2_assets/1/audit.wav",
+    "mediaKind": "local_audio",
+    "lessonUrl": "/workspace/1",
+    "sourceType": "uploaded_media",
+    "sourceUrl": "upload:e713011aacae4357b10b6bcd5df80275",
+    "tags": [
+      "cet4",
+      "样例"
+    ],
+    "archived": true,
+    "createdAt": "2026-11-06T08:22:58.271131+00:00",
+    "updatedAt": "2026-11-06T08:22:58.301376+00:00",
+    "audioSha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e",
+    "availability": {
+      "hasAudio": true,
+      "audioReachable": true,
+      "hasTimeline": true,
+      "sentenceCount": 1,
+      "hasTranscript": true,
+      "readingBlockCount": 1,
+      "questionCount": 0,
+      "subtitleStatus": "ready",
+      "timelineStatus": "ready",
+      "isGenerating": false
+    },
+    "progress": {
+      "lastPositionSeconds": 0.0,
+      "lastSegmentIndex": 0,
+      "progressPercent": 0,
+      "lastActiveAt": "",
+      "started": false
+    },
+    "hasAudio": true,
+    "hasTimeline": true,
+    "sentenceCount": 1,
+    "questionCount": 0,
+    "subtitleStatus": "ready"
+  },
+  "visibleArchivedCount": 0,
+  "restore": {
+    "lessonId": 1,
+    "materialId": "v2-1",
+    "title": "独立验收有效材料",
+    "level": "cet4",
+    "category": "样例",
+    "durationSec": 10.0,
+    "mediaUrl": "/output/v2_assets/1/audit.wav",
+    "mediaKind": "local_audio",
+    "lessonUrl": "/workspace/1",
+    "sourceType": "uploaded_media",
+    "sourceUrl": "upload:e713011aacae4357b10b6bcd5df80275",
+    "tags": [
+      "cet4",
+      "样例"
+    ],
+    "archived": false,
+    "createdAt": "2026-11-06T08:22:58.271131+00:00",
+    "updatedAt": "2026-11-06T08:22:58.308285+00:00",
+    "audioSha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e",
+    "availability": {
+      "hasAudio": true,
+      "audioReachable": true,
+      "hasTimeline": true,
+      "sentenceCount": 1,
+      "hasTranscript": true,
+      "readingBlockCount": 1,
+      "questionCount": 0,
+      "subtitleStatus": "ready",
+      "timelineStatus": "ready",
+      "isGenerating": false
+    },
+    "progress": {
+      "lastPositionSeconds": 0.0,
+      "lastSegmentIndex": 0,
+      "progressPercent": 0,
+      "lastActiveAt": "",
+      "started": false
+    },
+    "hasAudio": true,
+    "hasTimeline": true,
+    "sentenceCount": 1,
+    "questionCount": 0,
+    "subtitleStatus": "ready"
+  },
+  "mixedInvalidJson": {
+    "status": 422,
+    "body": {
+      "detail": {
+        "code": "IMPORT_VALIDATION_FAILED",
+        "message": "字幕校验未通过，未导入任何内容",
+        "errors": [
+          {
+            "index": 2,
+            "line": 0,
+            "reason": "invalid_entry",
+            "message": "句子数组第 2 个元素不是句子对象（实际是 字符串「BROKEN」），无法读取 start/end/text"
+          },
+          {
+            "index": 3,
+            "line": 0,
+            "reason": "invalid_entry",
+            "message": "句子数组第 3 个元素不是句子对象（实际是 null），无法读取 start/end/text"
+          }
+        ],
+        "errorCount": 2
+      }
+    }
+  },
+  "nanJson": {
+    "status": 422,
+    "body": {
+      "detail": {
+        "code": "IMPORT_VALIDATION_FAILED",
+        "message": "字幕校验未通过，未导入任何内容",
+        "errors": [
+          {
+            "index": 1,
+            "line": 0,
+            "reason": "unparsable_timestamp",
+            "message": "第 1 条句子的 start/end 不是有限数字：'NaN' / 2"
+          }
+        ],
+        "errorCount": 1
+      }
+    }
+  },
+  "invalidAudio": {
+    "status": 422,
+    "body": "{\"detail\":{\"code\":\"IMPORT_VALIDATION_FAILED\",\"message\":\"音频文件无效\",\"errors\":[{\"index\":0,\"line\":0,\"reason\":\"invalid_audio\",\"message\":\"文件不是有效音频：bad.mp3 无法被解析为音视频；请确认它是真实的音频文件（支持 .mp3, .m4a, .wav, .ogg, .flac, .aac）\"}],\"errorCount\":1}}"
+  },
+  "concurrentDuplicate": [
+    {
+      "status": 200,
+      "body": {
+        "duplicate": true,
+        "lesson": {
+          "lessonId": 2,
+          "materialId": "v2-2",
+          "title": "并发同素材",
+          "level": "cet4",
+          "category": "练习",
+          "durationSec": 10.0,
+          "mediaUrl": "/output/v2_assets/2/audit.wav",
+          "mediaKind": "local_audio",
+          "lessonUrl": "/workspace/2",
+          "sourceType": "uploaded_media",
+          "sourceUrl": "upload:e7879e5ccb2d487c841284f0858af6b3",
+          "tags": [
+            "cet4",
+            "练习"
+          ],
+          "archived": false,
+          "createdAt": "2026-11-06T08:22:58.438106+00:00",
+          "updatedAt": "2026-11-06T08:22:58.442448+00:00",
+          "audioSha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e",
+          "availability": {
+            "hasAudio": true,
+            "audioReachable": true,
+            "hasTimeline": false,
+            "sentenceCount": 0,
+            "hasTranscript": false,
+            "readingBlockCount": 0,
+            "questionCount": 0,
+            "subtitleStatus": "unavailable",
+            "timelineStatus": "unavailable",
+            "isGenerating": false
+          },
+          "progress": {
+            "lastPositionSeconds": 0.0,
+            "lastSegmentIndex": 0,
+            "progressPercent": 0,
+            "lastActiveAt": "",
+            "started": false
+          },
+          "hasAudio": true,
+          "hasTimeline": false,
+          "sentenceCount": 0,
+          "questionCount": 0,
+          "subtitleStatus": "unavailable"
+        },
+        "lessonUrl": "/workspace/2",
+        "material": {
+          "lessonId": 2,
+          "materialId": "v2-2",
+          "title": "并发同素材",
+          "level": "cet4",
+          "category": "练习",
+          "durationSec": 10.0,
+          "mediaUrl": "/output/v2_assets/2/audit.wav",
+          "mediaKind": "local_audio",
+          "lessonUrl": "/workspace/2",
+          "sourceType": "uploaded_media",
+          "sourceUrl": "upload:e7879e5ccb2d487c841284f0858af6b3",
+          "tags": [
+            "cet4",
+            "练习"
+          ],
+          "archived": false,
+          "createdAt": "2026-11-06T08:22:58.438106+00:00",
+          "updatedAt": "2026-11-06T08:22:58.442448+00:00",
+          "audioSha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e",
+          "availability": {
+            "hasAudio": true,
+            "audioReachable": true,
+            "hasTimeline": false,
+            "sentenceCount": 0,
+            "hasTranscript": false,
+            "readingBlockCount": 0,
+            "questionCount": 0,
+            "subtitleStatus": "unavailable",
+            "timelineStatus": "unavailable",
+            "isGenerating": false
+          },
+          "progress": {
+            "lastPositionSeconds": 0.0,
+            "lastSegmentIndex": 0,
+            "progressPercent": 0,
+            "lastActiveAt": "",
+            "started": false
+          },
+          "hasAudio": true,
+          "hasTimeline": false,
+          "sentenceCount": 0,
+          "questionCount": 0,
+          "subtitleStatus": "unavailable"
+        },
+        "subtitle": {
+          "format": "",
+          "timed": false,
+          "sentenceCount": 0,
+          "errors": []
+        },
+        "warnings": [
+          "已存在同一音频与同名材料，未重复创建。"
+        ],
+        "supportedFormats": {
+          "audio": [
+            ".mp3",
+            ".m4a",
+            ".wav",
+            ".ogg",
+            ".flac",
+            ".aac"
+          ],
+          "subtitle": [
+            ".srt",
+            ".vtt",
+            ".json",
+            ".txt"
+          ],
+          "subtitleTimed": [
+            ".srt",
+            ".vtt",
+            ".json"
+          ],
+          "plainText": [
+            ".txt"
+          ],
+          "notes": {
+            ".srt": "推荐格式：带时间轴，可逐句定位",
+            ".vtt": "WebVTT，带时间轴，可逐句定位",
+            ".json": "仓库句子 JSON（sentences 数组，含 start/end），可逐句定位",
+            ".txt": "纯文本原文，只作听力稿，不生成逐句时间轴"
+          }
+        }
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "duplicate": false,
+        "lesson": {
+          "lessonId": 2,
+          "materialId": "v2-2",
+          "title": "并发同素材",
+          "level": "cet4",
+          "category": "练习",
+          "durationSec": 10.0,
+          "mediaUrl": "/output/v2_assets/2/audit.wav",
+          "mediaKind": "local_audio",
+          "lessonUrl": "/workspace/2",
+          "sourceType": "uploaded_media",
+          "sourceUrl": "upload:e7879e5ccb2d487c841284f0858af6b3",
+          "tags": [
+            "cet4",
+            "练习"
+          ],
+          "archived": false,
+          "createdAt": "2026-11-06T08:22:58.438106+00:00",
+          "updatedAt": "2026-11-06T08:22:58.442448+00:00",
+          "audioSha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e",
+          "availability": {
+            "hasAudio": true,
+            "audioReachable": true,
+            "hasTimeline": false,
+            "sentenceCount": 0,
+            "hasTranscript": false,
+            "readingBlockCount": 0,
+            "questionCount": 0,
+            "subtitleStatus": "unavailable",
+            "timelineStatus": "unavailable",
+            "isGenerating": false
+          },
+          "progress": {
+            "lastPositionSeconds": 0.0,
+            "lastSegmentIndex": 0,
+            "progressPercent": 0,
+            "lastActiveAt": "",
+            "started": false
+          },
+          "hasAudio": true,
+          "hasTimeline": false,
+          "sentenceCount": 0,
+          "questionCount": 0,
+          "subtitleStatus": "unavailable"
+        },
+        "lessonUrl": "/workspace/2",
+        "material": {
+          "lessonId": 2,
+          "materialId": "v2-2",
+          "title": "并发同素材",
+          "level": "cet4",
+          "category": "练习",
+          "durationSec": 10.0,
+          "mediaUrl": "/output/v2_assets/2/audit.wav",
+          "mediaKind": "local_audio",
+          "lessonUrl": "/workspace/2",
+          "sourceType": "uploaded_media",
+          "sourceUrl": "upload:e7879e5ccb2d487c841284f0858af6b3",
+          "tags": [
+            "cet4",
+            "练习"
+          ],
+          "archived": false,
+          "createdAt": "2026-11-06T08:22:58.438106+00:00",
+          "updatedAt": "2026-11-06T08:22:58.442448+00:00",
+          "audioSha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e",
+          "availability": {
+            "hasAudio": true,
+            "audioReachable": true,
+            "hasTimeline": false,
+            "sentenceCount": 0,
+            "hasTranscript": false,
+            "readingBlockCount": 0,
+            "questionCount": 0,
+            "subtitleStatus": "unavailable",
+            "timelineStatus": "unavailable",
+            "isGenerating": false
+          },
+          "progress": {
+            "lastPositionSeconds": 0.0,
+            "lastSegmentIndex": 0,
+            "progressPercent": 0,
+            "lastActiveAt": "",
+            "started": false
+          },
+          "hasAudio": true,
+          "hasTimeline": false,
+          "sentenceCount": 0,
+          "questionCount": 0,
+          "subtitleStatus": "unavailable"
+        },
+        "subtitle": {
+          "format": "",
+          "timed": false,
+          "sentenceCount": 0,
+          "errors": []
+        },
+        "warnings": [
+          "仅导入了音频；暂无逐句定位（无时间轴），逐句回听不可用。"
+        ],
+        "supportedFormats": {
+          "audio": [
+            ".mp3",
+            ".m4a",
+            ".wav",
+            ".ogg",
+            ".flac",
+            ".aac"
+          ],
+          "subtitle": [
+            ".srt",
+            ".vtt",
+            ".json",
+            ".txt"
+          ],
+          "subtitleTimed": [
+            ".srt",
+            ".vtt",
+            ".json"
+          ],
+          "plainText": [
+            ".txt"
+          ],
+          "notes": {
+            ".srt": "推荐格式：带时间轴，可逐句定位",
+            ".vtt": "WebVTT，带时间轴，可逐句定位",
+            ".json": "仓库句子 JSON（sentences 数组，含 start/end），可逐句定位",
+            ".txt": "纯文本原文，只作听力稿，不生成逐句时间轴"
+          }
+        }
+      }
+    }
+  ],
+  "concurrentCount": 1
+}

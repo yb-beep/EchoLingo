@@ -15,6 +15,9 @@
   const CFG = {
     // 标记吸附的回溯窗口：用户通常在「没跟上之后」才按键，
     // 所以候选句要往前找。这个值需实际试听调整（计划 §4）。
+    // F08：这个值现在**真的发给后端**（reactionDelaySeconds）。
+    // 后端 create_mark() 用它算 adjusted = pressedAtSec - lookbackSec * speed，
+    // 再用 adjusted 去吸附候选句 —— 所以改这里就能改变候选定位。
     lookbackSec: Number(window.CET_LOOKBACK_SEC || 2.5),
     apiBase: '/api/cet',
     // 轮询恢复用
@@ -34,6 +37,13 @@
     sessionId: null,
     listening: false,     // 是否处于「练习标记模式」
     lastMarkAt: 0,        // 防连发
+    // F08：预览目标（markId → sentenceId）。预览只切试听、不落库；
+    // 只有点「确认这句」才 PATCH /marks/{id} 写 confirmedSentenceId。
+    previews: {},
+    // F05：换句闭环状态
+    transferPlayed: false,   // 候选原声是否已完整播过（后端要求先有 playedToEnd）
+    transferDone: false,     // 本轮换句是否已作答
+    transferCandidate: null, // 当前候选（含跨材料音频地址）
   };
 
   // ── 工具 ────────────────────────────────────────────────
@@ -153,6 +163,18 @@
         : '';
     }
     document.body.classList.toggle('cet-listening', on);
+
+    // F05：进入卡点练习模式即隐藏原文（字幕 + 含原文的内容大纲 + 阅读正文）。
+    // 只控显隐，原 UI 完整保留 —— 退出时恢复。
+    if (on) {
+      applyTextVisibility(false);
+      ensureTimeline();
+      renderTimelineMarks();
+    } else {
+      applyTextVisibility(true);
+      // 退出练习模式时清掉换句区的临时状态
+      S.transferPlayed = false;
+    }
   }
 
   // ── 空格标记 ────────────────────────────────────────────
@@ -200,16 +222,27 @@
 
   async function createMark(pressedAtSec) {
     if (!S.materialId) return;
+    // F08：创建标记必须带上**回溯参数**与**实际倍速**。
+    // 后端 create_mark() 用 adjusted = pressedAtSec - reactionDelaySeconds * speed
+    // 去吸附候选句，不传这两个值就用后端默认值（0.6 / 1.0），
+    // 前端 CFG.lookbackSec = 2.5 就永远不生效。
+    const md = media();
+    const speed = md && md.playbackRate ? md.playbackRate : 1;
     try {
       const mark = await api('POST', '/marks', {
         materialId: S.materialId,
         materialVersion: S.materialVersion,
         listeningSessionId: sessionId(),
         pressedAtSec: Number(pressedAtSec.toFixed(3)),
+        reactionDelaySeconds: CFG.lookbackSec,     // 回溯窗口（秒）
+        speed: Number(speed.toFixed(3)),           // 实际播放倍速
       });
       S.marks.push(mark);
       renderMarks();
-      flashHint(`已在 ${fmt(mark.pressedAtSec)} 标记`);
+      // F08：标记一建立就自动进入「候选预览」——立刻回听候选句，
+      // 用户听完再决定要不要确认，不需要先手动点「回听」。
+      previewMark(mark, mark.suggestedSentenceId, { autoplay: true });
+      flashHint(`已在 ${fmt(mark.pressedAtSec)} 标记（回看 ${CFG.lookbackSec}s / ${speed}x）`);
     } catch (err) {
       flashHint(`标记失败：${err.message}（可重试）`, true);
     }
@@ -229,11 +262,23 @@
 
   // ── 标记渲染（三态：待确认 / 待练 / 本轮已练）──────────
   function markState(m) {
+    // F08：「改一下」把已确认的标记退回待确认态，允许重新预览与覆盖。
+    if (m.__amending) return 'pending';
     if (m.confirmedSentenceId) {
       return S.practice && S.practice.markId === m.markId && S.practice.status === 'complete'
         ? 'done' : 'ready';
     }
     return 'pending';
+  }
+
+  // F08：当前预览的句子 = 用户切过的目标句，否则是后端建议句。
+  // 注意预览**不改 mark 本身**，只有确认才写 confirmedSentenceId。
+  function previewSentenceId(m) {
+    return S.previews[m.markId] || m.suggestedSentenceId || null;
+  }
+
+  function findSentence(sentenceId) {
+    return S.sentences.find((s) => s.sentenceId === sentenceId) || null;
   }
 
   function renderMarks() {
@@ -242,6 +287,7 @@
     box.innerHTML = '';
     if (!S.marks.length) {
       box.hidden = true;
+      renderTimelineMarks();
       return;
     }
     box.hidden = false;
@@ -259,26 +305,28 @@
       const badge = el('span', `cet-mark-badge cet-mark-badge-${st}`, label);
       row.appendChild(badge);
 
-      const sent = S.sentences.find((s) => s.sentenceId === m.confirmedSentenceId
-        || s.sentenceId === m.suggestedSentenceId);
+      // F08：待确认时显示「预览中的句子」，并明确标出它还不是最终确认句
+      const shownId = st === 'pending' ? previewSentenceId(m) : m.confirmedSentenceId;
+      const sent = findSentence(shownId);
       if (sent) {
         const q = el('span', 'cet-mark-sentence', sent.text);
         row.appendChild(q);
+        if (st === 'pending') {
+          const tag = el('span', 'cet-mark-preview-tag',
+            `预览 ${fmt(sent.startSeconds)}–${fmt(sent.endSeconds)}`);
+          row.appendChild(tag);
+        }
       }
 
       const acts = el('span', 'cet-mark-actions');
 
-      // 回听
+      // 回听：待确认时回听「预览句」，已确认时回听确认句
       const play = el('button', 'cet-btn-sm', '回听');
-      play.onclick = () => replayMark(m);
+      play.onclick = () => previewMark(m, shownId, { autoplay: true });
       acts.appendChild(play);
 
-      // 确认/调整
+      // F08：待确认 —— 前后句只切预览，不确认
       if (st === 'pending') {
-        const conf = el('button', 'cet-btn-sm', '确认这句');
-        conf.onclick = () => confirmMark(m);
-        acts.appendChild(conf);
-
         const prev = el('button', 'cet-btn-sm', '前一句');
         prev.onclick = () => adjustMark(m, -1);
         acts.appendChild(prev);
@@ -286,43 +334,67 @@
         const next = el('button', 'cet-btn-sm', '后一句');
         next.onclick = () => adjustMark(m, 1);
         acts.appendChild(next);
+
+        // 只有这里才真的落库确认
+        const conf = el('button', 'cet-btn-sm cet-btn-confirm', '确认这句');
+        conf.onclick = () => confirmMark(m, previewSentenceId(m));
+        acts.appendChild(conf);
       }
 
       if (st === 'ready') {
         const start = el('button', 'cet-btn-sm', '开始带练');
         start.onclick = () => startPractice(m);
         acts.appendChild(start);
+
+        // F08：确认后仍能纠正 —— 回到待确认状态重新预览、重新确认
+        const amend = el('button', 'cet-btn-sm', '改一下');
+        amend.onclick = () => reopenMark(m);
+        acts.appendChild(amend);
       }
 
       row.appendChild(acts);
       box.appendChild(row);
     });
+
+    renderTimelineMarks();
   }
 
-  function replayMark(m) {
-    const sid = m.confirmedSentenceId || m.suggestedSentenceId;
-    const sent = S.sentences.find((s) => s.sentenceId === sid);
-    const md = media();
-    if (!sent || !md) return;
-    md.currentTime = sent.startSeconds;
-    md.play();
-    const stopAt = sent.endSeconds;
-    const guard = () => {
-      if (md.currentTime >= stopAt) {
-        md.pause();
-        md.removeEventListener('timeupdate', guard);
-      }
-    };
-    md.addEventListener('timeupdate', guard);
+  // F08：预览 = 只播该句 + 记录预览目标，**不发 PATCH**
+  function previewMark(m, sentenceId, opts) {
+    const sid = sentenceId || previewSentenceId(m);
+    const sent = findSentence(sid);
+    if (!sent) return;
+    S.previews[m.markId] = sid;
+    // 预览会改变「当前预览句」，列表里的句子文本与预览标签要跟着更新
+    renderMarks();
+    if (opts && opts.autoplay) {
+      replayRange(sent.startSeconds, sent.endSeconds);
+    }
+  }
+
+  // F08：前后句只切换预览，并且**立即回听**该句（用户听完再决定）
+  function adjustMark(m, delta) {
+    const cur = previewSentenceId(m);
+    let idx = S.sentences.findIndex((s) => s.sentenceId === cur);
+    if (idx < 0) idx = 0;
+    idx = Math.min(S.sentences.length - 1, Math.max(0, idx + delta));
+    const target = S.sentences[idx];
+    if (!target) return;
+    previewMark(m, target.sentenceId, { autoplay: true });
+    flashHint(`预览第 ${idx + 1} 句，听完再点「确认这句」`);
   }
 
   async function confirmMark(m, sentenceId) {
-    const sid = sentenceId || m.confirmedSentenceId || m.suggestedSentenceId;
+    const sid = sentenceId || previewSentenceId(m);
+    if (!sid) { flashHint('没有可确认的句子', true); return; }
     try {
       const updated = await api('PATCH', `/marks/${m.markId}`, { confirmedSentenceId: sid });
       Object.assign(m, updated);
+      // 确认后清掉预览态：后续「回听」应播确认句
+      delete S.previews[m.markId];
+      delete m.__amending;
       renderMarks();
-      flashHint('已确认卡点句子');
+      flashHint('已确认卡点句子（还可以点「改一下」重新调整）');
     } catch (err) {
       if (err.code === 'ATTEMPT_REQUIRED') {
         flashHint('请先交卷，再确认卡点句子', true);
@@ -332,16 +404,128 @@
     }
   }
 
-  function adjustMark(m, delta) {
-    const cur = m.confirmedSentenceId || m.suggestedSentenceId;
-    let idx = S.sentences.findIndex((s) => s.sentenceId === cur);
-    if (idx < 0) idx = 0;
-    idx = Math.min(S.sentences.length - 1, Math.max(0, idx + delta));
-    const target = S.sentences[idx];
-    if (target) confirmMark(m, target.sentenceId);
+  // F08：确认后仍能调整 —— 把预览起点拉回已确认句，重新进入待确认态。
+  // 不直接清空后端 confirmedSentenceId（那会让已建立的带练失去依据），
+  // 而是让用户重新预览并再次确认，覆盖原值。
+  function reopenMark(m) {
+    S.previews[m.markId] = m.confirmedSentenceId || m.suggestedSentenceId;
+    // 前端视角退回「待确认」：用一个本地标记区分「已确认但正在改」
+    m.__amending = true;
+    renderMarks();
+    const sent = findSentence(previewSentenceId(m));
+    if (sent) replayRange(sent.startSeconds, sent.endSeconds);
+    flashHint('重新调整：用「前一句 / 后一句」试听，确认后覆盖原句');
   }
 
-  // ── 题目面板 ────────────────────────────────────────────
+  // ── F10：时间线颜色标记 ─────────────────────────────────
+  // 在播放器下方画一条与音频时长等宽的时间轴，把每个标记画在它的真实秒数位置。
+  // 三态：橙「待确认」/ 蓝「待练」/ 绿「本轮已练」。
+  // 无障碍：颜色 + 文字双重标识 —— 每个标记块里有状态文字，
+  // 并有 title / aria-label，色盲用户不依赖颜色也能分辨。
+  const TIMELINE_STATE = {
+    pending: { label: '待确认', short: '待' },
+    ready: { label: '待练', short: '练' },
+    done: { label: '本轮已练', short: '已' },
+  };
+
+  function timelineDuration() {
+    const md = media();
+    if (md && isFinite(md.duration) && md.duration > 0) return md.duration;
+    const last = S.sentences[S.sentences.length - 1];
+    return last && isFinite(last.endSeconds) ? last.endSeconds : 0;
+  }
+
+  function ensureTimeline() {
+    let layer = $('#cet-timeline');
+    if (layer) return layer;
+    const md = media();
+    if (!md) return null;
+    // 注意：不能挂在 #local-media-player 的父节点（也就是 #youtube-player）里 ——
+    // initLocalMedia() 会整块重写 #youtube-player 的 innerHTML，
+    // 实测时间线刚挂上就被清掉（MutationObserver 抓到 removed）。
+    // 改用稳定的 .video-card（只切 hidden，不重写子节点），
+    // 把时间线作为 #youtube-player 的**兄弟节点**放在播放器下方。
+    const host = md.closest('.video-card') || md.parentNode;
+    if (!host) return null;
+    const wrap = el('div', 'cet-timeline');
+    wrap.id = 'cet-timeline';
+    wrap.setAttribute('data-cet-mark-layer', '1');
+    wrap.setAttribute('role', 'group');
+    wrap.setAttribute('aria-label', '卡点标记时间线');
+
+    const track = el('div', 'cet-timeline-track');
+    track.id = 'cet-timeline-track';
+    wrap.appendChild(track);
+
+    const legend = el('div', 'cet-timeline-legend');
+    [['pending', '待确认'], ['ready', '待练'], ['done', '本轮已练']].forEach(([st, label]) => {
+      const item = el('span', `cet-timeline-legend-item cet-timeline-legend-${st}`);
+      const dot = el('span', `cet-timeline-dot cet-timeline-dot-${st}`);
+      dot.setAttribute('aria-hidden', 'true');
+      item.appendChild(dot);
+      item.appendChild(el('span', null, label));
+      legend.appendChild(item);
+    });
+    wrap.appendChild(legend);
+
+    // 插到播放器之后；若播放器直接是 .video-card 的子节点
+    const player = md.closest('#youtube-player') || md;
+    if (player.parentNode === host) {
+      host.insertBefore(wrap, player.nextSibling);
+    } else {
+      host.appendChild(wrap);
+    }
+    return wrap;
+  }
+
+  function renderTimelineMarks() {
+    const wrap = ensureTimeline();
+    if (!wrap) return;
+    const track = $('#cet-timeline-track');
+    if (!track) return;
+    const dur = timelineDuration();
+    track.innerHTML = '';
+    if (!dur) return;
+
+    track.setAttribute('data-cet-duration-sec', String(Number(dur.toFixed(3))));
+
+    if (!S.marks.length) {
+      track.appendChild(el('div', 'cet-timeline-empty', '暂无卡点标记（播放时按空格标记）'));
+      return;
+    }
+
+    S.marks.forEach((m) => {
+      const st = markState(m);
+      const sec = Number(m.pressedAtSec) || 0;
+      const pct = Math.min(100, Math.max(0, (sec / dur) * 100));
+      const meta = TIMELINE_STATE[st];
+
+      const tick = el('button', `cet-timeline-mark cet-timeline-mark-${st}`);
+      tick.type = 'button';
+      tick.style.left = `${pct}%`;
+      // 无障碍 + 可测性：秒数与状态都写在属性里，不依赖颜色
+      tick.setAttribute('data-cet-mark', '1');
+      tick.setAttribute('data-cet-mark-sec', String(Number(sec.toFixed(3))));
+      tick.setAttribute('data-cet-mark-state', st);
+      tick.setAttribute('title', `${fmt(sec)} · ${meta.label}`);
+      tick.setAttribute('aria-label', `卡点 ${fmt(sec)}，状态：${meta.label}`);
+      tick.appendChild(el('span', 'cet-timeline-mark-text', meta.short));
+      tick.onclick = () => {
+        // 点时间线标记 = 跳到该位置并进入预览/回听
+        const sentId = st === 'pending' ? previewSentenceId(m) : m.confirmedSentenceId;
+        const sent = findSentence(sentId);
+        const md = media();
+        if (sent) {
+          replayRange(sent.startSeconds, sent.endSeconds);
+        } else if (md) {
+          md.currentTime = sec;
+        }
+      };
+      track.appendChild(tick);
+    });
+  }
+
+
   function mountQuestionPanel() {
     const side = $('.side-column');
     if (!side || $('#cet-questions')) return;
@@ -479,11 +663,15 @@
     }
 
     if (action === 'transfer' || data.noCandidate) {
+      // F05：恢复带练时若停在换句步骤，同样要隐藏原文并恢复原速
+      hideTextForTransfer();
       renderTransfer({ currentStep: step, transferStatus: S.practice.transferStatus }, container);
       return;
     }
 
     if (action === 'slow' || action === 'replay' || action === 'chunk') {
+      // F05：恢复步骤时按后端的 textVisible 决定字幕显隐
+      applyTextVisibility(step.showText !== false && step.textVisible !== false);
       container.appendChild(el('div', 'cet-ai-note',
         `当前步骤：${ACTION_LABEL[action] || action}${step.speed && step.speed < 1 ? `（${step.speed}x）` : ''}`));
       return;
@@ -672,7 +860,13 @@
         || stepData.noCandidate === true
         || (r && r.transferStatus === 'no_candidate');
       if (isTransferCase) {
+        // F05：换句是「独立检验」——必须隐藏原文（含大纲摘要），
+        // 并恢复 1.0x 原速，否则候选听力被字幕和慢放辅助，检验无效。
+        hideTextForTransfer();
         renderTransfer(r);
+      } else {
+        // 非换句步骤：按后端 textVisible 决定是否隐藏原文
+        applyTextVisibility(step.showText !== false && step.textVisible !== false);
       }
       save();
     } catch (err) {
@@ -724,23 +918,244 @@
     out.appendChild(box);
   }
 
-  // F05：换句检验的候选渲染（本轮先做「没有候选」的明确状态，不假成功）
+  // F05：换句检验闭环。
+  // 三条硬约束（都来自后端真实校验，不能靠改文案绕过）：
+  //   1) transfer_answer 要求当前步骤先有 playedToEnd=1 的 playback_end
+  //   2) playback_start/end 的 speed 必须等于 step.speed，否则 422
+  //   3) playback 事件要求 audioTime 落在 step 的 [start-0.25, end+0.7] 内
+  // 所以这里真的播候选音频，播完再放行作答。
+  // 换句区的状态提示只保留一条：自动播放 + 手动重播会各发一次，
+  // 不去重就会堆出「已完整播放」两遍（实测出现过）。
+  function transferNote(text, warn, keepId) {
+    const box = $('#cet-transfer-box');
+    const host = box || $('#cet-practice-out');
+    if (!host) return null;
+    const key = keepId || 'transfer-status';
+    const old = host.querySelector(`[data-cet-note="${key}"]`);
+    if (old) old.remove();
+    const note = el('div', `cet-ai-note${warn ? ' warn' : ''}`, text);
+    note.setAttribute('data-cet-note', key);
+    host.appendChild(note);
+    return note;
+  }
+
+  // 候选原声属于**另一份材料/音源**，不能复用页面播放器（会打断原句播放、
+  // 且 src 不同）。用一个独立 audio 元素播真实音频。
+  function candidateAudio() {
+    let a = document.getElementById('cet-transfer-audio');
+    if (!a) {
+      a = document.createElement('audio');
+      a.id = 'cet-transfer-audio';
+      a.preload = 'auto';
+      a.setAttribute('data-cet-transfer-audio', '1');
+      a.style.display = 'none';
+      document.body.appendChild(a);
+    }
+    return a;
+  }
+
+  function waitMetadata(a) {
+    if (a.readyState >= 1 && isFinite(a.duration)) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const ok = () => { cleanup(); resolve(); };
+      const bad = () => { cleanup(); reject(new Error('候选音频加载失败')); };
+      const cleanup = () => {
+        a.removeEventListener('loadedmetadata', ok);
+        a.removeEventListener('error', bad);
+      };
+      a.addEventListener('loadedmetadata', ok, { once: true });
+      a.addEventListener('error', bad, { once: true });
+      setTimeout(bad, 8000);
+    });
+  }
+
+  // F05：恢复 1.0x 原速（页面播放器 + 原倍速下拉 + 候选播放器一起恢复，
+  // 否则「界面上显示 1x、实际还在 0.75」这种不一致会骗过用户）
+  function restoreOriginalSpeed() {
+    const md = media();
+    if (md) md.playbackRate = 1;
+    const sel = document.getElementById('playback-rate');
+    if (sel && sel.value !== '1') {
+      sel.value = '1';
+      if (typeof window.onPlaybackRateChange === 'function') {
+        try { window.onPlaybackRateChange(); } catch (_) { /* 原页面异常不阻塞 */ }
+      }
+    }
+    const ca = document.getElementById('cet-transfer-audio');
+    if (ca) ca.playbackRate = 1;
+  }
+
+  // F05：播放候选的真实音频，并发出满足后端 playedToEnd 判定的播放事件。
+  async function playTransferCandidate(candidate) {
+    if (!S.practice || !S.practice.practiceId) return false;
+    const step = (S.practice.currentStep || {});
+    const speed = typeof step.speed === 'number' ? step.speed : 1;
+    const start = Number(candidate.startSeconds);
+    const end = Number(candidate.endSeconds);
+    const a = candidateAudio();
+
+    if (!candidate.audioUrl || !isFinite(start) || !isFinite(end) || end <= start) {
+      transferNote('候选音频地址或时间范围无效，本次记为「未检验」，不作为通过。', true);
+      return false;
+    }
+
+    restoreOriginalSpeed();                 // 换句必须原速听
+    S.transferPlayed = false;
+
+    const btn = $('#cet-transfer-play');
+    if (btn) btn.disabled = true;
+    const playing = transferNote('正在播放候选原声（真实音频，非原句）…', false, 'transfer-play');
+
+    try {
+      a.src = candidate.audioUrl;
+      await waitMetadata(a);
+      a.playbackRate = speed;               // 必须等于 step.speed，否则后端 422
+      a.currentTime = start;
+      await a.play();
+    } catch (err) {
+      if (playing && playing.parentNode) playing.remove();
+      transferNote(`候选音频无法播放：${err.message}。本次记为「未检验」。`, true);
+      if (btn) btn.disabled = false;
+      return false;
+    }
+
+    // 1) 播放开始：audioTime 必须 ≤ step.start + 0.25
+    await postPracticeEvent('playback_start', {
+      audioTime: start,
+      speed,
+    });
+
+    // 2) 播到候选句终点
+    const ok = await new Promise((resolve) => {
+      let done = false;
+      const finish = (value) => {
+        if (done) return;
+        done = true;
+        a.removeEventListener('timeupdate', onTime);
+        a.removeEventListener('ended', onEnd);
+        resolve(value);
+      };
+      const onTime = () => {
+        if (a.currentTime >= end - 0.05) { a.pause(); finish(true); }
+      };
+      const onEnd = () => finish(true);
+      a.addEventListener('timeupdate', onTime);
+      a.addEventListener('ended', onEnd);
+      // 兜底：超过真实时长 2 倍还没结束就放弃（不伪造 activeMs）
+      setTimeout(() => finish(a.currentTime >= end - 0.5), Math.max(3000, (end - start) * 2000 / Math.max(speed, 0.1) + 3000));
+    });
+
+    // 3) 播放结束：audioTime 要落在 step.end 附近，activeMs 要接近理论时长
+    const realMs = Math.round(((end - start) / Math.max(speed, 0.1)) * 1000);
+    const evResp = await postPracticeEvent('playback_end', {
+      audioTime: end,
+      speed,
+      activeMs: realMs,
+    });
+
+    const applied = !!(evResp && evResp.event && evResp.event.playedToEnd);
+    S.transferPlayed = applied;
+
+    if (playing && playing.parentNode) playing.remove();
+    if (btn) btn.disabled = false;
+
+    if (ok && applied) {
+      transferNote('候选原声已完整播放，可以作答。');
+      setTransferOptionsEnabled(true);
+      return true;
+    }
+    transferNote('没有完整播完（可能被暂停或跳过），请点「重播候选」听完再作答。', true);
+    setTransferOptionsEnabled(false);
+    return false;
+  }
+
+  // 统一的练习事件上报（返回响应，供判定 playedToEnd）
+  async function postPracticeEvent(type, extra) {
+    if (!S.practice || !S.practice.practiceId) return null;
+    try {
+      return await api('POST', `/practices/${S.practice.practiceId}/events`, {
+        eventId: uid(`ev-${type}`),
+        type,
+        stepId: S.practice.currentStepId,
+        materialVersion: S.materialVersion,
+        ...extra,
+      });
+    } catch (err) {
+      transferNote(`播放事件上报失败：${err.message}`, true);
+      return null;
+    }
+  }
+
+  function setTransferOptionsEnabled(on) {
+    document.querySelectorAll('#cet-transfer-box .cet-opt').forEach((b) => {
+      if (b.dataset.cetAnswered === '1') return;
+      b.disabled = !on;
+    });
+  }
+
+  // F05：换句检验渲染（有候选：真实音频 + 题面 + 作答；无候选：明确未检验）
   function renderTransfer(resp, container) {
     const out = container || $('#cet-practice-out');
     if (!out) return;
-    const step = (resp && resp.currentStep) || {};
+    const step = (resp && resp.currentStep) || (S.practice && S.practice.currentStep) || {};
     const data = step.data || {};
     const candidate = data.candidate || null;
+    const noCandidate = !candidate || data.noCandidate === true
+      || (resp && resp.transferStatus === 'no_candidate')
+      || (S.practice && S.practice.transferStatus === 'no_candidate');
 
-    // R3/S3：无候选时后端把步骤设成 finish，前端要明确「未检验」，不假成功
-    if (!candidate || data.noCandidate || (resp && resp.transferStatus === 'no_candidate')) {
+    // 每次重绘前清掉旧的换句区，避免重复挂载
+    const old = $('#cet-transfer-box');
+    if (old) old.remove();
+
+    const box = el('div', 'cet-transfer');
+    box.id = 'cet-transfer-box';
+    box.setAttribute('data-cet-transfer', noCandidate ? 'no_candidate' : 'presented');
+
+    // 无候选：明确「未检验」，不发任何事件、不当作通过
+    if (noCandidate) {
+      box.appendChild(el('div', 'cet-transfer-stem', '换句检验'));
       const note = el('div', 'cet-ai-note warn',
-        '这次还没有合适的换句材料。已记为「未检验」，你可以继续复习。');
-      out.appendChild(note);
+        '这次没有合适的换句材料，本轮记为「未检验」——不能算作已通过。');
+      note.setAttribute('data-cet-unverified', '1');
+      box.appendChild(note);
+      const tip = el('div', 'cet-ai-note',
+        '你仍可以回听原句、慢放或保存本轮；换句材料补齐后可以再练一次。');
+      box.appendChild(tip);
+      out.appendChild(box);
+      S.transferPlayed = false;
+      S.transferCandidate = null;
       return;
     }
 
-    // R3：选项可能是对象 {id,text} 或纯字符串，必须取文本，不能直接拼对象
+    S.transferCandidate = candidate;
+    S.transferPlayed = false;
+
+    box.appendChild(el('div', 'cet-transfer-stem', '换句检验（候选来自其他真实音频）'));
+
+    // 候选句本身是听力材料，**不显示原文**（否则等于泄题）
+    const meta = el('div', 'cet-transfer-meta',
+      `候选音频 ${fmt(candidate.startSeconds)}–${fmt(candidate.endSeconds)}`
+      + `${candidate.materialId ? ` · ${candidate.materialId}` : ''}`);
+    box.appendChild(meta);
+
+    const playRow = el('div', 'cet-transfer-actions');
+    const playBtn = el('button', 'cet-btn-sm', '重播候选');
+    playBtn.id = 'cet-transfer-play';
+    playBtn.onclick = () => playTransferCandidate(candidate);
+    playRow.appendChild(playBtn);
+    box.appendChild(playRow);
+
+    const gate = el('div', 'cet-ai-note', '先听完候选原声，选项才会解锁。');
+    gate.id = 'cet-transfer-gate';
+    box.appendChild(gate);
+
+    // 题面与选项
+    const questionText = String(data.question || '').trim();
+    if (questionText) {
+      box.appendChild(el('div', 'cet-transfer-question', questionText));
+    }
+
     const optionText = (opt, i) => {
       if (typeof opt === 'string') return opt;
       if (opt && typeof opt === 'object') {
@@ -753,13 +1168,10 @@
       return 'ABCDE'[i] || String(i);
     };
 
-    const box = el('div', 'cet-transfer');
-    box.appendChild(el('div', 'cet-transfer-stem',
-      String(data.question || '听新片段并作答')));
-
     const opts = Array.isArray(data.options) ? data.options : [];
     if (!opts.length) {
       box.appendChild(el('div', 'cet-ai-note warn', '候选题没有可用选项，已记为「未检验」。'));
+      box.setAttribute('data-cet-transfer', 'no_candidate');
       out.appendChild(box);
       return;
     }
@@ -768,35 +1180,46 @@
     const buttons = [];
     opts.forEach((opt, i) => {
       const b = el('button', 'cet-opt', `${'ABCDE'[i]}. ${optionText(opt, i)}`);
+      b.disabled = true;                     // 播完才解锁
       b.onclick = async () => {
-        if (submitted) return;
+        if (submitted || b.disabled) return;
         submitted = true;
         buttons.forEach((x) => { x.disabled = true; });
         const ok = await submitTransferAnswer(optionId(opt, i), candidate);
         if (!ok) {
-          // R3：提交失败必须能重试，不能显示成功
           submitted = false;
           buttons.forEach((x) => { x.disabled = false; });
+        } else {
+          b.dataset.cetAnswered = '1';
         }
       };
       buttons.push(b);
       box.appendChild(b);
     });
     out.appendChild(box);
+
+    // 进入换句即自动播一次候选真实音频（用户不用先找按钮）
+    playTransferCandidate(candidate);
   }
 
   // R3：真正提交换句作答（发事件，等后端确认）
   async function submitTransferAnswer(answer, candidate) {
     if (!S.practice || !S.practice.practiceId) return false;
     const out = $('#cet-practice-out');
+    const step = (S.practice.currentStep || {});
+    const speed = typeof step.speed === 'number' ? step.speed : 1;
+    const rng = step.playback || step.playRange || {};
+    const endSec = typeof rng.endSec === 'number' ? rng.endSec
+      : (typeof rng.endSeconds === 'number' ? rng.endSeconds : null);
     try {
       const r = await api('POST', `/practices/${S.practice.practiceId}/events`, {
         eventId: uid('transfer'),
         type: 'transfer_answer',
         stepId: S.practice.currentStepId,
         materialVersion: S.materialVersion,
-        audioTime: clampToStepRange(media() ? media().currentTime : 0),
-        speed: media() ? (media().playbackRate || 1) : 1,
+        // 作答时音频停在候选句终点，speed 必须与步骤一致
+        audioTime: endSec != null ? endSec : clampToStepRange(media() ? media().currentTime : 0),
+        speed,
         candidateId: (candidate && (candidate.id || candidate.sentenceId)) || null,
         answer,
       });
@@ -805,7 +1228,7 @@
         const correct = res.isCorrect;
         const note = el('div',
           `cet-ai-note ${correct === false ? 'warn' : ''}`,
-          correct === true ? '换句作答正确'
+          correct === true ? '换句作答正确（辅助检验，不等于独立听懂）'
             : (correct === false ? '换句作答不正确，已记录'
               : '换句作答已提交（服务端未判定）'));
         out.appendChild(note);
@@ -814,11 +1237,15 @@
       if (r && S.practice && r.practiceId === S.practice.practiceId) {
         S.practice = { ...S.practice, ...r };
       }
+      setTransferOptionsEnabled(false);
       save();
       return true;
     } catch (err) {
       if (out) {
-        out.appendChild(el('div', 'cet-ai-note warn', `换句作答提交失败：${err.message}`));
+        const hint = err.code === 'PLAYBACK_REQUIRED'
+          ? '请先完整播放候选原声（点「重播候选」听完）再作答。'
+          : `换句作答提交失败：${err.message}`;
+        out.appendChild(el('div', 'cet-ai-note warn', hint));
       }
       return false;
     }
@@ -831,12 +1258,16 @@
     const sent = S.sentences.find((s) => s.sentenceId === sid);
     if (!md || !sent) return;
 
-    md.currentTime = sent.startSeconds;
+    // F05：原速恢复统一走 restoreOriginalSpeed，保证「播放器 + 下拉框」一致
     if (action === 'slow') {
       md.playbackRate = 0.75;
+      const sel = document.getElementById('playback-rate');
+      if (sel) sel.value = '0.75';
     } else if (action === 'replay') {
-      md.playbackRate = 1;
+      restoreOriginalSpeed();
     }
+
+    md.currentTime = sent.startSeconds;
     md.play();
 
     // 到句末自动停
@@ -849,9 +1280,68 @@
     };
     md.addEventListener('timeupdate', guard);
 
+    // F05：showText=false 时必须真的隐藏原文，不能只弹一句提示
+    applyTextVisibility(step ? step.showText !== false && step.textVisible !== false : true);
+
     if (step && step.showText === false) {
       // 「没听清」先不给原文，保留听力挑战（计划 §5）
-      flashHint('先只给声音，试试能不能听出来');
+      flashHint('已隐藏原文：先只给声音，试试能不能听出来');
+    }
+  }
+
+  // F05：隐藏/恢复「含原文」的区域。
+  // 只控显隐（加 class），不改原 DOM 结构 —— 原 UI 完整保留。
+  // 覆盖三处泄露原文的地方：
+  //   1) #current-subtitle / #subtitle-translation  （当前句字幕）
+  //   2) #subtitle-timeline 的 outline-preview      （内容大纲里的句子摘要）
+  //   3) #reading-passage                            （整篇阅读正文）
+  function applyTextVisibility(visible) {
+    const show = visible !== false;
+    document.body.classList.toggle('cet-hide-text', !show);
+    // 点词查询浮层同样泄露原文：隐藏时把它关掉（不能只靠 CSS，
+    // 否则它下次被点开又会出现）
+    if (!show) {
+      const pop = document.getElementById('word-popover');
+      if (pop) {
+        pop.classList.remove('open');
+        pop.innerHTML = '';
+        pop.style.display = 'none';
+      }
+    } else {
+      const pop = document.getElementById('word-popover');
+      if (pop) pop.style.display = '';
+    }
+    // 无障碍：隐藏时同步 aria-hidden，读屏也不会泄露原文。
+    // 覆盖所有可能含原文的元素 —— 截图实测生词卡（#vocab-chips）
+    // 和句子元信息（#subtitle-meta）也会漏出「displaying v. 展出」。
+    ['current-subtitle', 'subtitle-translation', 'vocab-chips',
+     'subtitle-meta', 'subtitle-position', 'reading-passage',
+     'word-popover'].forEach((id) => {
+      const n = document.getElementById(id);
+      if (n) n.setAttribute('aria-hidden', show ? 'false' : 'true');
+    });
+    // 大纲里的句子摘要
+    document.querySelectorAll('.outline-preview, .outline-title').forEach((n) => {
+      n.setAttribute('aria-hidden', show ? 'false' : 'true');
+    });
+    const tl = document.getElementById('subtitle-timeline');
+    if (tl) tl.setAttribute('data-cet-text-hidden', show ? '0' : '1');
+  }
+
+  function textIsHidden() {
+    return document.body.classList.contains('cet-hide-text');
+  }
+
+  // F05：「听懂了」→ 换句流程。隐藏提示、恢复 1.0x 原速。
+  function hideTextForTransfer() {
+    applyTextVisibility(false);      // 隐藏字幕 / 大纲摘要 / 阅读正文
+    restoreOriginalSpeed();          // 恢复 1.0x 原速
+    const out = $('#cet-practice-out');
+    if (out) {
+      const note = el('div', 'cet-ai-note',
+        '换句检验：原文与字幕已隐藏，播放已恢复 1.0x 原速。');
+      note.setAttribute('data-cet-transfer-hidden', '1');
+      out.appendChild(note);
     }
   }
 
@@ -1198,6 +1688,9 @@
         renderMarks();
         flashHint(`已恢复 ${items.length} 个卡点标记`);
       }
+      // F10：标记恢复后时间线也要画出来（原来只在列表里）
+      ensureTimeline();
+      renderTimelineMarks();
     } catch (_) { /* 恢复失败不阻塞主流程 */ }
 
     // F03：恢复交卷结果（原来只恢复标记，刷新后右侧回到「未交卷」）
@@ -1268,6 +1761,9 @@
       mount();
       renderQuestions();
       renderMarks();
+      // F10：播放器元素由 workspace.html 在 lessonData 加载后才创建，
+      // 这时可能还不存在。等它就绪再挂时间线（只挂一次）。
+      waitForPlayerThenTimeline();
     } catch (err) {
       if (err.status === 404) {
         // 不是四六级材料：静默跳过，不影响原页面
@@ -1275,6 +1771,29 @@
       }
       console.warn('[cet] 初始化失败', err);
     }
+  }
+
+  // F10：等待 #local-media-player 出现（最多 20 秒），然后挂载时间线。
+  // 同时监听：页面切到精听/阅读会重建播放器，时间线要跟着重建。
+  function waitForPlayerThenTimeline() {
+    if (media()) {
+      ensureTimeline();
+      renderTimelineMarks();
+    }
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      if (media()) {
+        // 播放器已就绪：只要时间线不在 DOM 里就补挂（幂等）
+        if (!$('#cet-timeline')) {
+          ensureTimeline();
+          renderTimelineMarks();
+        }
+        if (tries > 5) clearInterval(timer);   // 播放器出现后再多看几轮就收工
+      } else if (tries > 100) {
+        clearInterval(timer);                  // 20 秒还没播放器就放弃（不阻塞页面）
+      }
+    }, 200);
   }
 
   document.addEventListener('keydown', onKeyDown, true);
@@ -1290,5 +1809,12 @@
   window.__cet = {
     S, api, setListening, createMark, confirmMark, submitAttempt,
     getReviewState: () => reviewState,
+    // F08：预览/调整/改一下（自动化测试直接驱动，避免只能靠点按钮）
+    previewMark, adjustMark, reopenMark, previewSentenceId,
+    // F05：换句闭环
+    renderTransfer, playTransferCandidate, restoreOriginalSpeed,
+    applyTextVisibility, textIsHidden,
+    // F10：时间线
+    renderTimelineMarks,
   };
 })();

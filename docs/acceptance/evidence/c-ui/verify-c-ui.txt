@@ -1,0 +1,70 @@
+== C 板块浏览器验证（F08 / F05 / F10）==
+服务：http://127.0.0.1:5188   课程：/workspace/2181
+候选夹具：v2-9010（/output/v2_assets/cet4/cet4-sample-hope-wish.mp3）
+
+-- F08：回溯参数与候选预览 --
+  [PASS] F08-1 创建标记带 reactionDelaySeconds 与实际 speed — reactionDelaySeconds=2.5 speed=1 实际倍速=1
+  [PASS] F08-1b 回溯参数用的是 CFG.lookbackSec（不是后端默认 0.6） — 发送值=2.5（期望 2.5，后端默认是 0.6）
+  [PASS] F08-0 空格产生标记 — marks=1
+  [PASS] F08-0b 标记处于「待确认」预览态 — badges=['待确认'] btns=['回听', '前一句', '后一句', '确认这句']
+  [PASS] F08-3 预览态显示候选句并标注预览区间 — 句子=["It's getting late and we're both displaying signs of weariness."] 预览标签=['预览 0:00.01–0:03.49']
+  [PASS] F08-2 点「前一句」不确认（未发 PATCH，仍可继续调整） — PATCH 0→0 confirmedSentenceId=None
+  [PASS] F08-2b 切换后仍在待确认态且保留调整按钮 — badges=['待确认'] btns=['回听', '前一句', '后一句', '确认这句']
+  [PASS] F08-3b 切换预览后立即回听（音频在播） — paused=False
+  [PASS] F08-2c 预览句子随「前一句」变化 — 切换前=['I think we should call it a day and meet again tomorrow morning.'] 切换后=["It's getting late and we're both displaying signs of weariness."]
+  [PASS] F08-2d 可再点「后一句」切回（预览可来回切换） — PATCH 仍为 0，句子=['I think we should call it a day and meet again tomorrow morning.']
+  [PASS] F08-4 点「确认这句」才真正确认（PATCH +1，落库 confirmedSentenceId） — PATCH 0→1 confirmed=v2-2181-1
+  [PASS] F08-4b 确认后状态前进到「待练」 — badges=['待练']
+  [PASS] F08-6 原按键时间与确认句身份都保留 — pressedAtSec=1.271 confirmedSentenceId=v2-2181-1
+  [PASS] F08-5 点「改一下」回到可调整状态 — badges=['待确认'] btns=['回听', '前一句', '后一句', '确认这句']
+  [PASS] F08-5b 改一下后确认句真的变了（且原按键时间不变） — 原=v2-2181-1 新=v2-2181-0 pressedAtSec=1.271
+
+-- F08 回溯参数生效验证（倍速矩阵，直连 API 交叉核对）--
+  [PASS] F08-M1 回溯参数进入 adjustedSeconds 计算 — 1.0x: pressed 30 - 2.5*1.0 = 27.5；0.75x: 30 - 2.5*0.75 = 28.125
+  [PASS] F08-M2 同一按键时间、不同倍速 → 回溯位置不同 — 1.0x→27.5  0.75x→28.125
+  [PASS] F08-M3 放大回溯窗口后候选句明显前移 — 2.5s→v2-2181-9(26.28s) 5.0s→v2-2181-8(24.48s)
+  [PASS] F08-M4 前端回溯窗口声明值与实测发送值一致 — window.CET_LOOKBACK_SEC 缺省=2.5（createMark 实测发送 2.5）
+
+-- F10：时间线颜色标记 --
+  [PASS] F10-1 播放器时间线图层已渲染 — aria-label=卡点标记时间线
+  [PASS] F10-1b 时间线上有标记元素 — count=1 秒数=['1.271'] 位置=['1.2049%']
+  [PASS] F10-2 标记带状态属性（三态之一） — states=['ready']
+  [PASS] F10-2b 颜色 + 文字双重标识（不只靠颜色） — 文字=['练'] aria=['卡点 0:01.27，状态：待练'] 图例=['待确认', '待练', '本轮已练']
+  [PASS] F10-2c 三态用不同颜色（不是同一色） — 背景色=['rgb(39, 111, 191)']
+  [PASS] F10-1c 标记位置对应真实按键秒数 — 1.271s→1.2%(期望1.2%)
+
+-- F05：隐藏原文 / 恢复原速 / 换句闭环 --
+  [PASS] F05-1 进入练习模式后字幕原文被隐藏 — bodyClass=True color=rgba(0, 0, 0, 0) aria-hidden=true
+  [PASS] F05-1b 内容大纲里的原文摘要也被隐藏 — outline color=rgba(0, 0, 0, 0) flag=1
+  [PASS] F05-1c 原 UI 结构保留（只控显隐，未删元素） — subtitle=True timeline=True
+  [PASS] F05-1e 生词卡与句子元信息同样隐藏（不泄露卡住的词） — chips 可见文字=[] meta 可见文字=[]
+  [PASS] F05-1g 当前句的点词 ruby（词 + 词义）也不可见 — 检查 12 个元素，可见泄露=[]
+  [PASS] F05-1f 点词查询浮层在练习模式下不可见 — display=none open=False text=''
+  [PASS] F05-1d 退出练习模式恢复显示原文 — color=rgb(32, 36, 33)
+  [PASS] F05-0 带练已开始 — practiceId=practice-3bf43299ee64
+  [PASS] F05-2 换句时恢复 1.0x 原速 — 0.75→1（下拉框=1）
+  [PASS] F05-2b 换句时隐藏提示仍在生效 — bodyClass=True 提示=True
+  [PASS] F05-2c 进入换句区（有候选或明确无候选） — kind=presented practice={'transferStatus': 'presented', 'stepAction': 'transfer'}
+  [PASS] F05-3 候选使用独立音频元素播放真实音频（不是原句） — 候选=/output/v2_assets/cet4/cet4-sample-hope-wish.mp3 原句=/output/v2_assets/2181/cet6-202512-conv2.mp3
+  [PASS] F05-3b 候选来自其他材料且时间范围真实 — material=v2-9010 range=[0.5, 4]
+  [PASS] F05-3c 展示候选题与选项 — 题面='受控换句题：新片段里说话人建议怎么做？' 选项数=3 ['A. 今天先结束，改天再继续', 'B. 继续再讲两个小时', 'C. 换一个话题重新开始']
+  [PASS] F05-3d 候选音频确实完整播过（后端 playedToEnd 前置成立） — transferPlayed=True 候选时间=4.134494 提示='换句检验（候选来自其他真实音频）\n候选音频 0:00.50–0:04.00 · v2-9010\n重播候选\n先听完候选原声，选项才会解锁。\n受控换句题：新片段里说话人建议怎么做？\nA. 今天先结束，改天再继续B. 继续再讲两个小时C. 换一个话题重新开始\n候选原声已完整播放，可以作答。'
+  [PASS] F05-4 播完后选项解锁 — 3 个可用
+  [PASS] F05-4b 作答真的落库（transfer_answer 事件） — DB 最新 transfer_answer={'candidateId': 'transfer-2af86906b28fadfc893b', 'answer': 'A', 'correctAnswer': 'A', 'isCorrect': True, 'answerSource': 'ai:controlled-model:req-ab7bd8bc722a', 'explanation': '受控解释：新片段表达了「今天就到这里」的意思。'}
+  [PASS] F05-4c 落库内容含 candidateId/answer/isCorrect — candidateId=transfer-2af86906b28fadfc893b answer=A isCorrect=True
+  [PASS] F05-4d 前端显示服务端判定结果 — 提示='验（候选来自其他真实音频）\n候选音频 0:00.50–0:04.00 · v2-9010\n重播候选\n先听完候选原声，选项才会解锁。\n受控换句题：新片段里说话人建议怎么做？\nA. 今天先结束，改天再继续B. 继续再讲两个小时C. 换一个话题重新开始\n候选原声已完整播放，可以作答。\n换句作答正确（辅助检验，不等于独立听懂）'
+
+-- F05 另一分支：无候选必须明确「未检验」 --
+  [PASS] F05-5 无候选时明确显示「未检验」且不当通过 — kind=no_candidate unverified=True 文本='换句检验\n这次没有合适的换句材料，本轮记为「未检验」——不能算作已通过。\n你仍可以回听原句、慢放或保存本轮；换句材料补齐后可以再练一次。'
+  [PASS] F05-5b 无候选时不提供作答入口 — 选项数=0
+  [PASS] F05-5c 无候选不产生 transfer_answer 落库 — transferStatus=no_candidate
+
+-- 恢复：刷新后标记与时间线仍在 --
+  [PASS] R 刷新后标记恢复且时间线重绘 — marks=1 timelineMarks=1 layer=True
+  [PASS] R-b 恢复的标记仍同时保留两个身份 — pressedAtSec=1.428 confirmed=v2-2181-0
+  [PASS] NOJS 无 JS 运行时错误 — 0 个
+  [PASS] NOJS 无 console error — 0 个
+  [PASS] COV-F05 有候选与无候选两条分支都被验证到 — presented=1 no_candidate=1
+
+------------------------------------------------------------------
+结果：52/52 通过，全部通过

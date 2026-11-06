@@ -1677,7 +1677,7 @@
             <span id="subtitle-position">等待字幕</span>
             <button id="next-sentence" class="sentence-nav" onclick="jumpSentence(1)" disabled title="下一句" aria-label="下一句">&#x203A;</button>
             <button id="save-sentence" class="star-save" onclick="saveCurrentSentence()" disabled
-                    title="&#x52A0;&#x5165;&#x7CBE;&#x8BFB;" data-tooltip="&#x52A0;&#x5165;&#x7CBE;&#x8BFB;" aria-label="&#x52A0;&#x5165;&#x7CBE;&#x8BFB;">
+                    title="&#x6536;&#x85CF;&#x53E5;&#x5B50;" data-tooltip="&#x6536;&#x85CF;&#x53E5;&#x5B50;" aria-label="&#x6536;&#x85CF;&#x53E5;&#x5B50;">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 2.8l2.86 5.8 6.4.93-4.63 4.51 1.09 6.37L12 17.4l-5.72 3.01 1.09-6.37-4.63-4.51 6.4-.93L12 2.8z"></path>
               </svg>
@@ -4250,7 +4250,7 @@ function updateSaveState() {
   if (!button) return;
   const saved = savedSentenceKeys.has(currentSentenceKey());
   button.classList.toggle('saved', saved);
-  button.dataset.tooltip = saved ? '\u5df2\u52a0\u5165\u7cbe\u8bfb' : '\u52a0\u5165\u7cbe\u8bfb';
+  button.dataset.tooltip = saved ? '\u5df2\u6536\u85cf' : '\u6536\u85cf\u53e5\u5b50';
 }
 
 function jumpSentence(delta) {
@@ -4311,7 +4311,7 @@ async function saveCurrentSentence() {
   const sentence = sentenceUnits[idx];
   if (!sentence) return;
   const button = document.getElementById('save-sentence');
-  const oldTooltip = button.dataset.tooltip || '\u52a0\u5165\u7cbe\u8bfb';
+  const oldTooltip = button.dataset.tooltip || '\u6536\u85cf\u53e5\u5b50';
   const key = currentSentenceKey();
   const alreadySaved = savedSentenceKeys.has(key);
   button.disabled = true;
@@ -4348,7 +4348,7 @@ async function saveCurrentSentence() {
     }
     updateReviewSummary();
     button.dataset.tooltip = resp.ok
-      ? (alreadySaved ? '\u5df2\u53d6\u6d88' : '\u5df2\u52a0\u5165\u7cbe\u8bfb')
+      ? (alreadySaved ? '\u5df2\u53d6\u6d88' : '\u5df2\u6536\u85cf')
       : '\u64cd\u4f5c\u5931\u8d25';
   } catch (_) {
     button.dataset.tooltip = '\u64cd\u4f5c\u5931\u8d25';

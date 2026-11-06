@@ -32,7 +32,8 @@ def test_workspace_page_renders(tmp_path, monkeypatch):
     assert "save-sentence" in resp.text
     assert "vocab-chips" in resp.text
     assert "star-save" in resp.text
-    assert "&#x52A0;&#x5165;&#x7CBE;&#x8BFB;" in resp.text
+    # 收藏句按钮文案：原「加入精读」统一为「收藏句子」（独立验收通过后的定向文案修正）
+    assert "&#x6536;&#x85CF;&#x53E5;&#x5B50;" in resp.text
     assert "prev-sentence" in resp.text
     assert "next-sentence" in resp.text
     assert "jumpSentence" in resp.text

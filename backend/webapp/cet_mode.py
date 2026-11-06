@@ -180,6 +180,8 @@ _COPY_CET = {
     "fix2_favorite_word_cta": "☆ 收藏单词",
     "fix2_favorite_sentence_cta": "☆ 收藏句子",
     "fix2_favorite_added": "✓ 已收藏",
+    # 返修 2.1 A4：「已掌握」按钮 title。原版含「生词本」二字，CET 模式禁用该词。
+    "fix2_master_hint": "标记已掌握：移出收藏，不再高亮",
     "fix2_my_collections_wordlist": "我的收藏",
     "fix2_lesson_collections": "本课收藏",
     "fix2_lesson_collections_note": "本课收藏的词与句子，收藏后自动进入「我的收藏」。",
@@ -215,6 +217,7 @@ _COPY_GENERIC = {
     "fix2_favorite_word_cta": "☆ 加入生词",
     "fix2_favorite_sentence_cta": "☆ 收藏句子",
     "fix2_favorite_added": "★ 已收藏",
+    "fix2_master_hint": "标记已掌握：移出生词本，不再高亮",
     "fix2_my_collections_wordlist": "我的生词本",
     # 基线 workspace.html 的收藏面板是 <h2>学习收集</h2> +
     # <span class="panel-note">Phase B · 本课收藏的词、句子和标签。</span>

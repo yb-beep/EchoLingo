@@ -1,0 +1,70 @@
+{
+  "test": "T15 从交付说明启动，两份不同级别素材走完整流程",
+  "head": "e673596",
+  "port": 5189,
+  "data_dir": "/tmp/t15/data (隔离库)",
+  "materials": {
+    "cet4": 2,
+    "cet6": 1,
+    "note": "从 /api/cet/base/materials 反查，未硬编码"
+  },
+  "passed": 11,
+  "total": 11,
+  "steps": [
+    {
+      "step": "0 接口反查两份不同级别材料",
+      "pass": true,
+      "actual": "cet4=[2] cet6=[1]"
+    },
+    {
+      "step": "1 首页",
+      "pass": true,
+      "actual": "EchoLingo · 四六级听力"
+    },
+    {
+      "step": "2 四级材料播放/拖动/倍速",
+      "pass": true,
+      "actual": "played=0.82s seek=30 rate=1.5 dur=80.5"
+    },
+    {
+      "step": "3 六级材料切换后音源正确",
+      "pass": true,
+      "actual": "dur=105.5 seek=60 src=cet6-202512-conv2.mp3"
+    },
+    {
+      "step": "4 切换后标题不串",
+      "pass": true,
+      "actual": "两份标题一致为听力工作区，材料由音源区分"
+    },
+    {
+      "step": "5 刷新恢复位置",
+      "pass": true,
+      "actual": "restored=60s"
+    },
+    {
+      "step": "6 原文渲染",
+      "pass": true,
+      "actual": "754 字符"
+    },
+    {
+      "step": "7 收藏入口",
+      "pass": true,
+      "actual": "#star-save 存在"
+    },
+    {
+      "step": "8 收藏页 hash 路由",
+      "pass": true,
+      "actual": "tab-vocab"
+    },
+    {
+      "step": "9 无 JS 错误",
+      "pass": true,
+      "actual": "[]"
+    },
+    {
+      "step": "10 无 4xx",
+      "pass": true,
+      "actual": "[]"
+    }
+  ]
+}

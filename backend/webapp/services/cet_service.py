@@ -237,6 +237,8 @@ def init_cet_schema(path: Path | None = None) -> None:
                     "UPDATE cet_reviews SET status='paused',pause_count=pause_count+1,updated_at=? "
                     "WHERE status='active'", (_now(),)
                 )
+                # B6：review entries 加 replaced_from 列（可追溯替换来源）
+                _ensure_review_entry_columns(conn)
                 # N4/C01/C02：交卷幂等约束 + 兜底映射表
                 _ensure_attempt_idem_map(conn)
                 _ensure_attempt_idempotency(conn)
@@ -488,6 +490,19 @@ def list_materials(level: str | None = None) -> list[dict[str, Any]]:
             item["id"] = biz
         materials.append(item)
     return [item for item in materials if level is None or item["level"] == level]
+
+
+def _ensure_review_entry_columns(conn) -> None:
+    """B6：给 cet_review_entries 补 replaced_from 列（记录替换来源，可追溯）。
+
+    SQLite 的 ALTER TABLE ADD COLUMN 幂等：已存在会报错，用 try 包住。
+    """
+    try:
+        conn.execute("ALTER TABLE cet_review_entries ADD COLUMN replaced_from TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        # 列已存在
+        pass
 
 
 def _ensure_attempt_idem_map(conn) -> None:
@@ -1079,7 +1094,9 @@ def _practice_row(conn, practice_id: str):
 
 
 def _step_payload(row: Any) -> dict[str, Any]:
+    # B2：playback 同时给契约键与旧键（冻结约定 §3 双键返回）
     play_range = None if row["start_seconds"] is None else {
+        "startSec": row["start_seconds"], "endSec": row["end_seconds"],
         "startSeconds": row["start_seconds"], "endSeconds": row["end_seconds"],
     }
     show_text = bool(row["show_text"])
@@ -1609,13 +1626,14 @@ def next_practice_step(practice_id: str, body: dict[str, Any]) -> dict[str, Any]
                     "UPDATE cet_ai_requests SET status='failed',error_code=?,completed_at=? WHERE id=? AND status='pending'",
                     (exc.code, _now(), request_id),
                 )
-                # 关键：AI 失败后必须把 ai_request_id 清空并回退 revision 语义，
-                # 否则练习会停在「有一个 pending 请求」的状态：
-                #   - 后续事件上报会被判 STALE_RESPONSE（stepId 对不上）
-                #   - 有效用时因 ai_waiting=True 一直不累计
-                #   - 用户看似能继续，实际状态已经坏了
+                # B4：失败后**保留 ai_request_id 指针**，让终态可查
+                #（ai-status 能返回 failed 及 errorCode）。
+                # 但请求状态已是 failed，_cancel_pending_ai 只处理 pending，
+                # 所以不会被误当成「还有请求在跑」：
+                #   - 后续事件上报不会因此被判 STALE_RESPONSE
+                #   - 有效用时不会因 ai_waiting 一直不累计（只看 pending）
                 conn.execute(
-                    "UPDATE cet_practices SET ai_request_id=NULL, revision=?, updated_at=? "
+                    "UPDATE cet_practices SET revision=?, updated_at=? "
                     "WHERE id=? AND revision=?",
                     (revision, _now(), practice_id, revision),
                 )
@@ -1831,7 +1849,17 @@ def _ai_request_payload(conn, row) -> dict[str, Any] | None:
 def record_practice_event(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
     event_id = str(body.get("eventId") or "").strip()
     event_type = str(body.get("type") or body.get("eventType") or "").strip()
-    allowed = {"playback_start", "playback_end", "playback_interrupt", "activity_heartbeat", "visibility", "feedback", "transfer_answer"}
+    allowed = {"playback_start", "playback_end", "playback_interrupt",
+               "activity_heartbeat", "visibility", "feedback", "transfer_answer"}
+    # B1：短名作为别名接受（冻结约定 §1）。
+    # 早期 Mock 与部分客户端用 start/end/interrupt，真实后端必须兼容，
+    # 否则同一份契约在两边表现不一致。
+    _EVENT_SHORT_ALIASES = {
+        "start": "playback_start",
+        "end": "playback_end",
+        "interrupt": "playback_interrupt",
+    }
+    event_type = _EVENT_SHORT_ALIASES.get(event_type, event_type)
     if not event_id or event_type not in allowed:
         _error(422, "INVALID_EVENT", "eventId 或事件类型无效。", allowedTypes=sorted(allowed))
     with _db() as conn:
@@ -2048,6 +2076,16 @@ def _save_review_item(conn, practice: Any) -> dict[str, Any]:
     ).fetchone()
 
 
+def _finish_payload(practice: dict[str, Any], review_item: Any) -> dict[str, Any]:
+    """B3：finish 响应摊平。
+
+    原来只返回 {practice, reviewItem}，调用方（前端/测试）习惯读顶层
+    status / latestFeedback / effectiveMs，导致拿不到。
+    这里把 practice 的字段同时放到顶层，practice 子对象保留兼容。
+    """
+    return {**practice, "practice": practice, "reviewItem": review_item}
+
+
 def finish_practice(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
     finish_id = str(body.get("finishId") or "").strip()
     if not finish_id:
@@ -2060,7 +2098,7 @@ def finish_practice(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
                 "WHERE i.material_id=? AND i.material_version=? AND i.sentence_id=?",
                 (practice["material_id"], practice["material_version"], practice["sentence_id"]),
             ).fetchone()
-            return {"practice": _practice_payload(practice_id), "reviewItem": _review_item_payload(item)}
+            return _finish_payload(_practice_payload(practice_id), _review_item_payload(item))
         if body.get("stepId") != practice["current_step_id"] or body.get("materialVersion") != practice["material_version"]:
             _error(409, "STALE_RESPONSE", "步骤或材料版本已变化，请刷新后重试。")
         _cancel_pending_ai(conn, practice)
@@ -2073,7 +2111,7 @@ def finish_practice(practice_id: str, body: dict[str, Any]) -> dict[str, Any]:
         practice = _practice_row(conn, practice_id)
         item = _save_review_item(conn, practice)
         item_payload = _review_item_payload(item)
-    return {"practice": _practice_payload(practice_id), "reviewItem": item_payload}
+    return _finish_payload(_practice_payload(practice_id), item_payload)
 
 
 def list_review_items() -> list[dict[str, Any]]:
@@ -2091,9 +2129,17 @@ def _review_payload(review_id: str, include_practice: bool = True) -> dict[str, 
         if not review:
             _error(404, "REVIEW_NOT_FOUND", "复习会话不存在。", reviewId=review_id)
         rows = conn.execute(
+            # B6：排除被 replace 替换掉的旧条目（status='skipped' 且已被同位置新条目取代），
+            # 否则替换后条目数会从 3 变 4。
+            # 注意：用户主动 skip 的条目仍要显示（它也是 skipped），
+            # 所以用「同位置是否存在其他条目」来区分。
             "SELECT e.id AS entry_id,e.position,e.status AS entry_status,i.*,p.sentence_json,p.audio_url "
             "FROM cet_review_entries e JOIN cet_review_items i ON i.id=e.item_id "
-            "JOIN cet_practices p ON p.id=e.practice_id WHERE e.review_id=? ORDER BY e.position",
+            "JOIN cet_practices p ON p.id=e.practice_id WHERE e.review_id=? "
+            "AND NOT (e.status='skipped' AND EXISTS ("
+            "  SELECT 1 FROM cet_review_entries e2 "
+            "  WHERE e2.review_id=e.review_id AND e2.position=e.position AND e2.id<>e.id"
+            ")) ORDER BY e.position",
             (review_id,),
         ).fetchall()
     entries = []
@@ -2107,7 +2153,8 @@ def _review_payload(review_id: str, include_practice: bool = True) -> dict[str, 
             "practiceId": row["practice_id"], "item": item,
             # B03：契约字段别名
             "entryId": row["entry_id"], "itemId": row["id"],
-            "order": row["position"],
+            # B7：对外 order 用 1-based（「第 1 处」），position 仍是 0-based 内部索引
+            "order": row["position"] + 1,
         })
     result = {
         "id": review["id"], "status": review["status"], "budgetMs": review["budget_ms"],
@@ -2282,14 +2329,16 @@ def review_action(review_id: str, body: dict[str, Any]) -> dict[str, Any]:
             ).fetchone()
             if not replacement:
                 _error(409, "NO_REVIEW_REPLACEMENT", "没有其他待复习卡点。")
-            conn.execute("UPDATE cet_review_entries SET status='skipped' WHERE id=?", (entry["id"],))
-            position = conn.execute(
-                "SELECT COALESCE(MAX(position),-1)+1 AS next FROM cet_review_entries WHERE review_id=?", (review_id,)
-            ).fetchone()["next"]
-            new_entry_id = uuid.uuid4().hex
+            # B6：替换应**就地更新原条目**，不是追加、也不是同位置插入。
+            # 原实现在 MAX+1 处插新条目 → 条目数 3 变 4（不是「替换」）。
+            # 改成同位置插入会撞 UNIQUE(review_id, position)，所以直接 UPDATE。
+            # 旧 item 的身份通过 replacedFrom 留痕，可追溯。
+            new_entry_id = entry["id"]
             conn.execute(
-                "INSERT INTO cet_review_entries(id,review_id,position,item_id,practice_id,status) VALUES(?,?,?,?,?,'pending')",
-                (new_entry_id, review_id, position, replacement["id"], replacement["practice_id"]),
+                "UPDATE cet_review_entries SET item_id=?,practice_id=?,status='pending',"
+                "replaced_from=? WHERE id=?",
+                (replacement["id"], replacement["practice_id"],
+                 entry["item_id"], entry["id"]),
             )
             new_entry = conn.execute("SELECT * FROM cet_review_entries WHERE id=?", (new_entry_id,)).fetchone()
             _activate_entry(conn, review, new_entry, review["status"] == "active")

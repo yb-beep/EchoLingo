@@ -497,7 +497,11 @@ def test_review_three_items_pause_restart_skip_replace_and_budget(client: TestCl
 
     replaced = review_operation(client, "review-1", "replace", "replace-1", skipped.json()["currentEntryId"])
     assert replaced.status_code == 200, replaced.text
-    assert len(replaced.json()["entries"]) == 4
+    # B6 修正：替换应保持条目数不变（原断言 == 4 是「追加」语义，不是「替换」）。
+    # 验收报告要求 replace 复用原位置，所以这里应为 3。
+    assert len(replaced.json()["entries"]) == 3, (
+        f"替换不应增加条目数，实际 {len(replaced.json()['entries'])}"
+    )
     current_item_id = replaced.json()["entries"][replaced.json()["currentPosition"]]["item"]["id"]
     completed = review_operation(client, "review-1", "complete", "complete-item", replaced.json()["currentEntryId"])
     assert completed.status_code == 200, completed.text

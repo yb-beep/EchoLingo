@@ -134,6 +134,13 @@
     // 放在播放控制条之后，属于同一视觉区块，不新开一栏
     host.insertAdjacentElement('afterend', bar);
     S.barEl = bar;
+    // 初始态立即按真实归属收起。**不能只靠 HTML 里的 hidden 属性**：
+    // cet-workspace.css 的 `.cet-study-bar .cet-study-item{display:inline-flex}`
+    // 是作者样式，优先级高于 UA 的 `[hidden]{display:none}`，元素照样显示。
+    // 通用模式（ELT_CET_MODE=0）下 ownsSpaceKey 始终 false、不会触发
+    // syncHotkeyOwnership() 的状态变更分支，所以这里必须主动收一次，
+    // 否则通用模式页面会凭空多出一行「本句循环 开」（§0.6 回归）。
+    syncLoopIndicator();
 
     bar.querySelector('#cet-restart-btn')?.addEventListener('click', () => {
       const api = ws();
@@ -688,8 +695,10 @@
    */
   function setShown(el, show) {
     if (!el) return;
-    el.hidden = !show;
-    el.style.display = show ? '' : 'none';
+    // 幂等：只在状态真的变了才写，updateBar 每帧都会调到（timeupdate 约 4 次/秒）
+    if (el.hidden !== !show) el.hidden = !show;
+    const want = show ? '' : 'none';
+    if (el.style.display !== want) el.style.display = want;
   }
 
   function closeHotkeyPanel() {
@@ -813,9 +822,13 @@
     if (S.ownsSpaceKey !== active) {
       S.ownsSpaceKey = active;
       document.body.dataset.cetHotkeys = active ? 'on' : 'off';
-      syncHotkeyHint();
-      syncLoopIndicator();
     }
+    // UI 跟随**真实状态**刷新，不放进上面的变更分支：
+    // 通用模式下 ownsSpaceKey 初值就是 false、active 也是 false，条件永不成立，
+    // 放进分支里会导致指示条/提示条一次都不被纠正（这正是本次 §0.6 回归的成因）。
+    // 两个 sync 函数都是幂等的，重复调用不产生多余 DOM 写入。
+    syncHotkeyHint();
+    syncLoopIndicator();
     return active;
   }
 

@@ -183,6 +183,10 @@ _COPY_CET = {
     "fix2_sync_collections": "同步本课收藏",
     "fix2_my_collections_wordlist": "我的收藏",
     "fix2_lesson_collections": "本课收藏",
+    "fix2_lesson_collections_note": "本课收藏的词与句子，收藏后自动进入「我的收藏」。",
+    "fix2_intensive_entry": "逐句精听 →",
+    "fix2_intensive_need_timeline": "需要逐句时间轴",
+    "fix2_word_in_favorites": "收藏后进入「我的收藏」",
 }
 
 _COPY_GENERIC = {
@@ -211,7 +215,18 @@ _COPY_GENERIC = {
     "fix2_favorite_added": "✓ 已收藏",
     "fix2_sync_collections": "同步本课收藏",
     "fix2_my_collections_wordlist": "我的生词本",
-    "fix2_lesson_collections": "学习收集 Phase B",
+    # 基线 workspace.html 的收藏面板是 <h2>学习收集</h2> +
+    # <span class="panel-note">Phase B · 本课收藏的词、句子和标签。</span>
+    # 标题本身**不含** "Phase B"，所以这里通用值必须是「学习收集」，
+    # 否则通用模式渲染成「学习收集 Phase B」会改变原版文案
+    # （实测会打破包1 的 test_p1_2_generic_collection_panel_title_unchanged）。
+    "fix2_lesson_collections": "学习收集",
+    "fix2_lesson_collections_note": "Phase B · 本课收藏的词、句子和标签。",
+    # 下面三个只在 CET 模式渲染（通用模式不输出该入口 / 走原「加入复习本」按钮），
+    # 通用版给同值是安全的：不会有通用模式渲染差异。
+    "fix2_intensive_entry": "逐句精听 →",
+    "fix2_intensive_need_timeline": "需要逐句时间轴",
+    "fix2_word_in_favorites": "收藏后进入「我的收藏」",
 }
 
 # 词表：CET 模式默认只把 CET4/CET6 作为主选项（任务书 §3.2）

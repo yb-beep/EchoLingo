@@ -47,6 +47,11 @@ FIX2_COPY_KEYS = [
     "fix2_sync_collections",
     "fix2_my_collections_wordlist",
     "fix2_lesson_collections",
+    # 包1 P1-2 / P1-1 用的 4 个键（返修2 合并后补加，见交付说明 §11）
+    "fix2_lesson_collections_note",
+    "fix2_intensive_entry",
+    "fix2_intensive_need_timeline",
+    "fix2_word_in_favorites",
 ]
 
 
@@ -106,7 +111,49 @@ def test_p4_2_generic_copy_equals_pre_fix_literals(monkeypatch):
     assert copy["fix2_favorites_pane_vocab"] == "词汇收藏"
     assert copy["fix2_favorites_pane_sentences"] == "句子收藏"
     assert copy["fix2_my_collections_wordlist"] == "我的生词本"
-    assert copy["fix2_lesson_collections"] == "学习收集 Phase B"
+    # 基线 workspace.html 的收藏面板标题是 <h2>学习收集</h2>，
+    # "Phase B · …" 在 panel-note 里 —— 标题本身不含 Phase B。
+    # 通用值必须还原成「学习收集」，否则通用模式渲染会变
+    # （实测会打破包1 test_p1_2_generic_collection_panel_title_unchanged）。
+    assert copy["fix2_lesson_collections"] == "学习收集"
+    assert copy["fix2_lesson_collections_note"] == "Phase B · 本课收藏的词、句子和标签。"
+    assert copy["fix2_intensive_entry"] == "逐句精听 →"
+    assert copy["fix2_intensive_need_timeline"] == "需要逐句时间轴"
+    assert copy["fix2_word_in_favorites"] == "收藏后进入「我的收藏」"
+
+
+def test_p4_2_generic_collection_panel_copy_is_byte_identical(monkeypatch):
+    """通用模式收藏面板文案必须与基线模板逐字一致（防「通用模式被改动」回归）。
+
+    背景：基线 `workspace.html:1738-1739` 是
+        <h2>学习收集</h2>
+        <span class="panel-note">Phase B · 本课收藏的词、句子和标签。</span>
+    标题**不含** Phase B。曾把通用值误写成「学习收集 Phase B」，
+    导致包1 的 `test_p1_2_generic_collection_panel_title_unchanged` 变红。
+    """
+    from webapp import cet_mode
+
+    monkeypatch.setenv("ELT_CET_MODE", "0")
+    copy = cet_mode.config()["copy"]
+    assert copy["fix2_lesson_collections"] == "学习收集"
+    assert copy["fix2_lesson_collections_note"] == "Phase B · 本课收藏的词、句子和标签。"
+    # 组合起来必须能还原基线两行原文
+    assert copy["fix2_lesson_collections"] == "学习收集"
+    assert "Phase B" not in copy["fix2_lesson_collections"]
+
+
+def test_p4_2_lesson_collections_keys_are_paired(monkeypatch):
+    """包1 用的 4 个键两套文案必须都在（否则模板会静默走兜底，不算集中配置）。"""
+    from webapp import cet_mode
+
+    for key in ("fix2_lesson_collections_note", "fix2_intensive_entry",
+                "fix2_intensive_need_timeline", "fix2_word_in_favorites"):
+        monkeypatch.setenv("ELT_CET_MODE", "1")
+        cet_value = cet_mode.config()["copy"].get(key)
+        monkeypatch.setenv("ELT_CET_MODE", "0")
+        generic_value = cet_mode.config()["copy"].get(key)
+        assert cet_value, f"CET 文案缺少 {key}"
+        assert generic_value, f"通用文案缺少 {key}"
 
 
 def test_p4_2_cet_copy_is_chinese_cet_wording(monkeypatch):

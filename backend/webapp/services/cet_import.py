@@ -109,7 +109,10 @@ def parse_srt(raw_text: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
     """
     entries: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-    lines = str(raw_text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    # BOM 必须剥掉：带 BOM 的 SRT 第一行是 "\ufeff1"，isdigit() 为 False，
+    # 会被误报成「不是合法时间轴行」。UTF-8-SIG 文件很常见（Windows 记事本）。
+    normalized = str(raw_text or "").lstrip("\ufeff")
+    lines = normalized.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
     index = 0
     cue_number = 0
@@ -284,7 +287,9 @@ def split_plain_text(raw_text: str) -> list[str]:
     """把纯文本切成段落（空行分段，段内合并空白）。不生成任何时间戳。"""
     paragraphs: list[str] = []
     current: list[str] = []
-    for raw_line in str(raw_text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+    # 同样剥 BOM，否则首段文本会带一个不可见前缀
+    normalized = str(raw_text or "").lstrip("\ufeff")
+    for raw_line in normalized.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         line = re.sub(r"\s+", " ", raw_line).strip()
         if not line:
             if current:
@@ -488,14 +493,6 @@ def supported_formats() -> dict[str, Any]:
 
 def sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
-
-
-def sha256_file(path: str | Path) -> str:
-    hasher = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
 
 
 def probe_audio_duration(audio_bytes: bytes, filename: str) -> float | None:

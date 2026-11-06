@@ -725,3 +725,64 @@ def test_import_does_not_hardcode_absolute_paths(client, env):
     lesson = db.get_v2_lesson(resp.json()["material"]["lessonId"])
     assert lesson["media_url"].startswith("/output/")
     assert str(env) not in lesson["media_url"]
+
+
+# ── 真实世界边界：BOM / 多行 cue / VTT 位置标记 ─────────────
+
+
+def test_bom_prefixed_srt_parses(isolated_bom_env=None):
+    """带 UTF-8 BOM 的 SRT（Windows 记事本常见）第一行不能被误报成非法行。"""
+    raw = "\ufeff1\n00:00:01,000 --> 00:00:02,000\nBOM text.\n"
+    prepared = cet_import.prepare_subtitle("bom.srt", raw, audio_duration=60.0)
+    assert prepared["errors"] == []
+    assert prepared["sentenceCount"] == 1
+    assert prepared["segments"][0]["text"] == "BOM text."
+
+
+def test_bom_prefixed_vtt_parses():
+    raw = "\ufeffWEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHi there.\n"
+    prepared = cet_import.prepare_subtitle("bom.vtt", raw, audio_duration=60.0)
+    assert prepared["errors"] == []
+    assert prepared["sentenceCount"] == 1
+
+
+def test_bom_prefixed_plain_text_has_no_invisible_prefix():
+    paragraphs = cet_import.split_plain_text("\ufeff第一段\n\n第二段")
+    assert paragraphs == ["第一段", "第二段"]
+
+
+def test_multi_line_cue_joined_into_one_sentence():
+    srt = (
+        "1\n00:00:01,000 --> 00:00:03,000\nLine one\nLine two\n\n"
+        "2\n00:00:03,000 --> 00:00:05,000\nNext.\n"
+    )
+    prepared = cet_import.prepare_subtitle("multi.srt", srt, audio_duration=60.0)
+    assert prepared["sentenceCount"] == 2
+    assert prepared["segments"][0]["text"] == "Line one Line two"
+
+
+def test_vtt_position_settings_ignored():
+    """VTT cue 的 `line:90% align:center` 之类设置不能混进文本。"""
+    vtt = (
+        "WEBVTT\nKind: captions\n\n"
+        "1\n00:00:01.000 --> 00:00:02.000 line:90% align:center\n"
+        "Positioned cue text.\n"
+    )
+    prepared = cet_import.prepare_subtitle("pos.vtt", vtt, audio_duration=60.0)
+    assert prepared["errors"] == []
+    assert prepared["segments"][0]["text"] == "Positioned cue text."
+
+
+def test_srt_without_trailing_newline_parses():
+    prepared = cet_import.prepare_subtitle(
+        "n.srt", "1\n00:00:01,000 --> 00:00:02,000\nNo trailing newline.",
+        audio_duration=60.0,
+    )
+    assert prepared["errors"] == []
+    assert prepared["sentenceCount"] == 1
+
+
+def test_exported_audio_ends_within_tolerance():
+    """字幕结束时间正好等于音频时长是合法的（不留容差误报）。"""
+    entries = [{"index": 1, "line": 1, "start": 58.0, "end": 60.0, "text": "edge"}]
+    assert cet_import.validate_entries(entries, audio_duration=60.0) == []

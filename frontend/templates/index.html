@@ -5707,54 +5707,18 @@ async function initVocab() {
   renderVocabList();
   updateHeaderStat('vocab');
   initStoryWords();
-  // P4-1：历史上只进了本课、没进复习本的词，加载时补同步一次
-  await cetSyncLessonCollections();
-}
-
-// ── P4-1：「我的收藏」加载时补同步本课收藏 ──────────────────
-// 问题：工作区「☆ 收藏」写 v2_lesson_words（本课收藏），而「我的收藏 ·
-// 收藏单词」读 word_review_items（复习本），返修前两条路径互不相通 ——
-// 用户收藏了却看不到。包1 负责「今后收藏成功后自动 activate」，
-// 本函数负责把**历史遗留**数据补上。
-//
-// 方案选择：**加载时自动补一次**，不加「同步按钮」。理由：
-//   1. 任务书的痛点是「用户无法理解为什么收藏了却在『我的收藏』里看不到」——
-//      让用户再点一次按钮，等于把内部数据分叉的认知负担转嫁给用户；
-//   2. 服务端端点幂等（INSERT ... ON CONFLICT + count 的 CASE 保护），
-//      重复调用不重复计数，自动补无副作用（详见交付说明的幂等依据）；
-//   3. 端点只处理「本课已收藏 ∩ 复习本没有」的差集，正常情况返回 0，
-//      代价是每次进入收藏页一次轻量 POST。
-// 通用模式不执行（ELT_CET_MODE=0 时「复习本」概念与入口都不同，行为保持不变）。
-let _cetCollectionsSynced = false;
-async function cetSyncLessonCollections(force = false) {
-  if (!(window.CET && typeof CET.enabled === 'function' && CET.enabled())) return 0;
-  if (_cetCollectionsSynced && !force) return 0;
-  _cetCollectionsSynced = true;
-  try {
-    const resp = await fetch('/api/vocab-review/sync-collections', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({}),
-    });
-    if (!resp.ok) return 0;
-    const data = await resp.json().catch(() => ({}));
-    const synced = Number(data.synced || 0);
-    if (synced > 0) {
-      // 补同步后重新拉一次词表，让新补进来的词立刻出现在「我的收藏」
-      const fresh = await fetch('/vocab-log?include_archived=1&include_mastered=1', {cache:'no-store'});
-      if (fresh.ok) {
-        vocabData = await fresh.json();
-        await loadVocabWordlistMembership(Object.keys(vocabData).filter(word => !word.startsWith('__')));
-        const entries = Object.entries(vocabData).filter(([w])=>!w.startsWith('__'));
-        renderTodayPanel(entries);
-        renderVocabList();
-        updateHeaderStat('vocab');
-      }
-    }
-    return synced;
-  } catch (_) {
-    return 0; // 补同步失败不影响收藏页正常使用
-  }
+  // 返修2.1 · A2（阻断）：这里**不再**调用 `POST /api/vocab-review/sync-collections`。
+  //
+  // 返修2 的 P4-1 在此处补同步 `v2_lesson_words` → 复习本，前提是「工作区收藏进不了
+  // 我的收藏」—— 该前提经复验是错的：`save_word`（v2_lessons.py:1700）本来就会
+  // `db.activate_word_review(...)`，用户主动收藏**从来就能**进「我的收藏」。
+  //
+  // 真正被这条补同步搬进来的是 `POST /highlighted-words/sync` 自动写进
+  // `v2_lesson_words` 的**四六级高亮词**（A1 已拆掉那条写入）。留着这次调用就等于
+  // 「打开收藏页（只读动作）触发写库」，还会让自动高亮词冒充收藏。
+  //
+  // 删除后的行为：本页只读 `/vocab-log`，没有收藏就是 0 词 / 空态，
+  // 不再发任何写请求（实测见交付说明 A2 节的网络记录）。
 }
 
 async function loadHomeReviewNote() {

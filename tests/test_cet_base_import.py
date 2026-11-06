@@ -786,3 +786,386 @@ def test_exported_audio_ends_within_tolerance():
     """字幕结束时间正好等于音频时长是合法的（不留容差误报）。"""
     entries = [{"index": 1, "line": 1, "start": 58.0, "end": 60.0, "text": "edge"}]
     assert cet_import.validate_entries(entries, audio_duration=60.0) == []
+
+
+# ── BASE-02 回归：JSON 坏条目不得静默丢弃 ────────────────────
+# 缺陷：`_json_sentences()` 用 `[item for item in raw if isinstance(item, dict)]`
+# 预先滤掉非对象条目，于是 `[合法句1,"BROKEN",null,合法句2]` 返回 200、
+# errors=[]、只落 2 句。用户以为全部导入成功，且原始序号无从追溯。
+#
+# 修复要求：非对象条目逐条报错 + 拒绝整份导入 + 保留原始条目位置。
+
+
+MIXED_JSON = [
+    {"start": 0.0, "end": 2.0, "text": "Valid one."},
+    "BROKEN",
+    None,
+    {"start": 2.0, "end": 3.0, "text": "Valid two."},
+]
+
+
+def test_json_non_object_entries_rejected_with_original_positions(client, env):
+    """验收方原始场景：混合坏条目必须整体拒绝，并指出第几个元素坏了。"""
+    before = len(db.list_v2_lessons(include_archived=True))
+
+    resp = _import(
+        client,
+        subtitle=("mixed.json", json.dumps(MIXED_JSON), "application/json"),
+    )
+
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["code"] == "IMPORT_VALIDATION_FAILED"
+    # 两条坏条目都要报，不能只报第一条
+    assert detail["errorCount"] == 2
+    reasons = [item["reason"] for item in detail["errors"]]
+    assert reasons == ["invalid_entry", "invalid_entry"]
+    # 原始数组位置（1 基）：第 2 个是 "BROKEN"，第 3 个是 null
+    assert [item["index"] for item in detail["errors"]] == [2, 3]
+    # 错误信息说清实际类型，用户能定位
+    assert "BROKEN" in detail["errors"][0]["message"]
+    assert "null" in detail["errors"][1]["message"]
+
+    # 整份拒绝：一句都没落库，也没有假卡片
+    assert len(db.list_v2_lessons(include_archived=True)) == before
+    with db._db() as conn:  # noqa: SLF001
+        rows = conn.execute("SELECT COUNT(*) AS c FROM v2_media_uploads").fetchone()
+    assert int(rows["c"]) == 0
+
+
+def test_json_non_object_entries_in_wrapped_object_rejected(client, env):
+    """`{"sentences": [...]}` 包装形态同样逐条报错，不静默过滤。"""
+    payload = {"duration": 3.0, "sentences": [
+        {"start": 0.0, "end": 1.0, "text": "Ok."},
+        123,
+    ]}
+    resp = _import(
+        client,
+        subtitle=("wrapped.json", json.dumps(payload), "application/json"),
+    )
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["errorCount"] == 1
+    assert detail["errors"][0]["index"] == 2
+    assert detail["errors"][0]["reason"] == "invalid_entry"
+    # 包装层名字进消息，用户知道是哪个数组
+    assert "sentences" in detail["errors"][0]["message"]
+    assert db.list_v2_lessons() == []
+
+
+def test_json_sentence_count_is_not_filtered_length(client, env):
+    """不能把「过滤后的长度」当全部成功：合法条目数 != 数组长度时拒绝。"""
+    entries, errors, declared = cet_import.parse_sentence_json(json.dumps(MIXED_JSON))
+    # 只解析出 2 条合法句，但必须同时报 2 条错误 —— 调用方据此整体拒绝
+    assert len(entries) == 2
+    assert len(errors) == 2
+    assert declared is None
+    # 合法条目的 index 也保留原始位置（1 和 4），不是压缩后的 1、2
+    assert [entry["index"] for entry in entries] == [1, 4]
+
+
+def test_json_validate_endpoint_reports_bad_entries(client, env):
+    """预检端点同样要报坏条目，前端「校验」按钮不能显示通过。"""
+    resp = client.post(
+        "/api/cet/base/import/validate",
+        files={"subtitle": ("mixed.json", json.dumps(MIXED_JSON), "application/json")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is False
+    assert data["errorCount"] == 2
+    assert [item["index"] for item in data["errors"]] == [2, 3]
+
+
+def test_json_all_valid_entries_still_import(client, env):
+    """修复不能误伤合法 JSON：全合法时照旧成功。"""
+    resp = _import(
+        client,
+        subtitle=("ok.json", json.dumps(SENTENCE_JSON), "application/json"),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["subtitle"]["sentenceCount"] == 3
+
+
+def test_json_nan_timeline_rejected_at_validation_not_database(client, env):
+    """`start:"NaN"` 这类值必须在预检被拒，不能冒成 SQL 约束错误。"""
+    resp = _import(
+        client,
+        subtitle=("nan.json",
+                  json.dumps([{"start": "NaN", "end": 2, "text": "Broken timeline."}]),
+                  "application/json"),
+    )
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["errors"][0]["reason"] == "unparsable_timestamp"
+    assert detail["errors"][0]["index"] == 1
+    # 不是 import_failed（那说明已经落库才炸）
+    assert detail["errors"][0]["reason"] != "import_failed"
+    assert db.list_v2_lessons() == []
+
+
+# ── BASE-03 缺陷 A 回归：并发重复导入只留一份 ───────────────
+
+
+def test_concurrent_duplicate_import_creates_one_material(client, env, monkeypatch):
+    """验收方原始场景：同标题同音频两并发请求。
+
+    旧行为：两者都 duplicate=false，建出两份材料（lessonId 4、5，count=2）。
+    新行为：一个 duplicate=false 真正建课，另一个 duplicate=true 指向同一 lesson，
+    列表 count=1。
+
+    这里复刻验收探针的手法：在**快路径查重**返回后插屏障，制造确定性交错
+    （两个请求都先看到「无重复」），再由临界区内的权威二次查重兜住。
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    barrier = threading.Barrier(2, timeout=10)
+    original = cet_import.find_duplicate
+
+    def synced(**kwargs):
+        value = original(**kwargs)
+        barrier.wait()
+        return value
+
+    monkeypatch.setattr(cet_import, "find_duplicate", synced)
+
+    def do_import(_):
+        return _import(client, title="并发同素材", subtitle=None)
+
+    with ThreadPoolExecutor(2) as pool:
+        responses = list(pool.map(do_import, range(2)))
+
+    statuses = [resp.status_code for resp in responses]
+    assert statuses == [200, 200], [resp.text for resp in responses]
+    payloads = [resp.json() for resp in responses]
+    duplicates = sorted(payload["duplicate"] for payload in payloads)
+    # 恰好一个建课、一个判重
+    assert duplicates == [False, True]
+    lesson_ids = {payload["material"]["lessonId"] for payload in payloads}
+    # 判重的那份指向同一 lesson，不是另建一份
+    assert len(lesson_ids) == 1
+
+    # 库里真的只有一份
+    assert len(db.list_v2_lessons()) == 1
+    listed = client.get("/api/cet/base/materials", params={"q": "并发同素材"}).json()
+    assert listed["count"] == 1
+
+
+def test_stale_duplicate_lookup_still_cannot_double_create(client, env, monkeypatch):
+    """即使快路径查重被绕过（模拟多进程/缓存陈旧），也不能建出两份。
+
+    这是临界区内 `_matching_lesson_ids()` 权威二次查重的作用：
+    不依赖可被替换的公开查重函数，只看数据库真实状态。
+    """
+    monkeypatch.setattr(cet_import, "find_duplicate", lambda **kwargs: None)
+
+    first = _import(client, title="绕过查重", subtitle=None)
+    second = _import(client, title="绕过查重", subtitle=None)
+
+    assert first.status_code == 200 and second.status_code == 200
+    assert first.json()["duplicate"] is False
+    assert second.json()["duplicate"] is True
+    assert (
+        second.json()["material"]["lessonId"]
+        == first.json()["material"]["lessonId"]
+    )
+    assert len(db.list_v2_lessons()) == 1
+
+
+def test_allow_duplicate_still_creates_second_material(client, env):
+    """显式 allow_duplicate=true 不受去重锁影响，仍然可以再建一份。"""
+    _import(client, subtitle=None)
+    second = _import(client, subtitle=None, allow_duplicate="true")
+    assert second.status_code == 200
+    assert second.json()["duplicate"] is False
+    assert len(db.list_v2_lessons()) == 2
+
+
+# ── BASE-03 缺陷 B 回归：坏字节文件要结构化 4xx，不留残留 ────
+
+
+def _make_probe_reject_audio(monkeypatch):
+    """让音频探测像真实 ffprobe 那样对坏字节抛 MediaUploadError。"""
+    import webapp.services.v2_lessons as lesson_service
+
+    def reject(path):
+        raise lesson_service.MediaUploadError(
+            "无法识别的媒体文件：ffprobe 返回码 1"
+        )
+
+    monkeypatch.setattr(lesson_service, "_probe_uploaded_media", reject)
+
+
+def test_invalid_audio_returns_structured_422_not_plain_500(client, env, monkeypatch):
+    """验收方原始场景：`bad.mp3`（内容 b'not audio at all'）。
+
+    旧行为：500 + 纯文本 `Internal Server Error`（上传调用在保护范围外，
+    路由只捕获 ImportValidationError）。
+    新行为：结构化 422，明确说明「文件不是有效音频」，并给出支持的格式。
+    """
+    _make_probe_reject_audio(monkeypatch)
+
+    resp = client.post(
+        "/api/cet/base/import",
+        files={"audio": ("bad.mp3", b"not audio at all", "audio/mpeg")},
+        data={"title": "坏音频", "level": "cet4", "category": "练习"},
+    )
+
+    assert resp.status_code == 422, resp.text
+    # 必须是 JSON 结构化错误，不是纯文本
+    assert resp.headers["content-type"].startswith("application/json")
+    detail = resp.json()["detail"]
+    assert detail["code"] == "IMPORT_VALIDATION_FAILED"
+    assert detail["message"] == "音频文件无效"
+    assert detail["errors"][0]["reason"] == "invalid_audio"
+    assert "不是有效音频" in detail["errors"][0]["message"]
+    # 告诉用户支持什么格式，便于自行处置
+    assert ".mp3" in detail["errors"][0]["message"]
+
+
+def test_invalid_audio_leaves_no_material_and_no_upload_residue(client, env, monkeypatch):
+    """坏音频被拒后：无假卡片、无上传记录、uploads 目录干净。"""
+    from webapp.storage import user_assets
+
+    _make_probe_reject_audio(monkeypatch)
+    uploads_root = user_assets.current_uploads_root()
+
+    resp = client.post(
+        "/api/cet/base/import",
+        files={"audio": ("bad.mp3", b"not audio at all", "audio/mpeg")},
+        data={"title": "坏音频", "level": "cet4"},
+    )
+    assert resp.status_code == 422
+
+    # 无假卡片
+    assert db.list_v2_lessons(include_archived=True) == []
+    # 无上传记录
+    with db._db() as conn:  # noqa: SLF001
+        rows = conn.execute("SELECT COUNT(*) AS c FROM v2_media_uploads").fetchone()
+    assert int(rows["c"]) == 0
+    # 无残留暂存（uploads 根目录为空）
+    assert list(uploads_root.iterdir()) == []
+
+
+def test_audio_probe_distinguishes_invalid_audio_from_missing_ffprobe(env, monkeypatch):
+    """探测失败必须区分两种原因，不能一律当「不是音频」拒绝。
+
+    - `MediaUploadError`（ffprobe 能跑，判定不是音视频）→ `invalid_audio`：明确拒绝
+    - 其它异常（ffprobe 缺失、临时文件故障）→ `probe_unavailable`：
+      不据此拒绝，只跳过「不超音频时长」这项校验
+    """
+    import webapp.services.v2_lessons as lesson_service
+
+    def ok(path):
+        return 60.0, "local_audio"
+
+    monkeypatch.setattr(lesson_service, "_probe_uploaded_media", ok)
+    assert cet_import._audio_probe(b"x", "a.mp3") == (60.0, "")
+
+    def not_media(path):
+        raise lesson_service.MediaUploadError("文件不是有效的音视频媒体")
+
+    monkeypatch.setattr(lesson_service, "_probe_uploaded_media", not_media)
+    assert cet_import._audio_probe(b"x", "a.mp3") == (None, "invalid_audio")
+
+    def no_probe(path):
+        raise FileNotFoundError("ffprobe 不可用")
+
+    monkeypatch.setattr(lesson_service, "_probe_uploaded_media", no_probe)
+    assert cet_import._audio_probe(b"x", "a.mp3") == (None, "probe_unavailable")
+
+
+def test_probe_unavailable_skips_duration_check_only(env, monkeypatch):
+    """探测设施不可用时：预检阶段跳过时长上界，不把它当成格式错误。
+
+    这里让预检那一次探测抛非 MediaUploadError、上传那次正常，
+    模拟「临时探测抖动」——导入应继续，而不是报 invalid_audio。
+    """
+    import webapp.services.v2_lessons as lesson_service
+
+    calls = {"n": 0}
+
+    def flaky(path):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise FileNotFoundError("ffprobe 临时不可用")
+        return 60.0, "local_audio"
+
+    monkeypatch.setattr(lesson_service, "_probe_uploaded_media", flaky)
+
+    result = cet_import.import_local_material(
+        audio_bytes=b"fake-mp3-bytes",
+        audio_filename="ok.mp3",
+        title="探测抖动",
+        level="cet4",
+        subtitle_bytes=VALID_SRT.encode(),
+        subtitle_filename="listening.srt",
+    )
+    assert result["duplicate"] is False
+    # 跳过时长上界后仍完成导入（时长以上传设施回填的值为准）
+    assert result["material"]["hasTimeline"] is True
+
+
+def test_route_maps_unexpected_error_to_structured_json(client, env, monkeypatch):
+    """路由兜底：未映射异常不能漏成**纯文本** 500。
+
+    程序 bug 不谎报成 422（那是用户的输入错误），状态码仍是 500，
+    但响应体必须是结构化 JSON，前端能拿到可读原因。
+    """
+    def boom(**kwargs):
+        raise RuntimeError("意外故障")
+
+    monkeypatch.setattr(cet_import, "import_local_material", boom)
+
+    resp = client.post(
+        "/api/cet/base/import",
+        files={"audio": ("ok.mp3", b"fake-mp3-bytes", "audio/mpeg")},
+        data={"title": "意外故障", "level": "cet4"},
+    )
+    assert resp.status_code == 500
+    # 关键：不是纯文本 "Internal Server Error"
+    assert resp.headers["content-type"].startswith("application/json")
+    detail = resp.json()["detail"]
+    assert detail["code"] == "IMPORT_INTERNAL_ERROR"
+    assert detail["errors"][0]["reason"] == "internal_error"
+    assert "意外故障" in detail["errors"][0]["message"]
+
+
+def test_route_maps_media_upload_error_to_structured_422(client, env, monkeypatch):
+    """上传设施的错误绕过服务层映射时，路由也要给出结构化 4xx。"""
+    import webapp.services.v2_lessons as lesson_service
+
+    def boom(**kwargs):
+        raise lesson_service.MediaUploadError("ffprobe 不认这个文件")
+
+    monkeypatch.setattr(cet_import, "import_local_material", boom)
+
+    resp = client.post(
+        "/api/cet/base/import",
+        files={"audio": ("ok.mp3", b"fake-mp3-bytes", "audio/mpeg")},
+        data={"title": "上传错误", "level": "cet4"},
+    )
+    assert resp.status_code == 422
+    assert resp.headers["content-type"].startswith("application/json")
+    detail = resp.json()["detail"]
+    assert detail["code"] == "IMPORT_VALIDATION_FAILED"
+    assert detail["errors"][0]["reason"] == "invalid_audio"
+
+
+def test_route_maps_too_large_to_413(client, env, monkeypatch):
+    """超大小用 413 与格式错误（422）区分。"""
+    import webapp.services.v2_lessons as lesson_service
+
+    def boom(**kwargs):
+        raise lesson_service.MediaUploadTooLargeError("文件超过大小限制 500 MB")
+
+    monkeypatch.setattr(cet_import, "import_local_material", boom)
+
+    resp = client.post(
+        "/api/cet/base/import",
+        files={"audio": ("big.mp3", b"x", "audio/mpeg")},
+        data={"title": "太大", "level": "cet4"},
+    )
+    assert resp.status_code == 413
+    assert resp.json()["detail"]["errors"][0]["reason"] == "audio_too_large"

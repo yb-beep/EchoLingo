@@ -123,10 +123,121 @@ db_holder_pids() {
   done
 }
 
-# 实例登记里指向同一个库、且**进程真的打开着该库**的记录。
-# 实例记录只是线索：PID 会被系统复用，单看 kill -0 会把「碰巧复用了同一 PID
-# 的无关进程」误判成「库仍被活服务持有」（探针里真实踩到过）。所以必须用 lsof
-# 落到文件句柄上才算数。
+# 某个端口上 /health 报告的 sqlite.path（本项目底座才有的形状）。
+# 拿不到就输出空。这是**不依赖文件句柄**的库归属判据：
+# 本应用每请求开/关 SQLite 连接，服务空闲时 lsof 看不到任何 vocab.db 句柄
+# （实测：刚启动未处理任何请求 → 0 个句柄），但 /health 始终能报出真实路径。
+health_sqlite_path() {
+  local port="$1" body
+  body="$(curl -fsS --max-time 2 "http://127.0.0.1:${port}/health" 2>/dev/null || true)"
+  [ -n "$body" ] || return 1
+  printf '%s' "$body" | grep -q '"sqlite"' || return 1
+  printf '%s' "$body" | sed -n 's/.*"sqlite"[^}]*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+# 该 PID 是不是本项目底座？
+# 只看「监听端口」不够：端口上可能是别人的服务（不能按端口盲杀）。
+pid_is_project_backend() {
+  local cmd
+  cmd="$(ps -p "$1" -o command= 2>/dev/null | head -1)"
+  [ -n "$cmd" ] || return 1
+  case "$cmd" in
+    *backend/fastapi_server.py*) return 0 ;;
+  esac
+  return 1
+}
+
+# 枚举**所有**活着的本项目底座进程。
+# 这是补「时间窗口漏洞」的关键：不再只查「有没有进程打开这个库」，
+# 而是把所有在跑的后端都问一遍「你用的是哪个库」。
+#
+# 必须严格判定「这个进程**就是**后端」，不能只看命令行里有没有那个字符串：
+# 否则 `bash -c "... backend/fastapi_server.py ..."` 这类包装 shell、以及
+# grep/编辑器/日志命令都会被误判成底座，进而让保守兜底把正常清库也拦掉
+# （探针里真实踩到：一条带该字符串的 bash -c 让 B3 正向路径被误拒）。
+# 判据：命令行按空白分词后，**某个词以 backend/fastapi_server.py 结尾**，
+# 且第一个词是 python 解释器（不是 bash/sh/env 之类）。
+live_backend_pids() {
+  local pid cmd first tok is_backend
+  ps -eo pid=,command= 2>/dev/null | while read -r pid cmd; do
+    [ -n "$pid" ] || continue
+    is_backend=0
+    first=""
+    # 分词后逐词判断（不用 case 通配整行，避免包装 shell 误判）
+    read -r -a __toks <<< "$cmd"
+    for tok in "${__toks[@]}"; do
+      [ -z "$first" ] && first="$tok"
+      case "$tok" in
+        backend/fastapi_server.py|*/backend/fastapi_server.py) is_backend=1 ;;
+      esac
+    done
+    [ "$is_backend" -eq 1 ] || continue
+    # 第一个词必须是 python 解释器（排除 bash -c / sh -c / tail / grep 等）
+    case "$first" in
+      *python|*python3|*python3.11) ;;
+      *) continue ;;
+    esac
+    printf '%s\n' "$pid"
+  done | while read -r pid; do
+    [ -n "$pid" ] || continue
+    [ "$pid" = "$$" ] && continue
+    [ "$pid" = "${PPID:-0}" ] && continue
+    kill -0 "$pid" 2>/dev/null || continue
+    printf '%s\n' "$pid"
+  done
+}
+
+# 某 PID 监听的所有 TCP 端口
+pid_listen_ports() {
+  lsof -nP -p "$1" -iTCP -sTCP:LISTEN 2>/dev/null \
+    | tail -n +2 | sed -n 's/.*TCP[^:]*:\([0-9][0-9]*\) (LISTEN).*/\1/p' | sort -u
+}
+
+# 找出**正在使用 $1 这个库**的活底座服务。
+# 输出：<pid> <port> <来源>（来源 = health|lsof|instance）
+#
+# 判据按可靠性排序，任一命中即算「持有」：
+#   1. health    —— 向它的监听端口问 /health，比对 sqlite.path。
+#                   服务空闲、无文件句柄时**仍然有效**（本漏洞的主判据）。
+#   2. lsof      —— 它确实打开着 DB/WAL/SHM 文件句柄（服务忙时更快）。
+#   3. instance  —— 实例登记声明该库，且该 PID 存活且是本项目底座。
+services_using_db() {
+  local want="$1" pid port hdb iport idb
+  for pid in $(live_backend_pids); do
+    # 1) /health 判据（最可靠：不依赖是否持有文件句柄）
+    for port in $(pid_listen_ports "$pid"); do
+      hdb="$(health_sqlite_path "$port" || true)"
+      if [ -n "$hdb" ] && [ "$(norm_path "$hdb")" = "$want" ]; then
+        printf '%s %s %s\n' "$pid" "$port" "health"
+        continue 2
+      fi
+    done
+    # 2) lsof 文件句柄判据
+    if pid_holds_db "$pid" "$want"; then
+      port="$(pid_listen_ports "$pid" | head -1)"
+      printf '%s %s %s\n' "$pid" "${port:--}" "lsof"
+      continue
+    fi
+    # 3) 实例登记判据：登记声明该库 + PID 存活 + 确实是本项目底座
+    if [ -d "$INSTANCES_DIR" ]; then
+      for idb in "$INSTANCES_DIR"/*/instance.env; do
+        [ -f "$idb" ] || continue
+        iport="$(sed -n 's/^ELT_INSTANCE_PORT=//p' "$idb" 2>/dev/null | head -1)"
+        local rpid
+        rpid="$(sed -n 's/^ELT_INSTANCE_PID=//p' "$idb" 2>/dev/null | head -1)"
+        local rdb
+        rdb="$(sed -n 's/^ELT_INSTANCE_DB=//p' "$idb" 2>/dev/null | head -1)"
+        [ -n "$rdb" ] && [ -n "$rpid" ] || continue
+        [ "$rpid" = "$pid" ] || continue
+        [ "$(norm_path "$rdb")" = "$want" ] || continue
+        printf '%s %s %s\n' "$pid" "${iport:--}" "instance"
+        break
+      done
+    fi
+  done
+}
+
+# 实例登记里指向同一个库、且进程真的活着的记录（保留给「报告线索」用）
 instance_holders_for_db() {
   local want="$1" f db pid
   [ -d "$INSTANCES_DIR" ] || return 0
@@ -141,7 +252,7 @@ instance_holders_for_db() {
     fi
     [ -n "$pid" ] || continue
     kill -0 "$pid" 2>/dev/null || continue
-    pid_holds_db "$pid" "$want" || continue
+    pid_is_project_backend "$pid" || continue
     printf '%s %s\n' "$pid" "$f"
   done
 }
@@ -263,18 +374,21 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
   fi
 fi
 
-holders="$(db_holder_pids)"
-if [ -n "$holders" ]; then
-  warn "有活进程正打开该库（--fresh/--reset 会被拒绝）："
-  for p in $holders; do
-    say "       PID $p  $(pid_cmd "$p")"
+# 谁在用这个库：把所有活着的本项目底座都问一遍（/health → sqlite.path），
+# 不依赖「服务是否恰好持有文件句柄」。本应用每请求开/关连接，空闲时 lsof
+# 看不到任何 vocab.db 句柄 —— 只查 lsof 会漏判（BASE-04-B 时间窗口漏洞）。
+db_users="$(services_using_db "$DB_ABS")"
+if [ -n "$db_users" ]; then
+  warn "该库正被活服务使用（--fresh/--reset 会被拒绝）："
+  printf '%s\n' "$db_users" | while read -r pid port src; do
+    say "       PID $pid  端口 ${port}  （判据：${src}）"
   done
 fi
-inst_holders="$(instance_holders_for_db "$DB_ABS")"
-if [ -n "$inst_holders" ]; then
-  warn "实例登记显示该库仍被活服务持有（--fresh/--reset 会被拒绝）："
-  printf '%s\n' "$inst_holders" | while read -r pid envf; do
-    say "       PID $pid  （登记：${envf#$ROOT/}）"
+holders="$(db_holder_pids)"
+if [ -n "$holders" ]; then
+  warn "有活进程正打开该库的文件句柄："
+  for p in $holders; do
+    say "       PID $p  $(pid_cmd "$p")"
   done
 fi
 
@@ -366,6 +480,14 @@ if [ -f "$DB" ] && [ ! -f "$DB-wal" ]; then
 fi
 
 # 停服状态：清库前确认该库没有任何活的使用者（BASE-04-B）
+#
+# 时间窗口漏洞（Lead 复验发现）：本应用每请求开/关 SQLite 连接，服务刚启动、
+# 还没处理任何请求时 lsof 看不到任何 vocab.db 句柄。只查文件句柄会漏判 →
+# 护栏失效 → 把活服务的库删掉。修法：
+#   主判据 = 枚举所有活底座进程，向它们的监听端口问 /health 比对 sqlite.path
+#            （空闲服务也能报出真实库路径）
+#   辅判据 = lsof 文件句柄（服务忙时更快）
+#   兜底   = 有活底座但**无法确认**它用哪个库时，默认拒绝（宁可拒绝不可误删）
 if [ "$FRESH" -eq 1 ] || [ "$RESET" -eq 1 ]; then
   live_problem=0
   if [ "$SAME_DB_SERVICE" -eq 1 ]; then
@@ -373,27 +495,58 @@ if [ "$FRESH" -eq 1 ] || [ "$RESET" -eq 1 ]; then
     say "     先停掉它：PORT=$PORT scripts/qa/stop_cet.sh"
     live_problem=1
   fi
+
+  db_users="$(services_using_db "$DB_ABS")"
+  if [ -n "$db_users" ]; then
+    warn "以下活服务正在使用该库 —— 拒绝清库："
+    printf '%s\n' "$db_users" | while read -r pid port src; do
+      say "       PID $pid  端口 ${port}  （判据：${src}）"
+    done
+    say "     先停掉它们：PORT=<端口> scripts/qa/stop_cet.sh"
+    live_problem=1
+  fi
+
   holders="$(db_holder_pids)"
   if [ -n "$holders" ]; then
-    warn "以下活进程正打开该库 —— 拒绝清库："
+    warn "以下活进程正打开该库的文件句柄 —— 拒绝清库："
     for p in $holders; do
       say "       PID $p  $(pid_cmd "$p")"
     done
     live_problem=1
   fi
-  inst_holders="$(instance_holders_for_db "$DB_ABS")"
-  if [ -n "$inst_holders" ]; then
-    warn "实例登记显示该库仍被活服务持有 —— 拒绝清库："
-    printf '%s\n' "$inst_holders" | while read -r pid envf; do
-      say "       PID $pid  （登记：${envf#$ROOT/}）"
+
+  # 保守兜底：还有活底座，但我们既没确认它用这个库、也没确认它不用。
+  # 判据是「该 PID 的端口能报出 /health 但路径对不上」→ 明确是别的库，放行；
+  # 「该 PID 的端口问不出 /health」→ 无法确认，拒绝。
+  if [ "$live_problem" -eq 0 ]; then
+    unverified=""
+    for pid in $(live_backend_pids); do
+      confirmed_other=0
+      for port in $(pid_listen_ports "$pid"); do
+        hdb="$(health_sqlite_path "$port" || true)"
+        if [ -n "$hdb" ]; then
+          confirmed_other=1
+          break
+        fi
+      done
+      [ "$confirmed_other" -eq 1 ] || unverified="$unverified $pid"
     done
-    say "     先停掉实例：PORT=$PORT scripts/qa/stop_cet.sh"
-    live_problem=1
+    unverified="$(printf '%s' "$unverified" | tr -s ' ')"
+    if [ -n "$unverified" ]; then
+      warn "有活底座进程但无法确认它用哪个库 —— 保守拒绝清库："
+      for p in $unverified; do
+        say "       PID $p  $(pid_cmd "$p")"
+      done
+      say "     先停掉它们再清库，或确认后手工处理："
+      say "       PORT=<端口> scripts/qa/stop_cet.sh --list"
+      refuse "无法确认数据库未被活服务使用，保守拒绝 --fresh/--reset"
+    fi
   fi
+
   if [ "$live_problem" -eq 1 ]; then
     refuse "数据库仍被活服务使用，不能执行 --fresh/--reset"
   fi
-  ok "已确认没有活服务持有该库"
+  ok "已确认没有活服务使用该库（/health 路径比对 + 文件句柄 + 保守兜底）"
 fi
 
 if [ "$RESET" -eq 1 ]; then

@@ -79,10 +79,21 @@ def _run(cmd, cwd, env=None, timeout=240):
     )
 
 
-def _start_backend(data_dir: Path, port: int):
-    """起一个真实底座进程（隔离库），等到 /health 可响应才返回。"""
+def _start_backend(data_dir: Path, port: int, *, probe: bool = True):
+    """起一个真实底座进程（隔离库）。
+
+    probe=True  ：轮询 `/health` 直到可响应（快，但**会打开 SQLite 连接**）。
+    probe=False ：只等启动日志出现，**一个请求都不发**。
+
+    为什么需要 probe=False（BASE-04-B 时间窗口漏洞）：
+        本应用是每请求开/关 SQLite 连接（`db._db()` 上下文管理器）。服务刚启动、
+        还没处理任何请求时，`lsof -p <pid>` 看不到任何 `vocab.db` 句柄。
+        只查文件句柄的护栏在这个窗口里会漏判 —— 所以回归必须能构造出
+        「服务活着但零句柄」这个真实状态，而不能用 /health 探测把它掩盖掉。
+    """
     data_dir.mkdir(parents=True, exist_ok=True)
-    log = open(data_dir / "server.log", "wb")
+    log_path = data_dir / "server.log"
+    log = open(log_path, "wb")
     proc = subprocess.Popen(
         [str(PY), "backend/fastapi_server.py"], cwd=str(REPO),
         env={**os.environ, "ELT_USER_DB": str(data_dir / "vocab.db"),
@@ -90,6 +101,24 @@ def _start_backend(data_dir: Path, port: int):
              "ELT_PORT": str(port), "ELT_HOST": "127.0.0.1"},
         stdout=log, stderr=subprocess.STDOUT,
     )
+    if not probe:
+        # 等 uvicorn 打印启动完成，期间不发任何 HTTP 请求
+        for _ in range(240):
+            try:
+                text = log_path.read_text(errors="ignore")
+            except OSError:
+                text = ""
+            if "Application startup complete" in text or "Uvicorn running" in text:
+                time.sleep(0.6)  # 让监听 socket 就绪
+                if proc.poll() is not None:
+                    raise AssertionError(f"底座启动即退出：{text[-1200:]}")
+                return proc
+            if proc.poll() is not None:
+                raise AssertionError(f"底座启动即退出，日志：{text[-1200:]}")
+            time.sleep(0.25)
+        proc.kill()
+        raise AssertionError("底座 60 秒内未打印启动完成")
+
     for _ in range(160):
         try:
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1) as resp:
@@ -98,10 +127,20 @@ def _start_backend(data_dir: Path, port: int):
         except Exception:  # noqa: BLE001
             pass
         if proc.poll() is not None:
-            raise AssertionError(f"底座启动即退出，日志：{(data_dir / 'server.log').read_text()[-1200:]}")
+            raise AssertionError(f"底座启动即退出，日志：{log_path.read_text()[-1200:]}")
         time.sleep(0.25)
     proc.kill()
     raise AssertionError("底座 40 秒内未就绪")
+
+
+def _db_handle_count(pid: int, db: Path) -> int:
+    """该进程当前打开的 vocab.db / -wal / -shm 句柄数（0 = 空闲服务）。"""
+    try:
+        out = subprocess.run(["lsof", "-nP", "-p", str(pid)], capture_output=True,
+                             text=True, timeout=20).stdout
+    except Exception:  # noqa: BLE001
+        return -1
+    return sum(1 for line in out.splitlines() if str(db) in line)
 
 
 def _stop_backend(proc) -> None:
@@ -120,11 +159,16 @@ def _alive(proc) -> bool:
 
 @pytest.fixture
 def backend():
-    """起一个临时底座，测试结束无论成败都收掉。"""
+    """起一个临时底座，测试结束无论成败都收掉。
+
+    工厂签名 `backend(data_dir, port, probe=True)`：
+        probe=False 用于构造「服务刚启动、还没处理过任何请求」的状态
+        （此时 lsof 看不到任何 vocab.db 句柄）。
+    """
     started = []
 
-    def _factory(data_dir: Path, port: int):
-        proc = _start_backend(data_dir, port)
+    def _factory(data_dir: Path, port: int, probe: bool = True):
+        proc = _start_backend(data_dir, port, probe=probe)
         started.append(proc)
         return proc
 
@@ -298,23 +342,77 @@ def test_fresh_refuses_when_service_holds_same_db_on_same_port(tmp_path, backend
     assert "没有删除或修改任何数据库文件" in result.stdout
 
 
-def test_fresh_refuses_when_db_held_by_service_on_other_port(tmp_path, backend):
-    """同一个库被**另一个端口**的活服务持有，也必须拒绝 —— 判据是库，不是端口。"""
-    data = tmp_path / "other-port-data"
+def test_fresh_refuses_when_idle_service_holds_no_file_handle(tmp_path, backend):
+    """BASE-04-B 时间窗口漏洞（Lead 复验发现）：服务刚启动、零请求时必须拒绝。
+
+    本应用是每请求开/关 SQLite 连接。服务刚起来还没处理任何请求时，
+    `lsof -p <pid>` 返回 **0 个** vocab.db 句柄 —— 只查文件句柄的护栏会漏判，
+    把活服务的库删掉。而 `run.sh` 的典型用法正是「刚起服务 → 想重置 → --fresh」，
+    所以这个时序是真实高频路径，不是理论边界。
+
+    修复前：判定「已确认没有活服务持有该库」→ 真的删库（服务还活着，库没了）。
+    修复后：用 /health 的 sqlite.path 作为主判据（空闲服务也能报出真实路径）→ 拒绝。
+
+    本用例刻意用 probe=False 构造「零请求」状态；用 /health 探测会打开连接、
+    把漏洞掩盖掉（现有其他用例都是 probe=True，所以它们测不到这个窗口）。
+    """
+    data = tmp_path / "idle-data"
     data.mkdir(parents=True)
     live_port = _free_port()
-    proc = backend(data, live_port)
-    _make_sentinel(data / "vocab.db", "other-port sentinel")
+    proc = backend(data, live_port, False)  # 关键：不发任何请求
+    _make_sentinel(data / "vocab.db", "idle service sentinel")
 
+    # 先确认真的复现了「零句柄」这个前提；不成立就说明本用例没测到目标状态
+    handles = _db_handle_count(proc.pid, data / "vocab.db")
+    if handles != 0:
+        pytest.skip(
+            f"本机该服务空闲时仍持有 {handles} 个句柄，无法复现零句柄窗口；"
+            "该场景由 /health 判据单独覆盖"
+        )
+
+    # 关键：用一个**不同的端口**跑 --fresh，避免检查阶段的 /health 探测
+    # 顺便把连接打开、把漏洞掩盖掉
     result = _run(
         ["bash", "scripts/cet/run.sh", "--fresh",
          "--data-dir", str(data), "--port", str(_free_port())],
         REPO,
     )
 
-    assert result.returncode == 3, result.stdout
-    assert _sentinel_rows(data / "vocab.db") == ["other-port sentinel"]
+    assert result.returncode == 3, (
+        f"零句柄空闲服务未被识别，--fresh 未被拒绝（退出码 {result.returncode}）\n{result.stdout}"
+    )
+    assert (data / "vocab.db").exists(), "空闲活服务的库被删了（时间窗口漏洞复现）"
+    assert _sentinel_rows(data / "vocab.db") == ["idle service sentinel"]
+    assert _alive(proc), "本应只拒绝清库，不应杀掉活服务"
+    assert "拒绝执行" in result.stdout
+    assert "没有删除或修改任何数据库文件" in result.stdout
+
+
+def test_fresh_does_not_block_when_live_service_uses_another_db(tmp_path, backend):
+    """反向守卫：别的库上有活服务，不能把当前库的清库也拦掉（护栏不能过宽）。
+
+    这里活服务也是零请求状态（probe=False），确保 /health 判据能正确区分
+    「用这个库」和「用别的库」，而不是「有服务在跑就一律拒绝」。
+    """
+    live_data = tmp_path / "other-live"
+    target = tmp_path / "target-data"
+    live_data.mkdir(parents=True)
+    target.mkdir(parents=True)
+    live_port = _free_port()
+    proc = backend(live_data, live_port, False)
+    _make_sentinel(live_data / "vocab.db", "other db sentinel")
+    _make_sentinel(target / "vocab.db", "target sentinel")
+
+    result = _run(
+        ["bash", "scripts/cet/run.sh", "--check", "--fresh",
+         "--data-dir", str(target), "--port", str(_free_port())],
+        REPO,
+    )
+    assert result.returncode == 0, result.stdout
+    # 检查阶段应把它识别为「别的库」，而不是「持有本库」
+    assert "正被活服务使用" not in result.stdout
     assert _alive(proc)
+    assert _sentinel_rows(target / "vocab.db") == ["target sentinel"]
 
 
 def test_fresh_still_works_when_no_live_service(tmp_path):
@@ -358,7 +456,7 @@ def test_fresh_wipes_when_ownership_is_clean(tmp_path):
     )
     try:
         assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
-        assert "已确认没有活服务持有该库" in result.stdout
+        assert "已确认没有活服务使用该库" in result.stdout
         assert "已清空隔离数据库" in result.stdout
         # 清库后是空库：哨兵表不该再存在
         with sqlite3.connect(f"file:{data / 'vocab.db'}?mode=ro", uri=True) as conn:

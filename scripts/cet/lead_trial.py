@@ -222,8 +222,9 @@ def check_browser(base: str, ctx: dict, out_dir: pathlib.Path) -> None:
 
         # 原文可见
         transcript = page.evaluate("""() => {
-            const sels = ['#subtitle-list','.subtitle-line','#transcript','.sentence-row',
-                          '[data-sentence-index]','.subtitle-timeline'];
+            const sels = ['#subtitle-timeline','#subtitle-list','.subtitle-line',
+                          '#transcript','.sentence-row','[data-sentence-index]',
+                          '.subtitle-timeline'];
             for (const s of sels) {
                 const el = document.querySelector(s);
                 if (el && el.innerText.trim().length > 20)

@@ -2712,10 +2712,16 @@ function updateStatusBadge(status) {
   const cetLabels = {
     reading: '阅读模式',
     ready: hasTranscript ? `原文就绪 · ${segments.length} 句` : '原文就绪',
-    pending: hasTranscript ? '原文已就绪' : '无原文',
+    pending: hasTranscript ? '原文已就绪' : '原文加载中',
     failed: hasTranscript ? '原文可用（生成记录失败）' : '原文生成失败',
+    // unavailable = 导入时就确定没有时间轴（仅音频材料）。独立终态：
+    // 不轮询、不弹错，也不能说成「生成中」。
+    unavailable: hasTranscript ? `原文就绪 · ${segments.length} 句` : '暂无逐句定位',
   };
-  const genericLabels = {reading: '阅读模式', ready: '字幕就绪', pending: '字幕生成中', failed: '字幕失败'};
+  const genericLabels = {
+    reading: '阅读模式', ready: '字幕就绪', pending: '字幕生成中',
+    failed: '字幕失败', unavailable: '暂无逐句定位',
+  };
   const labelMap = CET_ON ? cetLabels : genericLabels;
   const ready = value === 'ready' || value === 'reading' || (CET_ON && hasTranscript);
   let label = labelMap[value] || (CET_ON ? '—' : `字幕 ${value}`);
@@ -2762,25 +2768,53 @@ function initPlayer({allowReading = false} = {}) {
   initYouTube();
 }
 
+// 已经挂载的播放器元素是否还能直接复用。
+// initPlayer() 会被 DOMContentLoaded 和 loadStatus() 各调一次；如果每次都
+// 重建 <audio>，正在播放/刚拖到的位置会被清零（真实缺陷：进度恢复后又被
+// 重建冲掉，播放中途也会「跳回开头」）。
+function reusableLocalMedia() {
+  if (!localMedia || !localMedia.isConnected) return false;
+  if (!lessonData || !lessonData.media_url) return false;
+  const currentSrc = localMedia.getAttribute('src') || '';
+  return currentSrc === lessonData.media_url;
+}
+
 function initLocalMedia() {
   const container = document.getElementById('youtube-player');
   const kind = lessonData.media_kind || lessonData.source_type || '';
   const isAudio = kind === 'local_audio' || /\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(lessonData.media_url || '');
   container.classList.toggle('local-audio', isAudio);
+
+  if (reusableLocalMedia()) {
+    // 同一材料的播放器已就绪：只补齐缺失的事件绑定，不重建元素
+    bindLocalMediaEvents(localMedia);
+    onPlaybackRateChange();
+    return;
+  }
+
   container.innerHTML = isAudio
     ? `<audio id="local-media-player" src="${escapeHtml(lessonData.media_url)}" controls preload="metadata"></audio>`
     : `<video id="local-media-player" src="${escapeHtml(lessonData.media_url)}" controls playsinline preload="metadata"></video>`;
   localMedia = document.getElementById('local-media-player');
-  localMedia.addEventListener('timeupdate', () => {
+  bindLocalMediaEvents(localMedia);
+}
+
+// 事件绑定幂等：同一个元素只绑一次，重建元素后才重新绑。
+function bindLocalMediaEvents(el) {
+  if (!el || el.dataset.wsBound === '1') return;
+  el.dataset.wsBound = '1';
+  el.addEventListener('timeupdate', () => {
     if (Date.now() < suppressTimeSyncUntil) return;
-    updateActiveByTime(localMedia.currentTime || 0);
+    updateActiveByTime(el.currentTime || 0);
   });
-  localMedia.addEventListener('loadedmetadata', () => {
-    if (Number.isFinite(localMedia.duration) && localMedia.duration > 0) {
-      currentTime = localMedia.currentTime || 0;
+  el.addEventListener('loadedmetadata', () => {
+    if (Number.isFinite(el.duration) && el.duration > 0) {
+      currentTime = el.currentTime || 0;
       updateActiveByTime(currentTime);
     }
     onPlaybackRateChange();
+    // 元数据前挂起的跳转（进度恢复 / 收藏跳原句）在这里落地
+    applyPendingSeek();
   });
 }
 
@@ -2849,15 +2883,43 @@ function readPlayerTime() {
   }
 }
 
+// 播放器元数据未就绪时设置 currentTime 会被浏览器丢弃（seek 不生效，
+// 也不触发 seeked）。用户/适配层在 metadata 之前跳转是常见情况（进度恢复、
+// 收藏跳原句），所以这里记下目标，metadata 就绪后补一次。
+let pendingSeekSeconds = null;
+
+function applyPendingSeek() {
+  if (pendingSeekSeconds == null || !localMedia) return;
+  const target = pendingSeekSeconds;
+  pendingSeekSeconds = null;
+  if (localMedia.readyState < 1) {
+    pendingSeekSeconds = target;   // 还没 metadata，继续等
+    return;
+  }
+  const duration = Number(localMedia.duration || 0);
+  const clamped = duration > 0 ? Math.max(0, Math.min(target, duration - 0.05)) : Math.max(0, target);
+  localMedia.currentTime = clamped;
+  currentTime = clamped;
+  updateActiveByTime(clamped);
+}
+
 function seekTo(seconds) {
   suppressTimeSyncUntil = Date.now() + 1200;
+  const target = Number(seconds) || 0;
   if (localMedia) {
-    localMedia.currentTime = seconds || 0;
+    if (localMedia.readyState < 1) {
+      // 元数据未就绪：先记下，loadedmetadata 时补
+      pendingSeekSeconds = target;
+    } else {
+      const duration = Number(localMedia.duration || 0);
+      const clamped = duration > 0 ? Math.max(0, Math.min(target, duration - 0.05)) : Math.max(0, target);
+      localMedia.currentTime = clamped;
+    }
   }
   if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
-    ytPlayer.seekTo(seconds || 0, true);
+    ytPlayer.seekTo(target, true);
   }
-  updateActiveByTime(seconds || 0);
+  updateActiveByTime(target);
 }
 
 function onPlaybackRateChange() {
@@ -4044,11 +4106,23 @@ function updateCurrentSubtitle() {
     return;
   }
   if (!sentenceUnits.length) {
-    textEl.textContent = lessonData && lessonData.subtitle_status === 'failed'
-      ? '该视频暂无可用字幕。'
-      : '字幕正在后台加载…';
-    posEl.textContent = lessonData ? `字幕${lessonData.subtitle_status === 'ready' ? '就绪' : lessonData.subtitle_status === 'failed' ? '失败' : '生成中'}` : '等待中';
-    metaEl.textContent = '学习数据加载期间可正常播放视频。';
+    // 终态（unavailable / failed）不能说成「加载中」：那正是任务书 §4 P3
+    // 禁止的「学习页初始状态假称字幕生成中」。
+    // unavailable = 导入时就没有时间轴（仅音频材料），是正常终态，不是错误。
+    const st = lessonData && lessonData.subtitle_status;
+    if (st === 'unavailable') {
+      textEl.textContent = '本材料暂无逐句定位（导入时未提供时间轴）。';
+      posEl.textContent = '无时间轴';
+      metaEl.textContent = '可整段播放与拖动进度；如需逐句精听，请导入带时间轴的字幕（SRT）。';
+    } else if (st === 'failed') {
+      textEl.textContent = CET_ON ? '本材料没有可用的逐句原文。' : '该视频暂无可用字幕。';
+      posEl.textContent = '无原文';
+      metaEl.textContent = '音频仍可正常播放。';
+    } else {
+      textEl.textContent = CET_ON ? '原文加载中…' : '字幕正在后台加载…';
+      posEl.textContent = lessonData ? (CET_ON ? '原文加载中' : '字幕生成中') : '等待中';
+      metaEl.textContent = CET_ON ? '加载期间可正常播放音频。' : '学习数据加载期间可正常播放视频。';
+    }
     chipsEl.innerHTML = '';
     saveBtn.disabled = true;
     prevBtn.disabled = true;

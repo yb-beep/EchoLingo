@@ -42,6 +42,9 @@
     pendingSeconds: null,
     restoring: false,
     restored: false,
+    // 用户是否已经主动操作过播放器（seek/play/拖动）。一旦为 true，
+    // 异步回来的进度就**不能**再覆盖用户当前位置 —— 否则「刚拖动就被弹回去」。
+    userInteracted: false,
     saveTimer: null,
     playerWatchTimer: null,
     listenersBound: false,
@@ -245,10 +248,15 @@
       const progress = await fetchProgress();
       if (!progress) return;
       const el = audioEl();
-      // 用户已经开始播放/拖动时不覆盖他的位置
+      // 用户在等待期间已经 seek/播放/拖动：尊重用户操作，不弹回旧位置。
+      // 这不只是体验问题——它会让「刚拖到 30s 又被恢复逻辑拉回 44s」。
+      if (S.userInteracted) {
+        log('用户已操作播放器，跳过自动恢复');
+        return;
+      }
       const alreadyMoved = el ? Number(el.currentTime || 0) > 1 : false;
       if (alreadyMoved) {
-        log('用户已开始播放，跳过自动恢复');
+        log('播放位置已离开起点，跳过自动恢复');
         return;
       }
       const duration = Number(ws()?.duration || 0);
@@ -277,6 +285,44 @@
     }
   }
 
+  /** 标记「用户已主动操作」，并让自动恢复不再发生。 */
+  function markUserInteracted() {
+    S.userInteracted = true;
+    S.restored = true;
+  }
+
+  /**
+   * 包一层 seek/play：在元数据就绪之前设置 currentTime 不会触发 seeked，
+   * 只靠事件判断会漏掉「用户抢在 metadata 之前跳转」的情况，导致异步回来的
+   * 旧进度把用户位置覆盖掉。这里在入口处就标记，彻底消除这个竞态。
+   */
+  function wrapPlayerControls() {
+    const api = ws();
+    if (!api || api.__cetWrapped) return;
+    api.__cetWrapped = true;
+    if (typeof api.seek === 'function') {
+      const originalSeek = api.seek;
+      api.seek = seconds => {
+        markUserInteracted();
+        return originalSeek(seconds);
+      };
+    }
+    if (typeof api.play === 'function') {
+      const originalPlay = api.play;
+      api.play = () => {
+        markUserInteracted();
+        return originalPlay();
+      };
+    }
+    if (typeof api.jumpSentence === 'function') {
+      const originalJump = api.jumpSentence;
+      api.jumpSentence = delta => {
+        markUserInteracted();
+        return originalJump(delta);
+      };
+    }
+  }
+
   // ── 事件绑定（幂等）────────────────────────────────────────
   function bindPlayerListeners() {
     const el = audioEl();
@@ -297,6 +343,8 @@
       saveProgress(Number(el.currentTime || 0), currentSegmentIndex(), {force: true});
     });
     el.addEventListener('play', () => {
+      // 用户主动播放：此后再回来的进度不得覆盖当前位置
+      markUserInteracted();
       updateBar();
     });
     el.addEventListener('loadedmetadata', () => {
@@ -304,6 +352,8 @@
       restorePosition();
     });
     el.addEventListener('seeked', () => {
+      // 用户拖动进度条 / 逐句跳转：同样算主动操作
+      markUserInteracted();
       if (S.restoring) return;
       saveProgress(Number(el.currentTime || 0), currentSegmentIndex(), {force: true});
       updateBar();
@@ -365,6 +415,7 @@
     S.mounted = true;
     document.body.dataset.cetMode = CET_ON ? 'on' : 'off';
     document.body.dataset.cetLessonId = String(LESSON_ID || '');
+    wrapPlayerControls();
     buildBar();
     updateBar();
     bindPageListeners();
@@ -372,6 +423,7 @@
     else watchForPlayer();
     // 播放器被重建（切换精听/阅读）时补绑
     window.setInterval(() => {
+      wrapPlayerControls();
       if (hasPlayer() && !audioEl()?.dataset.cetProgressBound) bindPlayerListeners();
     }, 1500);
   }

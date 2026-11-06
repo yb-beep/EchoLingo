@@ -39,6 +39,8 @@
   cursor: pointer;
 }
 .cet-btn-sm:hover { border-color: var(--brand, #2f6f5e); color: var(--brand, #2f6f5e); }
+.cet-btn-danger { border-color: #e7c5bd; background: #fff7f5; color: #a33d2c; }
+.cet-btn-danger:hover { border-color: #c9573f; color: #8f2f1f; }
 
 .cet-hint {
   font-size: 12px;

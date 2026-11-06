@@ -294,6 +294,10 @@
         acts.appendChild(start);
       }
 
+      const del = el('button', 'cet-btn-sm cet-btn-danger', '删除');
+      del.onclick = () => deleteMark(m);
+      acts.appendChild(del);
+
       row.appendChild(acts);
       box.appendChild(row);
     });
@@ -339,6 +343,21 @@
     idx = Math.min(S.sentences.length - 1, Math.max(0, idx + delta));
     const target = S.sentences[idx];
     if (target) confirmMark(m, target.sentenceId);
+  }
+
+  async function deleteMark(m) {
+    try {
+      await api('DELETE', `/marks/${encodeURIComponent(m.markId)}`);
+      S.marks = S.marks.filter((x) => x.markId !== m.markId);
+      renderMarks();
+      flashHint('已删除该标记');
+    } catch (err) {
+      if (err.code === 'MARK_IN_PRACTICE') {
+        flashHint('该标记已开始带练，不能删除', true);
+      } else {
+        flashHint(`删除失败：${err.message}`, true);
+      }
+    }
   }
 
   // ── 题目面板 ────────────────────────────────────────────

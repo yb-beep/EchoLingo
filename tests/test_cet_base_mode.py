@@ -297,12 +297,38 @@ def test_cet_home_renders_nav_from_config(monkeypatch):
 def test_cet_home_keeps_shared_asset_inclusions(monkeypatch):
     html = _render_home(monkeypatch, "1")
     # 既有共享资产契约（tests/test_natural_tts.py / test_elt_credits_public_contract.py）
+    #
+    # natural-tts.js：CET 页面**保留**（feature `natural_tts`，CET kept=True）。
+    # 实测被保留功能直接使用：index.html speakWord 收藏词卡发音、
+    # 句子兜底朗读、词汇例句朗读。故此处断言不变。
     assert "/static/natural-tts.js" in html
-    assert "/static/elt_credits.js" in html
     assert "NaturalTTS.speak" in html
+    # elt_credits.js：返修2 包4（P4-3）起在 CET 模式**条件移除**（feature `credits_account`）。
+    # 旧断言「CET 页面含 elt_credits.js」已随契约变更拆成两条：CET 侧断言移除、
+    # 通用模式侧保留原断言（见 test_generic_home_keeps_elt_credits_asset）。
+    # 不删断言，只是把「通用模式的断言」搬到通用模式用例里。
+    assert "/static/elt_credits.js" not in html
     # 新增的 CET 资产
     assert "/static/cet-base.css" in html
     assert "/static/cet-mode.js" in html
+
+
+def test_generic_home_keeps_elt_credits_asset(monkeypatch):
+    """通用模式（ELT_CET_MODE=0）必须**保留** elt_credits.js —— 原版回归。
+
+    任务书 P4-3 原文：「若有老测试断言其存在，给那条测试加 ELT_CET_MODE=0 前提，
+    **不删断言**」。原断言 `assert "/static/elt_credits.js" in html` 完整保留在这里，
+    只是补上了它本来就需要的「通用模式」前提 —— 该断言描述的是**原版**行为，
+    此前却在 CET 模式下断言，属前提缺失。
+
+    本条需 **包4（P4-3）合并后**才能验证 CET 侧为 not in：本包分支上
+    elt_credits.js 仍无条件输出，`test_cet_home_keeps_shared_asset_inclusions`
+    的 `not in` 断言属预期红，由主代理在集成分支验证转绿。
+    """
+    html = _render_home(monkeypatch, "0")
+    assert "/static/elt_credits.js" in html
+    assert "/static/natural-tts.js" in html
+    assert "NaturalTTS.speak" in html
 
 
 def test_cet_home_boot_payload_is_json_not_executable_script(monkeypatch):

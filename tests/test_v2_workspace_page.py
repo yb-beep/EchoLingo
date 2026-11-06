@@ -157,6 +157,14 @@ def test_workspace_contains_reading_mode_mount_points(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app
 
+    # 返修2 P1-6 前提：本用例断言的是**原版通用模式**的挂载点集合
+    # （含 voice-input.js / AI 聊天语音输入）。CET 模式收束了 ai_chat_general，
+    # voice-input.js 在 CET 下不再输出，故必须显式跑通用模式。
+    # 任务书 P1-6 原文：「若有老测试断言其存在，给那条测试加 ELT_CET_MODE=0 前提，
+    # **不删断言**」——断言一字未改。
+    # 注意：setenv 必须在 create_app() 之前，模板渲染时才读得到。
+    monkeypatch.setenv("ELT_CET_MODE", "0")
+
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
     app = create_app()
     client = TestClient(app)

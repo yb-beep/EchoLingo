@@ -476,21 +476,74 @@ def test_t13_base_workspace_works_without_teammate_module(page, materials):
     assert not errors, f"未接队友模块时有 JS 报错：{errors}"
 
 
-def test_t13_space_key_is_not_owned_by_base_player(page, materials):
-    """空格不得被底座抢：底座明确声明 ownsSpaceKey=false 且不注册 Space 监听。"""
+def test_t13_space_key_is_owned_by_base_player_when_teammate_off(page, materials):
+    """底座在「队友模块关闭」态**接管**空格（返修2 P2-1 契约变更）。
+
+    契约三态（返修2 P2-1 起，主代理裁决的权威版本）：
+
+        | 状态                              | 判定                          | 底座注册 | ownsSpaceKey |
+        | --------------------------------- | ----------------------------- | -------- | ------------ |
+        | CET 模式 + 队友模块**关闭**        | `CET_ON && !cetListeningEnabled()` | 注册     | `true`       |
+        | CET 模式 + 队友模块**开启**        | `CET_ON && cetListeningEnabled()`  | 不注册   | `false`      |
+        | 通用模式 `ELT_CET_MODE=0`          | —                             | 不注册   | `false`      |
+
+    本用例断言第一行：**关闭态底座 ownsSpaceKey === true，且按 Space 真实翻转 paused**。
+
+    ⚠️ 为什么和旧断言相反：
+        旧契约是「底座永不注册 keydown，空格永远让给队友」。实测问题（任务书 P2-1）：
+        队友模块**默认关闭**时，空格让给了一个不在场的模块 —— 工作区里**没有任何播放快捷键**。
+        返修2 起底座在关闭态接管 `Space`（播放/暂停）、`←`/`→`（上下句）、`R`（重听）、
+        `L`（句循环）；开启态仍让出，契约 `docs/cet-base/队友接入说明.md` §5 同步更新。
+
+    本条用例需 **包2（P2-1）合并后**才会转绿：本包分支上 `cet-player.js` 仍是旧版，
+    `ownsSpaceKey` 还是 `false`，属预期红，由主代理在集成分支验证转绿。
+
+    包2 的实现依据（`codex/cet-fix2-p2` @ `6571a57`）：
+        - `cet-player.js:459-462` `hotkeyActive()` → `return CET_ON && !cetListeningEnabled();`
+        - `cet-player.js:797-818` `syncHotkeyOwnership()` → 成对 add/removeEventListener，
+          `S.ownsSpaceKey = active`
+        - `cet-player.js:879` `get ownsSpaceKey()` —— **getter，非常量**，故本用例现读现判、不缓存
+        - 调用点 3 处：`mount()`:831、`updateBar()`:151、1.5s 定时器:841（覆盖队友模块晚挂载）
+
+    开启态分支（`ownsSpaceKey === false` 且按 Space 不翻转）由**包2 自己的浏览器测试**覆盖
+    （它用 `CET_AGENT_ON_BASE_URL` 指向队友开启态服务）。本用例不重复起第二个服务，
+    只在下方做「关闭态」的前置断言。
+    """
     _goto_workspace(page, materials["a"]["id"])
-    assert page.evaluate("() => window.__cetPlayer.ownsSpaceKey") is False
-    # 未进入卡点练习模式时，按空格不应改变播放状态（浏览器默认行为除外）
+
+    # 前置：本用例只在「CET 模式 + 队友模块关闭」态有意义。
+    # 开启态下底座让出空格（ownsSpaceKey=false、按 Space 不翻转），
+    # 那条分支由包2 自己的浏览器测试覆盖（CET_AGENT_ON_BASE_URL 指向队友开启态服务）。
+    listening = page.evaluate("() => window.__cetPlayer.cetListeningEnabled()")
+    assert listening is False, (
+        "本用例要求队友模块处于关闭态（CET_BASE_URL 指向的服务默认就是关闭态）；"
+        "开启态的让出行为由包2 的浏览器测试覆盖"
+    )
+
+    # ① 底座明确声明接管（ownsSpaceKey 是 getter，现读现判）
+    assert page.evaluate("() => window.__cetPlayer.ownsSpaceKey") is True, (
+        "队友模块关闭时底座必须接管空格（返修2 P2-1）；实测 ownsSpaceKey 非 true"
+    )
+
+    # ② 真实按键 → 真实媒体状态翻转（读 HTMLMediaElement.paused，不看按钮文案）
     page.evaluate("() => window.__ws.pause()")
     page.wait_for_timeout(400)
     paused_before = _audio(page, "a.paused")
+    assert paused_before is True, "前置失败：暂停后媒体仍处于播放态"
+
     page.keyboard.press("Space")
     page.wait_for_timeout(600)
-    # 底座不接管；若队友模块启用则它接管（此处只断言底座没有抢）
-    still_paused = _audio(page, "a.paused")
-    listening = page.evaluate("() => window.__cetPlayer.cetListeningEnabled()")
-    if not listening:
-        assert still_paused == paused_before, "未进入卡点模式时底座抢了空格"
+    paused_after = _audio(page, "a.paused")
+
+    assert paused_after != paused_before, (
+        "关闭态下按空格没有翻转播放状态 —— 底座未真正接管（返修2 P2-1）"
+    )
+    assert paused_after is False, "暂停态按空格应开始播放"
+
+    # ③ 再按一次应回到暂停（证明是稳定切换而非单次副作用）
+    page.keyboard.press("Space")
+    page.wait_for_timeout(600)
+    assert _audio(page, "a.paused") is True, "播放态再按空格应暂停"
 
 
 def test_t13_teammate_module_mounts_once_when_enabled(page, materials):

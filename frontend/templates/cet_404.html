@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎧</text></svg>">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>材料不存在 - {{ cet_copy.site_title }}</title>
+  <style>
+    :root {
+      --bg: #f6f7f4;
+      --surface: #ffffff;
+      --surface-alt: #eef2ed;
+      --ink: #202421;
+      --muted: #687069;
+      --line: #d9ded8;
+      --brand: #2f6f5e;
+      --brand-dark: #245548;
+      --shadow: 0 10px 28px rgba(31,44,36,.08);
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 480px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 36px 32px;
+      text-align: center;
+    }
+    .icon { font-size: 40px; line-height: 1; margin-bottom: 16px; }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: .01em;
+    }
+    p {
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .lesson-id {
+      display: inline-block;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--surface-alt);
+      border-radius: 6px;
+      padding: 2px 7px;
+      margin-left: 2px;
+    }
+    .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    a.btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 38px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    a.btn.primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+    }
+    a.btn.primary:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+    a.btn:not(.primary):hover { background: var(--surface-alt); }
+    a.btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <main class="card" role="main">
+    <div class="icon" aria-hidden="true">🎧</div>
+    <h1>材料不存在或已删除</h1>
+    <p>
+      你要打开的听力材料找不到了。可能是它已经被删除，或者链接里的编号不正确
+      {%- if lesson_id %}（编号<span class="lesson-id">{{ lesson_id }}</span>）{%- endif %}。
+    </p>
+    <div class="actions">
+      <a class="btn primary" href="/" data-cet-feature="cet-404-back">← 返回听力材料</a>
+    </div>
+  </main>
+</body>
+</html>

@@ -328,6 +328,47 @@
       color: var(--ink);
       box-shadow: 0 1px 4px rgba(0,0,0,.08);
     }
+    /* P1-1（返修2 包1）：「逐句精听 →」常驻入口。
+       逐句精听页 /workspace/{id}/intensive 功能完好，但 CET 模式下原先全站没有
+       可见入口（唯一入口「跳转精学」随阅读选区一起收束）。这里放在「精听」按钮旁。
+       禁用态用 aria-disabled + .is-disabled，不是隐藏：用户要能看见「有这条路，
+       只是这份材料缺时间轴」。 */
+    .intensive-entry-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .intensive-entry {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 32px;
+      padding: 5px 12px;
+      border: 1px solid var(--brand);
+      border-radius: 8px;
+      background: var(--brand);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .intensive-entry:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+    .intensive-entry:focus-visible { outline: 3px solid rgba(53, 97, 73, .25); outline-offset: 2px; }
+    .intensive-entry.is-disabled {
+      background: #eef0ec;
+      border-color: var(--line);
+      color: var(--muted);
+      cursor: not-allowed;
+    }
+    .intensive-entry.is-disabled:hover { background: #eef0ec; border-color: var(--line); }
+    .intensive-entry-hint {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .intensive-entry-hint[hidden] { display: none; }
     .reading-play-button {
       display: inline-flex;
       align-items: center;
@@ -1667,6 +1708,25 @@
              （不是 CSS 遮挡、不是仅换标题）。通用模式下保留原「阅读」入口。 -#}
           <button data-study-mode="reading" data-cet-feature="reading_course" onclick="switchStudyMode('reading')">阅读</button>
         </div>
+        {#- P1-1（返修2 包1，P0）：「逐句精听 →」入口。
+            逐句精听页 /workspace/{id}/intensive 本身功能完好（🔁 循环、▶ 自动播放、
+            每句原声、倍速、←→ 切句），但 CET 模式下全站没有可见入口：
+            唯一入口「跳转精学」随阅读选区一起被收束，成了孤岛页。
+            这里放在「精听」按钮旁，链接直达；没有逐句时间轴的材料
+            （subtitle_status 非 ready）时置为禁用态并给出原因，不藏起来。
+
+            只在 CET 模式输出：通用模式原版已有「跳转精学」入口，再挂一个
+            「逐句精听 →」会变成重复入口，违反「通用模式行为不变」。 -#}
+        {% if cet_on %}
+        <div class="intensive-entry-group">
+          <a id="intensive-entry" class="intensive-entry"
+             href="/workspace/{{ lesson_id }}/intensive"
+             data-intensive-entry="1"
+             aria-disabled="false"
+             title="{{ cet_copy.get('fix2_intensive_entry', '逐句精听') }}">{{ cet_copy.get('fix2_intensive_entry', '逐句精听 →') }}</a>
+          <span id="intensive-entry-hint" class="intensive-entry-hint" hidden>{{ cet_copy.get('fix2_intensive_need_timeline', '需要逐句时间轴') }}</span>
+        </div>
+        {% endif %}
       </div>
 
       <section class="subtitle-card" aria-label="current subtitle">
@@ -1735,8 +1795,12 @@
       <section id="reading-phase-b" class="review-card study-collection-card sidebar-panel-inactive"
                data-sidebar-panel="collection" aria-hidden="true">
         <div class="panel-head">
-          <h2>学习收集</h2>
-          <span class="panel-note">Phase B · 本课收藏的词、句子和标签。</span>
+          {#- P1-2（返修2 包1）：标题原先写死内部名「学习收集 / Phase B」，用户看不懂
+              「Phase B」是什么。CET 模式统一口径为「本课收藏」（本课收藏的词与句子）；
+              通用模式保持原样，不改变原版语义。
+              文案经 cet_mode 的集中配置取（包4 加键），带兜底 —— 键没合进来也不白屏。 -#}
+          <h2>{{ cet_copy.get('fix2_lesson_collections', '本课收藏' if cet_on else '学习收集') }}</h2>
+          <span class="panel-note">{{ cet_copy.get('fix2_lesson_collections_note', '本课收藏的词与句子，收藏后自动进入「我的收藏」。' if cet_on else 'Phase B · 本课收藏的词、句子和标签。') }}</span>
         </div>
         <div id="study-collection">
           <div id="reading-saved-items" class="reading-saved-list">
@@ -1748,8 +1812,15 @@
               <span id="review-sentence-count">0 句</span>
             </div>
             <div class="review-action-row">
-              <button class="review-action" type="button" onclick="copyReviewMarkdown()">复制 Markdown</button>
-              <button class="review-action" type="button" onclick="exportReviewHtml()">导出 HTML</button>
+              {#- P1-4（返修2 包1）：「复制 Markdown」「导出 HTML」是原版导出功能，
+                  不属于四六级主线（CET 主线是逐句听 + 收藏回流）。用未注册的
+                  data-cet-feature 键 `review_export` 收束：cetApplyWorkspaceScope()
+                  对未注册键视为「已收束」→ CET 模式真移除（不是 CSS 遮挡）；
+                  通用模式整段不执行移除 → 原版按钮与行为字节级不变。
+                  注意：**不要**去 cet_mode.py 注册这个键（注册成 kept=True 会让
+                  按钮回到 CET 页面，注册成 retired 会改变 retired_keys 断言）。 -#}
+              <button class="review-action" type="button" data-cet-feature="review_export" onclick="copyReviewMarkdown()">复制 Markdown</button>
+              <button class="review-action" type="button" data-cet-feature="review_export" onclick="exportReviewHtml()">导出 HTML</button>
               <button class="review-action review-action--intensive" type="button" data-cet-feature="reading_course" onclick="openIntensiveExport(this)">进入精读</button>
               <span id="review-copy-status" class="review-copy-status"></span>
             </div>
@@ -1840,6 +1911,17 @@ window.__CET_BOOT__ = {
   lessonId: {{ lesson_id }},
 };
 </script>
+{#- P1-6（返修2 包1）：三个共享脚本按**对应 feature** 条件加载，不再无条件输出。
+    · elt_credits.js —— 服务积分/计费（credits_account）。CET 已收束该入口，
+      页面也不再直接引用它（统一走下方 cetBillableFetch() 守卫），故 CET 不输出。
+    · natural-tts.js —— 服务**收藏词卡发音**（word_favorites）与**句子兜底朗读**
+      （sentence_favorites）。这两个 feature CET 都 kept=True，所以 CET 默认**仍输出**；
+      只有在真的把这两个功能都关掉时才消失。这才是「按对应 feature 条件加载」的本意，
+      不是「CET 就把朗读一起砍了」。
+    · voice-input.js —— 只服务 AI 聊天语音输入（initChatVoiceInput 仅在
+      cetFeature('ai_chat_general') 为真时调用）。CET 收束了泛用 AI 聊天，故不输出。
+    通用模式（ELT_CET_MODE=0）三者 feature 全为 True → 输出与改前字节级一致。 -#}
+{% if cet_features.credits_account %}
 <script src="/static/elt_credits.js?v=20260809-1"></script>
 <script>document.addEventListener("DOMContentLoaded",function(){
   // 积分/计费入口在 CET 模式收束（cet_features.credits_account）：不扫描费率，
@@ -1848,7 +1930,10 @@ window.__CET_BOOT__ = {
   if (boot.enabled && boot.features && boot.features.credits_account === false) return;
   if(window.eltCredits){eltCredits.annotate();}
 });</script>
+{% endif %}
+{% if cet_features.word_favorites or cet_features.sentence_favorites %}
 <script src="/static/natural-tts.js?v=20260814-1"></script>
+{% endif %}
 <!-- 四六级卡点训练（队友交付模块）：**按集中配置挂载**，不改原有导航与样式（计划 §1）
      BASE-05 修复：验收方实测「底座无条件加载队友资产 → 连无题材料都出现
      开始卡点练习 / 今日复习 / 未交卷 / 交卷 等点了没反应的假入口」。
@@ -1902,9 +1987,16 @@ window.__CET_BOOT__ = {
 })();
 </script>
 {% endif %}
+{#- P1-6：voice-input.js 只服务 AI 聊天语音输入（initChatVoiceInput 仅在
+    cetFeature('ai_chat_general') 为真时调用）。CET 收束了泛用 AI 聊天 → 不输出；
+    通用模式 ai_chat_general 恒为 True → 输出，与改前一致。 -#}
+{% if cet_features.ai_chat_general %}
 <script src="/static/voice-input.js?v=20260715-1"></script>
+{% endif %}
 <link rel="stylesheet" href="/static/cet-workspace.css?v=20261105-p1">
-<script src="/static/cet-player.js?v=20261105-p1" defer></script>
+{#- 返修2：cet-player.js 行为有变更（包2 快捷键），缓存串必须 bump，
+    否则真实用户刷新后仍拿到旧 JS。 -#}
+<script src="/static/cet-player.js?v=20261106-fix2" defer></script>
 <script src="/static/cet-favorites.js?v=20261105-p1" defer></script>
 <script>
 const LESSON_ID = {{ lesson_id }};
@@ -1913,6 +2005,22 @@ const CET_BOOT = window.__CET_BOOT__ || {enabled: false, features: {}, copy: {},
 const CET_ON = Boolean(CET_BOOT.enabled);
 const CET_FEATURES = CET_BOOT.features || {};
 function cetFeature(key) { return Boolean(CET_FEATURES[key]); }
+// 文案取值统一走这里：`cet_copy.get(key, 兜底)`。
+// 包4 往 cet_mode.py 加键是异步的，兜底保证键没合进来时页面也不会白屏。
+function cetCopy(key, fallback) {
+  const copy = CET_BOOT.copy || {};
+  const value = copy[key];
+  return (value === undefined || value === null || value === '') ? (fallback || '') : value;
+}
+// P1-6：elt_credits.js 已按 credits_account 条件加载（CET 下不输出）。
+// 计费助手是「有就带上幂等键、没有就普通 fetch」的可选层，所以这里做一层
+// 统一守卫，而不是在每个调用点写 if —— 收束的是**入口**，不是能力。
+function cetBillableFetch(opType, url, options) {
+  if (window.eltCredits && typeof window.eltCredits.billableFetch === 'function') {
+    return window.eltCredits.billableFetch(opType, url, options);
+  }
+  return fetch(url, options);
+}
 let lessonData = null;
 let segments = [];
 let sentenceUnits = [];
@@ -2320,6 +2428,49 @@ async function refreshLesson() {
   await loadSavedSentences();
   await loadSavedWords();
   await loadSentenceTranslations();
+  // P1-5（返修2 包1）：词句收藏数据已在本函数里加载完，直接把快照派发给
+  // cet-favorites.js，让它**不再自己重复拉** `/words` + `/phase-b`
+  // （实测首次打开工作区时这两个接口各被请求 2 次，第 2 次就来自它）。
+  // 只派发数据、不改变谁的职责：收藏列表仍由 cet-favorites.js 渲染与跳转。
+  broadcastFavoritesSnapshot('refresh-lesson');
+}
+
+// P1-5：同一轮里 loadSavedWords / loadSavedSentences 会各自触发一次快照派发，
+// 合并成一次，避免收藏列表无谓重渲染两次。
+let favoritesBroadcastScheduled = false;
+let favoritesBroadcastReason = '';
+
+function scheduleFavoritesBroadcast(reason) {
+  favoritesBroadcastReason = reason || favoritesBroadcastReason || 'data-loaded';
+  if (favoritesBroadcastScheduled) return;
+  favoritesBroadcastScheduled = true;
+  Promise.resolve().then(() => {
+    favoritesBroadcastScheduled = false;
+    broadcastFavoritesSnapshot(favoritesBroadcastReason);
+    favoritesBroadcastReason = '';
+  });
+}
+
+/** P1-5：把 workspace 已加载的收藏数据同步给 cet-favorites.js（零额外请求）。 */
+function broadcastFavoritesSnapshot(reason) {
+  try {
+    // wordMeaningCache 的值可能是字符串，也可能是 {meaning, phonetic, source}。
+    // cet-favorites 的 render() 直接把值当文案拼接，所以这里统一压成纯释义字符串，
+    // 否则面板会出现 "[object Object]"。
+    const meanings = {};
+    for (const [word, cached] of Object.entries(wordMeaningCache)) {
+      const text = typeof cached === 'string' ? cached : (cached?.meaning || '');
+      if (text) meanings[word] = text;
+    }
+    document.dispatchEvent(new CustomEvent('cet:favorites-changed', {
+      detail: {
+        reason: reason || 'data-loaded',
+        words: [...savedWordSet],
+        meanings,
+        sentences: (savedSentences || []).slice(),
+      },
+    }));
+  } catch (_) {}
 }
 
 function isMediaLesson() {
@@ -2363,6 +2514,46 @@ function applyStudyMode() {
     });
   }
   cetApplyWorkspaceScope();
+  syncIntensiveEntry();
+}
+
+/**
+ * P1-1（返修2 包1，P0）：同步「逐句精听 →」入口的可用状态。
+ *
+ * 为什么需要它：逐句精听页 /workspace/{id}/intensive 本身功能完好，
+ * 但它依赖**逐句时间轴**（sentence_units）。没有时间轴的材料进去只会看到
+ * 一句都没有的空页，比没有入口更糟。所以：
+ *   - 有时间轴（subtitle_status=ready 且句子数 > 0）→ 可点，直达精听页
+ *   - 没有时间轴 → 保持可见但禁用，并在旁边说明「需要逐句时间轴」
+ *     （用户要能知道有这条路、以及缺什么，不是入口凭空消失）
+ *
+ * 幂等：status 刷新 / 模式切换反复调用都安全。
+ */
+function syncIntensiveEntry() {
+  const entry = document.getElementById('intensive-entry');
+  if (!entry) return;
+  const hint = document.getElementById('intensive-entry-hint');
+  const hasTimeline = Array.isArray(sentenceUnits) && sentenceUnits.length > 0;
+  const statusReady = !lessonData || lessonData.subtitle_status === 'ready';
+  const usable = hasTimeline && statusReady;
+  entry.classList.toggle('is-disabled', !usable);
+  entry.setAttribute('aria-disabled', String(!usable));
+  if (usable) {
+    entry.setAttribute('href', `/workspace/${LESSON_ID}/intensive`);
+    entry.removeAttribute('tabindex');
+  } else {
+    // 禁用态去掉 href，避免中键/右键「在新标签打开」绕过禁用
+    entry.removeAttribute('href');
+    entry.setAttribute('tabindex', '-1');
+  }
+  entry.title = usable
+    ? cetCopy('fix2_intensive_entry', '逐句精听')
+    : cetCopy('fix2_intensive_need_timeline', '需要逐句时间轴');
+  if (hint) {
+    hint.hidden = usable;
+    hint.textContent = cetCopy('fix2_intensive_need_timeline', '需要逐句时间轴');
+  }
+  return usable;
 }
 
 async function switchStudyMode(mode) {
@@ -2606,6 +2797,8 @@ async function loadSubtitles({render = activeStudyMode !== 'reading'} = {}) {
   sentenceUnits = data.sentence_units || buildSentenceUnits(segments);
   outlineSections = buildOutlineSections(sentenceUnits);
   renderOutline();
+  // P1-1：「逐句精听 →」的可用性取决于时间轴是否就绪，原文回来后立刻同步一次
+  syncIntensiveEntry();
   if (render && activeStudyMode !== 'reading') {
     updateStatusBadge(data.subtitle_status);
     updateCurrentSubtitle();
@@ -2627,6 +2820,7 @@ async function loadSavedSentences() {
   renderReadingSavedItems();
   updateSaveState();
   refreshReadingSentenceSaveStates();
+  scheduleFavoritesBroadcast('sentences-loaded');
 }
 
 async function loadSentenceTagCatalog() {
@@ -2676,6 +2870,7 @@ async function loadSavedWords() {
     }
   }
   renderReadingSavedItems();
+  scheduleFavoritesBroadcast('words-loaded');
 }
 
 function refreshReadingWordStates() {
@@ -2705,7 +2900,12 @@ async function syncHighlightedWordsAfterRender() {
   try {
     const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/highlighted-words/sync${_wordlistsQuery()}`, {method: 'POST'});
     if (!resp.ok) return;
-    await loadSavedWords();
+    // P1-5（返修2 包1）：同步接口回 `{ok, synced}` —— synced 是本轮**新写入**的词数。
+    // 原先无条件 `await loadSavedWords()`，于是每次打开工作区都会把 `/words` 多打一次，
+    // 即使一个词都没新增（实测新库首次打开：synced=0 却也重拉了）。
+    // 只有真的写入了新词，词集才变了，才需要重拉；synced=0 时本地 savedWordSet 已是最新。
+    const data = await resp.json().catch(() => ({}));
+    if (Number(data.synced || 0) > 0) await loadSavedWords();
   } catch (_) {}
 }
 
@@ -2754,27 +2954,61 @@ async function loadReadingLesson({render = activeStudyMode === 'reading'} = {}) 
   }
 }
 
+/**
+ * P1-5（返修2 包1）：轮询只在**真的需要等后台结果**时启动。
+ *
+ * 实测（playwright fetch 调用栈，新库、subtitle_status=ready）：
+ *   首次打开工作区时，`/status`、`/subtitles`、`/sentence-tags`、`/phase-b`、
+ *   `/words`、`/sentence-translations` 各被请求 2 次 —— 第 1 次来自 bootstrap 的
+ *   `refreshLesson()`，第 2 次来自本函数 2.5s 首跳又调了一遍 `refreshLesson()`。
+ *   材料明明已经 ready（没有待生成的字幕、没有待翻译），这一整轮请求纯属浪费。
+ *
+ * 拆分：
+ *   - timePoll（500ms，纯本地读播放时间）→ **始终**启动，它不发网络请求，
+ *     是「当前句高亮跟随播放」的必要驱动。
+ *   - subtitlePoll（2.5s，会打一批接口）→ 只在有待生成字幕 / 待翻译时才启动。
+ *     已经是 ready 且没有待翻译时，不启动，也就没有第二次重复请求。
+ */
+function needsSubtitlePolling() {
+  if (!lessonData) return false;
+  const translationPending = Number(lessonData.translation_requested || 0) === 1
+    && ['pending', 'translating'].includes(lessonData.translation_status);
+  if (translationPending) return true;
+  if (lessonData.subtitle_status === 'pending') return true;
+  if (lessonData.subtitle_status === 'failed') return true;
+  // 阅读课 TTS 生成中：等成品落盘，需要轮询状态
+  if (lessonData.media_kind === 'generated_audio' && !lessonData.media_url
+      && lessonData.subtitle_status === 'pending') return true;
+  return false;
+}
+
 function startPolling() {
-  if (subtitlePoll) clearInterval(subtitlePoll);
-  subtitlePoll = setInterval(async () => {
-    const oldCount = segments.length;
-    await refreshLesson();
-    if (segments.length && oldCount !== segments.length) updateCurrentSubtitle();
-    const translationPending = lessonData
-      && Number(lessonData.translation_requested || 0) === 1
-      && ['pending', 'translating'].includes(lessonData.translation_status);
-    if (translationPending) {
-      translationWasPending = true;
-    } else if (translationWasPending) {
-      // 后台翻译刚结束（ready/failed）：补拉全量翻译，否则本会话只显示开头一部分中文字幕
-      translationWasPending = false;
-      await loadSentenceTranslations();
-    }
-    if (lessonData && lessonData.subtitle_status !== 'pending' && !translationPending) {
-      clearInterval(subtitlePoll);
-      subtitlePoll = null;
-    }
-  }, 2500);
+  if (needsSubtitlePolling()) {
+    if (subtitlePoll) clearInterval(subtitlePoll);
+    subtitlePoll = setInterval(async () => {
+      const oldCount = segments.length;
+      await refreshLesson();
+      if (segments.length && oldCount !== segments.length) updateCurrentSubtitle();
+      const translationPending = lessonData
+        && Number(lessonData.translation_requested || 0) === 1
+        && ['pending', 'translating'].includes(lessonData.translation_status);
+      if (translationPending) {
+        translationWasPending = true;
+      } else if (translationWasPending) {
+        // 后台翻译刚结束（ready/failed）：补拉全量翻译，否则本会话只显示开头一部分中文字幕
+        translationWasPending = false;
+        await loadSentenceTranslations();
+      }
+      if (lessonData && lessonData.subtitle_status !== 'pending' && !translationPending) {
+        clearInterval(subtitlePoll);
+        subtitlePoll = null;
+      }
+    }, 2500);
+  } else if (subtitlePoll) {
+    // 状态已就绪：停掉上一轮遗留的轮询，不再重复打接口
+    clearInterval(subtitlePoll);
+    subtitlePoll = null;
+  }
 
   if (timePoll) clearInterval(timePoll);
   timePoll = setInterval(() => {
@@ -3801,7 +4035,7 @@ async function requestReadingSelectionAI(action) {
   try {
     const sessionId = await ensureActiveChatSession();
     if (!sessionId) throw new Error('无法创建聊天会话');
-    const resp = await eltCredits.billableFetch('lesson_chat', '/api/v2/chat', {
+    const resp = await cetBillableFetch('lesson_chat', '/api/v2/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -3842,7 +4076,7 @@ async function requestReadingSelectionTranslation() {
   const actionButtons = document.querySelectorAll('#reading-selection-popover [data-action="translate"], #reading-selection-popover [data-action="analyze"]');
   actionButtons.forEach(button => { button.disabled = true; });
   try {
-    const resp = await eltCredits.billableFetch('selection_translation', `/api/v2/lessons/${LESSON_ID}/translate-selection`, {
+    const resp = await cetBillableFetch('selection_translation', `/api/v2/lessons/${LESSON_ID}/translate-selection`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({text: selectedText}),
@@ -3941,9 +4175,15 @@ function renderReadingSavedItems() {
     const cached = wordMeaningCache[word];
     const meaning = typeof cached === 'string' ? cached : (cached?.meaning || '');
     const inReviewBook = reviewBookWordSet.has(word);
+    // P1-3（返修2 包1）：CET 模式下收藏成功即自动 activate 回流到「我的收藏」，
+    // 所以这里不再需要用户逐个点「加入复习本」—— 按钮改成**状态标签**。
+    // 通用模式保留原按钮与原行为（原版没有自动回流，不能让用户失去这个操作）。
+    const action = CET_ON
+      ? `<span class="review-book-state" data-review-book-state="1" aria-label="${inReviewBook ? cetCopy('fix2_favorite_added', '✓ 已收藏') : cetCopy('fix2_word_in_favorites', '收藏后进入「我的收藏」')}">${inReviewBook ? cetCopy('fix2_favorite_added', '✓ 已收藏') : cetCopy('fix2_word_in_favorites', '收藏后进入「我的收藏」')}</span>`
+      : `<button class="review-book-btn" ${inReviewBook ? 'disabled' : ''} onclick="addSavedWordToReview(event, '${escapeJsAttr(word)}', '${escapeJsAttr(meaning)}')">${inReviewBook ? '已在复习本' : '加入复习本'}</button>`;
     return `<div class="reading-saved-item reading-saved-word">
       <span><strong>${escapeHtml(word)}</strong>${meaning ? ` · ${escapeHtml(meaning)}` : ''}</span>
-      <button class="review-book-btn" ${inReviewBook ? 'disabled' : ''} onclick="addSavedWordToReview(event, '${escapeJsAttr(word)}', '${escapeJsAttr(meaning)}')">${inReviewBook ? '已在复习本' : '加入复习本'}</button>
+      ${action}
     </div>`;
   }).join('');
   const sentenceHtml = sentenceItems.map(item => {
@@ -3977,6 +4217,33 @@ async function addSavedWordToReview(event, word, meaning = '') {
   } catch (error) {
     button.disabled = false;
     button.textContent = '重试加入';
+  }
+}
+
+/**
+ * P1-3（返修2 包1）：CET 模式「☆ 加入生词」成功后的自动回流。
+ *
+ * 只在收藏**成功**后调用，且失败不打断收藏本身 —— 收藏是主操作，
+ * 回流是附加收益：activate 失败时用户至少还在本课收藏里看得到这个词，
+ * 包4 首页侧还有一次补同步兜底。
+ *
+ * payload 与包4 对齐（两边都用已有接口，不新增后端）：
+ *   POST /api/vocab-review/activate
+ *   {"word": "<归一化词>", "source": "listening", "lesson_id": <id>, "meaning": "<释义>"}
+ *
+ * 幂等性由后端保证（db.activate_word_review 用 INSERT ... ON CONFLICT DO UPDATE），
+ * 所以包4 首页加载时再补调一次不会重复累加。
+ */
+async function autoActivateFavoriteWord(word, meaning = '') {
+  const normalized = normalizeWord(word);
+  if (!normalized) return false;
+  try {
+    await activateWordReview(normalized, 'listening', meaning || '');
+    document.dispatchEvent(new CustomEvent('cet:favorites-changed', {detail: {reason: 'auto-activate', word: normalized}}));
+    return true;
+  } catch (_) {
+    // 静默：不弹窗打断播放；收藏本身已成功，首页侧还有补同步
+    return false;
   }
 }
 
@@ -4557,6 +4824,23 @@ async function toggleWordSave(event, word, meaning) {
         readingHiddenWordSet.delete(returned);
         readingHiddenWordSet.delete(normalized);
         if (data.meaning) wordMeaningCache[returned] = data.meaning;
+        // P1-3（返修2 包1）：CET 模式收藏成功即**自动**回流「我的收藏」。
+        //
+        // 缺陷：原先「☆ 加入生词」只写 v2_lesson_words（本课词集），
+        // 而首页「我的收藏 · 词汇收藏」读的是 /vocab-log（word_review_items）。
+        // 两条数据链不连通 → 用户收藏 10 个词，打开「我的收藏」看到「暂无词汇」
+        // （实测 /api/v2/lessons/1/words 10 词、/vocab-log 为空）。
+        //
+        // 复用已有接口，不新增后端：POST /api/vocab-review/activate
+        //   body: {word, source:"listening", lesson_id, meaning}
+        //   · source 合法值见 backend/db.py activate_word_review；
+        //     'lookup'/'practice' 会 400，'listening' 合法。
+        //   · 幂等：INSERT ... ON CONFLICT(word) DO UPDATE，重复调不重复计数。
+        //   · 原句关联：/word 那条路已写 v2_lesson_words.sentence 并调 db.add_context，
+        //     而 /vocab-log 对无 contexts 行的词会回填 v2_lesson_words 的句子，
+        //     所以「带原句」不需要额外接口。
+        // 通用模式不做（原版没有自动回流，E8 要求通用模式行为不变）。
+        if (CET_ON) await autoActivateFavoriteWord(returned || normalized, data.meaning || meaning);
       }
     }
     updateCurrentSubtitle();
@@ -4875,7 +5159,7 @@ async function sendMessage() {
       selected_text: contextMode === 'reading_selection' ? readingChatSelection : null,
     };
     if (allowExternal) payload.allow_external_knowledge = true;
-    const resp = await eltCredits.billableFetch('lesson_chat', '/api/v2/chat', {
+    const resp = await cetBillableFetch('lesson_chat', '/api/v2/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       signal: controller.signal,

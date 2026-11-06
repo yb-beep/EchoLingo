@@ -441,6 +441,13 @@ def test_index_contains_reading_text_controls(tmp_path, monkeypatch):
     from fastapi_server import create_app
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    # 本用例断言的是**通用模式**首页的文本课程 UI（上传文本 + 文本生成朗读）。
+    # 四六级专用底座（CET 模式）按任务书 §3.3 收束了「独立文章/PDF 阅读课程」与
+    # 「文本生成朗读课程」，这两块在 CET 渲染里不会出现在 DOM。为了继续守住原有
+    # 通用模式行为，这里显式把模式钉在通用模式（ELT_CET_MODE=0），不删任何断言。
+    # cet_mode.cet_mode_enabled() 每次调用时读 env，pages.py 也在请求时取上下文，
+    # 因此 monkeypatch.setenv 对 TestClient 的请求有效。
+    monkeypatch.setenv("ELT_CET_MODE", "0")
     app = create_app()
     client = TestClient(app)
 
@@ -497,6 +504,11 @@ def test_index_keeps_vocab_review_and_adds_sentence_review_tab(tmp_path, monkeyp
     from fastapi_server import create_app
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    # 本用例断言通用模式的词汇/句子复习入口与「词汇记忆工坊」等原文案。
+    # CET 模式下这些页面改名为「词汇收藏 / 句子收藏」并收束记忆故事（任务书 §3.2/§3.3），
+    # 所以这里同样钉在通用模式，保留全部原断言。CET 模式的等价断言见
+    # tests/test_cet_base_home.py。
+    monkeypatch.setenv("ELT_CET_MODE", "0")
     client = TestClient(create_app())
 
     resp = client.get("/")

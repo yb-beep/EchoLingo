@@ -6,13 +6,23 @@
 #
 # 用法：
 #   scripts/cet/run.sh                    # 启动（含环境检查）
-#   scripts/cet/run.sh --check            # 只检查，不启动
+#   scripts/cet/run.sh --check            # 只检查，不启动；**不写、不删任何数据**
 #   scripts/cet/run.sh --port 5184        # 换端口（默认 5173）
 #   PORT=5184 scripts/cet/run.sh          # 同上（环境变量写法）
 #   scripts/cet/run.sh --fresh            # 用全新空库启动（演示 T01 空库场景）
 #   scripts/cet/run.sh --data-dir /tmp/x  # 指定隔离数据目录
+#   scripts/cet/run.sh --reset            # 删除并重建整个数据目录（非检查模式）
 #
-# 退出码：0 成功｜1 检查有阻断项｜2 端口被占用
+# 检查与修改分离（BASE-04-A）：
+#   --check 是**纯只读**路径：不 mkdir、不 rm、不导入材料、不起服务，
+#   即使同时给了 --fresh / --reset 也不会产生删除副作用。
+#   清理动作一律发生在「检查通过之后」的修改阶段。
+#
+# 清库前先验所有权与停服状态（BASE-04-B）：
+#   --fresh / --reset 之前会确认目标库不是正式库、不是仓库目录，
+#   且**没有任何活服务或进程正在使用该库**；否则拒绝并返回 3，一个字节都不删。
+#
+# 退出码：0 成功｜1 检查有阻断项｜2 端口被占用｜3 拒绝破坏性操作（库仍被活服务持有等）
 
 set -uo pipefail
 
@@ -22,28 +32,42 @@ cd "$ROOT" || exit 1
 VENV="$ROOT/.venv"
 PY="$VENV/bin/python"
 MEDIA="$ROOT/.cet-qa/media"
+LOG_DIR="${CET_QA_LOG_DIR:-$ROOT/.cet-qa/logs}"
+INSTANCES_DIR="$LOG_DIR/instances"
 
 # ── 端口与数据目录：全部可覆盖，不硬编码 ──────────────────
 # 冻结约定 §6 给「验证与交付」分配 5184；默认仍沿用 5173 保持向后兼容。
 PORT="${PORT:-${ELT_PORT:-5173}}"
 DATA_DIR="${ELT_DATA_DIR:-$ROOT/.cet-qa/data}"
 FRESH=0
+RESET=0
 CHECK_ONLY=0
+SAME_DB_SERVICE=0
+
+usage() {
+  sed -n '8,20p' "$0"
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --check)    CHECK_ONLY=1 ;;
     --fresh)    FRESH=1 ;;
+    # --reset 只登记意图；真正的 rm -rf 放到修改阶段，检查模式绝不执行
+    --reset)    RESET=1 ;;
     --port)     shift; PORT="${1:-5173}" ;;
     --port=*)   PORT="${1#--port=}" ;;
     --data-dir) shift; DATA_DIR="${1:-}" ;;
     --data-dir=*) DATA_DIR="${1#--data-dir=}" ;;
-    --reset)    FRESH=1; rm -rf "$DATA_DIR" ;;
-    -h|--help)  sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help)  usage; exit 0 ;;
     *)          echo "未知参数：$1" >&2; exit 64 ;;
   esac
   shift
 done
+
+if [ -z "$DATA_DIR" ]; then
+  echo "--data-dir 不能为空" >&2
+  exit 64
+fi
 
 DB="$DATA_DIR/vocab.db"
 
@@ -52,6 +76,88 @@ say()  { printf '%s\n' "$*"; }
 ok()   { printf '  [OK] %s\n' "$*"; }
 warn() { printf '  [!]  %s\n' "$*"; }
 bad()  { printf '  [X]  %s\n' "$*"; fail=$((fail+1)); }
+
+# 拒绝破坏性操作：打印原因后立刻退出，保证「一个字节都不删」
+refuse() {
+  say ""
+  say "=================================================================="
+  say "  拒绝执行：$*"
+  say "  本次没有删除或修改任何数据库文件。"
+  say "=================================================================="
+  exit 3
+}
+
+# 规范化绝对路径（不要求目标存在；macOS 上 /tmp 与 /private/tmp 要能对上）
+norm_path() {
+  local p="$1" dir base up rest
+  dir="$(dirname "$p")"
+  base="$(basename "$p")"
+  if [ -d "$dir" ]; then
+    printf '%s/%s\n' "$(cd "$dir" 2>/dev/null && pwd -P)" "$base"
+    return 0
+  fi
+  up="$dir"
+  rest="$base"
+  while [ -n "$up" ] && [ "$up" != "/" ] && [ ! -d "$up" ]; do
+    rest="$(basename "$up")/$rest"
+    up="$(dirname "$up")"
+  done
+  if [ -d "$up" ]; then
+    printf '%s/%s\n' "$(cd "$up" 2>/dev/null && pwd -P)" "$rest"
+  else
+    printf '%s\n' "$p"
+  fi
+}
+
+# 哪些活进程正打开这个库（DB / WAL / SHM）——排除本脚本自身
+db_holder_pids() {
+  local f pid
+  for f in "$DB" "$DB-wal" "$DB-shm"; do
+    [ -e "$f" ] || continue
+    lsof -nP -t -- "$f" 2>/dev/null || true
+  done | tr -d ' ' | sort -u | while read -r pid; do
+    [ -n "$pid" ] || continue
+    [ "$pid" = "$$" ] && continue
+    [ "$pid" = "${PPID:-0}" ] && continue
+    printf '%s\n' "$pid"
+  done
+}
+
+# 实例登记里指向同一个库、且**进程真的打开着该库**的记录。
+# 实例记录只是线索：PID 会被系统复用，单看 kill -0 会把「碰巧复用了同一 PID
+# 的无关进程」误判成「库仍被活服务持有」（探针里真实踩到过）。所以必须用 lsof
+# 落到文件句柄上才算数。
+instance_holders_for_db() {
+  local want="$1" f db pid
+  [ -d "$INSTANCES_DIR" ] || return 0
+  for f in "$INSTANCES_DIR"/*/instance.env; do
+    [ -f "$f" ] || continue
+    db="$(sed -n 's/^ELT_INSTANCE_DB=//p' "$f" 2>/dev/null | head -1)"
+    [ -n "$db" ] || continue
+    [ "$(norm_path "$db")" = "$want" ] || continue
+    pid="$(sed -n 's/^ELT_INSTANCE_PID=//p' "$f" 2>/dev/null | head -1)"
+    if [ -z "$pid" ]; then
+      pid="$(tr -dc '0-9' < "$(dirname "$f")/server.pid" 2>/dev/null || true)"
+    fi
+    [ -n "$pid" ] || continue
+    kill -0 "$pid" 2>/dev/null || continue
+    pid_holds_db "$pid" "$want" || continue
+    printf '%s %s\n' "$pid" "$f"
+  done
+}
+
+pid_cmd() { ps -p "$1" -o command= 2>/dev/null | head -1; }
+
+# 进程是否真的打开着目标库（DB/WAL/SHM 任一）
+pid_holds_db() {
+  local pid="$1" db="$2" f
+  for f in "$db" "$db-wal" "$db-shm"; do
+    if lsof -nP -p "$pid" 2>/dev/null | grep -F -- "$f" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 say "=================================================================="
 say "  四六级听力训练 · 启动检查"
@@ -65,7 +171,7 @@ if [ -x "$PY" ]; then
   ver=$("$PY" -V 2>&1 | awk '{print $2}')
   case "$ver" in
     3.11.*) ok "Python $ver" ;;
-    *)      warn "Python $ver（要求 3.11）" ;;
+    *)      warn "Python ${ver}（要求 3.11）" ;;
   esac
 else
   bad "缺少虚拟环境：$VENV/bin/python"
@@ -107,12 +213,13 @@ if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   fi
 
   running_db=$(printf '%s' "$health" | sed -n 's/.*"sqlite"[^}]*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-  want_db=$(cd "$(dirname "$DB")" 2>/dev/null && pwd)/$(basename "$DB")
-  running_real=$(cd "$(dirname "$running_db")" 2>/dev/null && pwd)/$(basename "$running_db")
+  want_db="$(norm_path "$DB")"
+  running_real="$(norm_path "$running_db")"
 
   if [ "$running_real" = "$want_db" ]; then
     warn "端口 $PORT 上已有本项目底座在运行，且使用同一数据库（将复用，不重启）"
     say "     DB: $running_db"
+    SAME_DB_SERVICE=1
   else
     bad "端口 $PORT 上已有一个底座，但用的是**另一个数据库**，拒绝复用："
     say "     它 在用：$running_db"
@@ -127,17 +234,48 @@ else
   ok "端口 $PORT 空闲"
 fi
 
-# ── 3. 隔离数据 ────────────────────────────────────────
+# ── 3. 隔离数据（只读检查，绝不删改）────────────────────
 say ""
-say "-- 3. 数据隔离 --"
-mkdir -p "$DATA_DIR" "$DATA_DIR/config"
-if [ "$FRESH" -eq 1 ]; then
-  rm -f "$DB" "$DB-shm" "$DB-wal"
-  ok "已清空隔离数据库（--fresh）"
-elif [ -f "$DB" ]; then
-  ok "隔离数据库：${DB#$ROOT/}"
+say "-- 3. 数据隔离（只读检查）--"
+DB_ABS="$(norm_path "$DB")"
+DATA_DIR_ABS="$(norm_path "$DATA_DIR")"
+PROD_DB_ABS="$(norm_path "$ROOT/resources/vocab.db")"
+
+if [ "$DB_ABS" = "$PROD_DB_ABS" ]; then
+  bad "目标数据库就是**正式库** $PROD_DB_ABS —— 本脚本拒绝把它当隔离库使用"
+  say "     换一个数据目录：--data-dir /tmp/cet-demo"
 else
-  warn "隔离数据库不存在，将自动创建（空库启动）"
+  ok "目标库不是正式库（正式库：${PROD_DB_ABS#$ROOT/}）"
+fi
+
+if [ -f "$DB" ]; then
+  ok "隔离数据库已存在：$DB_ABS"
+else
+  warn "隔离数据库不存在（非检查模式会自动创建空库）"
+fi
+
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  if [ "$FRESH" -eq 1 ] || [ "$RESET" -eq 1 ]; then
+    ok "只检查模式：不删除任何数据（--fresh/--reset 的清理已跳过）"
+    say "     本次没有删除或修改任何数据库文件。"
+  else
+    ok "只检查模式：不写入任何数据"
+  fi
+fi
+
+holders="$(db_holder_pids)"
+if [ -n "$holders" ]; then
+  warn "有活进程正打开该库（--fresh/--reset 会被拒绝）："
+  for p in $holders; do
+    say "       PID $p  $(pid_cmd "$p")"
+  done
+fi
+inst_holders="$(instance_holders_for_db "$DB_ABS")"
+if [ -n "$inst_holders" ]; then
+  warn "实例登记显示该库仍被活服务持有（--fresh/--reset 会被拒绝）："
+  printf '%s\n' "$inst_holders" | while read -r pid envf; do
+    say "       PID $pid  （登记：${envf#$ROOT/}）"
+  done
 fi
 
 if [ -f "$ROOT/resources/vocab.db" ]; then
@@ -187,7 +325,7 @@ else
   warn "原 natural-tts 引用丢失（可能破坏原功能）"
 fi
 
-# ── 结论 ──────────────────────────────────────────────
+# ── 结论（检查阶段到此为止）────────────────────────────
 say ""
 say "=================================================================="
 if [ "$fail" -gt 0 ]; then
@@ -198,9 +336,85 @@ fi
 say "  检查通过"
 say "=================================================================="
 
+# --check 是纯只读路径：到此直接退出，后面的 mkdir/rm/导入/启动一律不执行。
+# BASE-04-A：--check --fresh 曾经删掉真实库还报「检查通过」，就是因为它跑到了下面。
 if [ "$CHECK_ONLY" -eq 1 ]; then
   exit 0
 fi
+
+# ══════════════════════════════════════════════════════
+#  以下为修改阶段：只有非 --check 才会执行
+# ══════════════════════════════════════════════════════
+say ""
+say "-- 6. 数据目录写入（修改阶段）--"
+
+# 所有权：不碰正式库，不把仓库目录/家目录当隔离数据目录
+if [ "$DB_ABS" = "$PROD_DB_ABS" ]; then
+  refuse "目标库是正式库 $PROD_DB_ABS"
+fi
+if [ "$DATA_DIR_ABS" = "$(norm_path "$ROOT")" ] \
+   || [ -d "$DATA_DIR/.git" ] || [ -d "$DATA_DIR/backend" ] || [ -d "$DATA_DIR/resources" ]; then
+  refuse "数据目录 $DATA_DIR 看起来是仓库/源码目录，不是隔离实例目录"
+fi
+if [ "$DATA_DIR_ABS" = "$(norm_path "$HOME")" ] || [ "$DATA_DIR_ABS" = "/" ]; then
+  refuse "数据目录 $DATA_DIR 是家目录或根目录，不是隔离实例目录"
+fi
+if [ -f "$DB" ] && [ ! -f "$DB-wal" ]; then
+  if ! head -c 16 "$DB" 2>/dev/null | grep -q "SQLite format 3"; then
+    refuse "$DB 不是 SQLite 数据库文件（可能是别的重要文件），不删除"
+  fi
+fi
+
+# 停服状态：清库前确认该库没有任何活的使用者（BASE-04-B）
+if [ "$FRESH" -eq 1 ] || [ "$RESET" -eq 1 ]; then
+  live_problem=0
+  if [ "$SAME_DB_SERVICE" -eq 1 ]; then
+    warn "端口 $PORT 上有活服务正在使用同一个库 —— 拒绝清库"
+    say "     先停掉它：PORT=$PORT scripts/qa/stop_cet.sh"
+    live_problem=1
+  fi
+  holders="$(db_holder_pids)"
+  if [ -n "$holders" ]; then
+    warn "以下活进程正打开该库 —— 拒绝清库："
+    for p in $holders; do
+      say "       PID $p  $(pid_cmd "$p")"
+    done
+    live_problem=1
+  fi
+  inst_holders="$(instance_holders_for_db "$DB_ABS")"
+  if [ -n "$inst_holders" ]; then
+    warn "实例登记显示该库仍被活服务持有 —— 拒绝清库："
+    printf '%s\n' "$inst_holders" | while read -r pid envf; do
+      say "       PID $pid  （登记：${envf#$ROOT/}）"
+    done
+    say "     先停掉实例：PORT=$PORT scripts/qa/stop_cet.sh"
+    live_problem=1
+  fi
+  if [ "$live_problem" -eq 1 ]; then
+    refuse "数据库仍被活服务使用，不能执行 --fresh/--reset"
+  fi
+  ok "已确认没有活服务持有该库"
+fi
+
+if [ "$RESET" -eq 1 ]; then
+  rm -rf "$DATA_DIR"
+  ok "已删除并重建数据目录（--reset）"
+fi
+mkdir -p "$DATA_DIR" "$DATA_DIR/config"
+
+if [ "$FRESH" -eq 1 ]; then
+  rm -f "$DB" "$DB-shm" "$DB-wal"
+  ok "已清空隔离数据库（--fresh，清库前已确认无活服务持有）"
+elif [ -f "$DB" ]; then
+  ok "隔离数据库：${DB#$ROOT/}"
+else
+  ok "将新建空库：${DB#$ROOT/}"
+fi
+
+# 实例标记：记录这个数据目录归谁用（端口/库路径），便于停止脚本核验身份
+cat > "$DATA_DIR/.cet-instance.json" <<EOF
+{"schema":1,"created_by":"scripts/cet/run.sh","port":$PORT,"db":"$DB_ABS","updated_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+EOF
 
 # ── 导入材料（幂等；--fresh 时跳过，保持空库语义）──────
 say ""
@@ -219,6 +433,7 @@ fi
 say ""
 say "-- 启动服务 --"
 PORT="$PORT" ELT_USER_DB="$DB" ELT_CONFIG_DIR="$DATA_DIR/config" \
+  CET_QA_LOG_DIR="$LOG_DIR" \
   ./scripts/qa/start_cet.sh "$@"
 rc=$?
 

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.templating import Jinja2Templates
+from pydantic import TypeAdapter, ValidationError
 import db
 from webapp import cet_mode
 from webapp.runtime import ai_config
@@ -10,14 +12,20 @@ from webapp.runtime import ai_config
 router = APIRouter()
 templates = Jinja2Templates(directory=str(ai_config.BASE_DIR / "frontend" / "templates"))
 
+_INT_ADAPTER = TypeAdapter(int)
 
-def _lesson_missing(request: Request, lesson_id: int):
+
+def _lesson_missing(request: Request, lesson_id):
     """不存在的 lesson → 404 页面（仅 CET 模式）。
 
     返修2 P5-2：原版对不存在的 lesson 一律渲染 200 空工作区/空精听页，
     用户看到一个空壳页却不知道是材料没了。CET 模式改为 404 + 明确文案 + 返回入口。
 
-    通用模式（`ELT_CET_MODE=0`）保持原行为不变（仍是 200 空页）—— 任务书 §0.6
+    返修2.1 B4：`lesson_id` 现在可能是**非数字字符串**（`/workspace/abc`）。
+    原版用 `lesson_id: int` 类型注解，FastAPI 对 `/workspace/abc` 直接返回 422 JSON，
+    用户看到一段 JSON 而不是页面。改成 `str` 后由这里统一渲染同一个 `cet_404.html`。
+
+    通用模式（`ELT_CET_MODE=0`）保持原行为不变（仍是 200 空页 / 422）—— 任务书 §0.6
     要求通用模式行为不变，本函数只在 CET 模式下被调用。
     """
     return templates.TemplateResponse(
@@ -29,7 +37,7 @@ def _lesson_missing(request: Request, lesson_id: int):
     )
 
 
-def _lesson_exists(lesson_id: int) -> bool:
+def _lesson_exists(lesson_id) -> bool:
     """复用 db.get_v2_lesson（既有查询函数），不新写一套连接逻辑。"""
     try:
         return db.get_v2_lesson(lesson_id) is not None
@@ -50,25 +58,83 @@ def vocab_page(request: Request):
     return templates.TemplateResponse(request, "vocab.html", cet_mode.template_context())
 
 
+def _coerce_lesson_id(lesson_id: str) -> int | None:
+    """B4：把路径里的 lesson_id 转成 int；解析不了返回 None（由调用方按模式分流）。
+
+    为什么不能直接把注解留成 `int`：那样 `/workspace/abc` 会在**进函数之前**被
+    FastAPI 拦成 422 JSON，CET 模式拿不到渲染 404 页的机会（任务书 B4 的实测症状）。
+
+    为什么不能无条件当 404：通用模式（`ELT_CET_MODE=0`）必须与 3573e90 完全一致 ——
+    原版对 `/workspace/abc` 返回 422，body 是 pydantic 的 int_parsing 错误。
+
+    所以这里**复用 pydantic 自己的 int 解析器**（`TypeAdapter(int)`），保证
+    `-1` / `+1` / `01` / `1.0` / `1_0` 这些宽松形式与原来完全一致（实测基线全部接受）。
+    """
+    raw = str(lesson_id if lesson_id is not None else "")
+    try:
+        return _INT_ADAPTER.validate_python(raw)
+    except ValidationError:
+        return None
+
+
+def _reject_non_integer_lesson_id(raw: str):
+    """通用模式：复现原版 422（pydantic int_parsing）。
+
+    手工重建同一个 `RequestValidationError`，交给 FastAPI 既有异常处理器，
+    产出与 3573e90 一字不差的 422 响应（status/headers/body 已逐字节比对）。
+    """
+    raise RequestValidationError(
+        [
+            {
+                "type": "int_parsing",
+                "loc": ("path", "lesson_id"),
+                "msg": "Input should be a valid integer, unable to parse string as an integer",
+                "input": raw,
+            }
+        ]
+    )
+
+
+def _missing_lesson_id(request: Request, lesson_id: str, parsed_id: int | None):
+    """B4：CET 模式下渲染 cet_404.html。
+
+    传进模板的 id 口径必须与 3573e90 一致（原版传的是 FastAPI 解析后的 int），
+    否则 `/workspace/+1` 这类宽松形式会在 404 页上多显示一个字符。
+    """
+    return _lesson_missing(request, parsed_id if parsed_id is not None else lesson_id)
+
+
 @router.get("/workspace/{lesson_id}")
-def workspace(request: Request, lesson_id: int):
+def workspace(request: Request, lesson_id: str):
     # 返修2 P5-2：CET 模式下不存在的材料返回 404 页（通用模式保持原 200 空页）
-    if cet_mode.cet_mode_enabled() and not _lesson_exists(lesson_id):
-        return _lesson_missing(request, lesson_id)
+    # 返修2.1 B4：非数字 id（/workspace/abc）也走同一个 cet_404.html，不再是 422 JSON
+    parsed_id = _coerce_lesson_id(lesson_id)
+    if parsed_id is None:
+        if not cet_mode.cet_mode_enabled():
+            _reject_non_integer_lesson_id(lesson_id)
+        return _missing_lesson_id(request, lesson_id, None)
+    if cet_mode.cet_mode_enabled() and not _lesson_exists(parsed_id):
+        return _missing_lesson_id(request, lesson_id, parsed_id)
     return templates.TemplateResponse(
-        request, "workspace.html", {"lesson_id": lesson_id, **cet_mode.template_context()}
+        request, "workspace.html", {"lesson_id": parsed_id, **cet_mode.template_context()}
     )
 
 
 @router.get("/workspace/{lesson_id}/intensive")
-def intensive_workspace(request: Request, lesson_id: int):
+def intensive_workspace(request: Request, lesson_id: str):
     # 返修2 P5-2：同上，精听页也返回 404（原为 200 空精听页）
-    if cet_mode.cet_mode_enabled() and not _lesson_exists(lesson_id):
-        return _lesson_missing(request, lesson_id)
+    # 返修2.1 B4：同上，非数字 id 也走 404 页
+    parsed_id = _coerce_lesson_id(lesson_id)
+    if parsed_id is None:
+        if not cet_mode.cet_mode_enabled():
+            _reject_non_integer_lesson_id(lesson_id)
+        return _missing_lesson_id(request, lesson_id, None)
+    if cet_mode.cet_mode_enabled() and not _lesson_exists(parsed_id):
+        return _missing_lesson_id(request, lesson_id, parsed_id)
     return templates.TemplateResponse(
         request,
         "intensive.html",
-        {"lesson_id": lesson_id, **cet_mode.template_context()},
+        {"lesson_id": parsed_id, **cet_mode.template_context()},
         headers={
             "Cache-Control": "no-store, max-age=0",
             "Pragma": "no-cache",

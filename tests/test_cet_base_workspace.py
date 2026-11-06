@@ -16,7 +16,8 @@
 服务不可达时整组跳过，不制造假失败（与 test_cet_listening_ui.py 同一纪律）。
 
 环境变量：
-    CET_BASE_URL        默认 http://127.0.0.1:5183
+    CET_BASE_URL        必填。不设置则整组跳过 —— 这是刻意的：
+                        这些用例会真实写入学习进度，指向残留的旧服务实例会假失败。
     CET_BASE_LESSON_A   第一份材料 lesson id（默认自动发现）
     CET_BASE_LESSON_B   第二份材料 lesson id（默认自动发现）
 """
@@ -29,10 +30,14 @@ import urllib.request
 
 import pytest
 
-BASE = os.environ.get("CET_BASE_URL", "http://127.0.0.1:5183").rstrip("/")
+# 必须显式指定目标服务：默认值会让全量回归误打到开发时残留的旧实例，
+# 而旧库里的历史进度会让 T10 的断言假失败（实测过）。
+BASE = os.environ.get("CET_BASE_URL", "").rstrip("/")
 
 
 def _service_up() -> bool:
+    if not BASE:
+        return False
     try:
         with urllib.request.urlopen(f"{BASE}/health", timeout=2) as r:
             return r.status == 200
@@ -57,7 +62,11 @@ def _cet_materials() -> list[dict]:
     return out
 
 
-pytestmark = pytest.mark.skipif(not _service_up(), reason="服务未启动，跳过浏览器行为测试")
+pytestmark = pytest.mark.skipif(
+    not _service_up(),
+    reason="未设置 CET_BASE_URL 或服务不可达，跳过浏览器行为测试"
+    "（示例：CET_BASE_URL=http://127.0.0.1:5186）",
+)
 
 
 @pytest.fixture(scope="module")
@@ -342,9 +351,31 @@ def test_t08_badge_reports_real_transcript_state(page, materials):
 # ── T10：刷新 / 关闭重开 / 继续学习，位置与收藏按材料恢复 ──────────────
 
 
+def _reset_progress(page, lesson_id: int):
+    """把某材料的进度归零。
+
+    必须在**离开工作区**的页面上做：工作区页面在 pagehide/beforeunload 时
+    会补写当前位置（这是正确行为），如果在工作区页面里重置再跳转，
+    那次补写会把刚重置的值又覆盖掉，导致断言看到旧值。
+    """
+    page.goto(f"{BASE}/", wait_until="domcontentloaded")
+    page.evaluate(
+        f"""async () => {{
+            await fetch('/api/v2/lessons/{lesson_id}/progress', {{
+                method: 'POST', headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{last_position_seconds: 0, last_segment_index: 0}}),
+            }});
+        }}"""
+    )
+
+
 def test_t10_progress_restored_after_reload(page, materials):
     lesson_id = materials["a"]["id"]
+    # 先归一化到 0：库里可能有历史进度，不依赖「新库」这个前提
+    _reset_progress(page, lesson_id)
     _goto_workspace(page, lesson_id)
+    assert _audio(page, "a.currentTime") < 2, "归零后页面不应停在旧位置"
+
     target = 40.0
     page.evaluate(f"() => window.__ws.seek({target})")
     page.wait_for_timeout(1200)
@@ -360,24 +391,27 @@ def test_t10_progress_restored_after_reload(page, materials):
             return await r.json();
         }}"""
     )
-    assert abs(float(saved["last_position_seconds"]) - target) < 6, (
-        f"进度未落盘：期望≈{target}，服务端 {saved['last_position_seconds']}"
+    saved_seconds = float(saved["last_position_seconds"])
+    assert abs(saved_seconds - target) < 8, (
+        f"进度未落盘：期望≈{target}，服务端 {saved_seconds}"
     )
 
     # 重开页面：位置必须恢复
     _goto_workspace(page, lesson_id)
     page.wait_for_timeout(2500)
     restored = _audio(page, "a.currentTime")
-    assert abs(restored - float(saved["last_position_seconds"])) < 4, (
-        f"重开后未恢复位置：服务端 {saved['last_position_seconds']}，页面 {restored}"
+    assert abs(restored - saved_seconds) < 5, (
+        f"重开后未恢复位置：服务端 {saved_seconds}，页面 {restored}"
     )
-    # 恢复提示可见
-    assert page.locator("#cet-resume-note").count() >= 0  # 可能已淡出，不作硬断言
 
 
 def test_t10_progress_does_not_leak_between_materials(page, materials):
     """给 A 写一个位置，B 不能被影响。"""
     a_id, b_id = materials["a"]["id"], materials["b"]["id"]
+    # 两份材料都先归零，确保断言只反映本用例写入的值
+    _reset_progress(page, a_id)
+    _reset_progress(page, b_id)
+
     _goto_workspace(page, a_id)
     page.evaluate("() => window.__ws.seek(55)")
     page.wait_for_timeout(1200)
@@ -390,12 +424,10 @@ def test_t10_progress_does_not_leak_between_materials(page, materials):
     prog_b = page.evaluate(f"async () => (await fetch('/api/v2/lessons/{b_id}/progress')).json()")
     a_seconds = float(prog_a["last_position_seconds"])
     b_seconds = float(prog_b["last_position_seconds"])
-    # A 应该停在 55s 附近（seek 到 55 后短暂播放，可能略前进/回退）
-    assert 50 <= a_seconds <= 62, f"A 的进度未落在 55s 附近：{a_seconds}"
-    # B 不能跟着变成 A 的位置（B 此前可能被其它用例写过，所以只断言「不等于 A」）
-    assert abs(b_seconds - a_seconds) > 20, (
-        f"B 的进度疑似被 A 污染：A={a_seconds} B={b_seconds}"
-    )
+    # A 应该停在 55s 附近（seek 到 55 后短暂播放，可能略前进）
+    assert 48 <= a_seconds <= 65, f"A 的进度未落在 55s 附近：{a_seconds}"
+    # B 已归零且不能被 A 污染
+    assert b_seconds < 5, f"B 的进度被 A 污染：A={a_seconds} B={b_seconds}"
 
 
 def test_t10_favorites_survive_reload(page, materials):

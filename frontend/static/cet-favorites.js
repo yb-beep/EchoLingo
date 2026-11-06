@@ -40,6 +40,8 @@
     loading: false,
     lastError: '',
     jumpToken: 0,
+    // P1-5：workspace 是否已把词句数据送来过（送过就不再自己发请求）
+    gotInitialData: false,
   };
 
   const $ = sel => document.querySelector(sel);
@@ -398,6 +400,37 @@
     return root;
   }
 
+  /**
+   * P1-5（返修2 包1）：直接吃 workspace 已经加载好的数据，不再自己发请求。
+   *
+   * 改前：mount() 无条件 loadAll() → 打 `/words` + `/phase-b`，
+   * 而 workspace.html 的 bootstrap `refreshLesson()` 也刚打过同样两个接口，
+   * 于是首次打开工作区这两个接口各被请求 2 次（playwright 调用栈实测确认）。
+   * 改后：workspace 在数据就绪后派发 `cet:favorites-changed` 并带上 detail，
+   * 本模块直接采用，零额外请求；detail 缺失时（例如其它调用方触发的写操作刷新）
+   * 才回退到 loadAll()，保证「移除收藏 / 收藏动作后列表仍会刷新」不变。
+   */
+  function applySnapshot(detail) {
+    if (!detail) return false;
+    const hasWords = Array.isArray(detail.words);
+    const hasSentences = Array.isArray(detail.sentences);
+    if (!hasWords && !hasSentences) return false;
+    S.words = (detail.words || []).slice();
+    S.meanings = detail.meanings || {};
+    S.sentences = (detail.sentences || []).slice();
+    S.lastError = '';
+    S.gotInitialData = true;
+    render();
+    notifyCount();
+    return true;
+  }
+
+  function onFavoritesChanged(event) {
+    // 有 workspace 送来的数据就不发请求；没有才自己拉
+    if (applySnapshot(event && event.detail)) return;
+    loadAll();
+  }
+
   function mount() {
     if (S.mounted) return;   // 幂等
     S.mounted = true;
@@ -406,12 +439,18 @@
       return;
     }
     bindDelegation();
-    loadAll();
+    // 材料业务身份（/api/cet/materials/by-lesson/{id}）workspace 不加载，仍由本模块取；
+    // 词句数据等 workspace 的 `cet:favorites-changed` 送来（见 applySnapshot）。
+    loadMaterial().then(() => { if (S.gotInitialData) render(); });
     // 收藏里的「回到原句」依赖 window.__ws.sentences，而它在 /subtitles 回来后才非空。
     // 首次渲染可能早于字幕就绪，所以这里等句子索引可用后重渲染一次（幂等）。
     waitForSentencesThenRerender();
-    // 原页面在 refreshLesson / 收藏动作后会自己刷新数据，这里跟随刷新一次列表
-    document.addEventListener('cet:favorites-changed', loadAll);
+    document.addEventListener('cet:favorites-changed', onFavoritesChanged);
+    // 兜底：workspace 的派发因任何原因没到（例如脚本执行顺序异常），
+    // 3 秒后仍没有数据就自己拉一次 —— 宁多一次请求，也不留一个空面板。
+    window.setTimeout(() => {
+      if (!S.gotInitialData && !S.loading) loadAll();
+    }, 3000);
   }
 
   function waitForSentencesThenRerender() {

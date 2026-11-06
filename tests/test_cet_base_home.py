@@ -346,3 +346,136 @@ def test_settings_page_keeps_wordlist_and_model_entries(cet_html):
     assert 'id="ai-settings-section"' in cet_html
     # 不允许在 CET 收束里删掉用户已有的模型配置界面
     assert "loadAiSettings" in cet_html
+
+
+# ══════════════════════════════════════════════════════════════
+# BASE-06：功能收束必须覆盖**动态渲染**、筛选、旧链接和初始化请求
+# 验收方实测（用户可见，不是隐藏 JS 字符串误报）：进入「我的收藏」加载后
+# 仍有 GRE / 雅思 / 考研 / 托福 标签按钮、「全部造句情况」筛选、
+# 「情景造句练习」按钮；句子收藏保留句式练习筛选；学习页仍叫「阅读」「加入精读」；
+# 首页仍真实请求 /api/v2/lessons/baidu-pan/capability。
+# ══════════════════════════════════════════════════════════════
+
+
+def test_base06_retired_exam_tags_are_not_rendered_in_cet(cet_html):
+    """收藏页「考试标签」筛选：CET 模式只留四级/六级。"""
+    block = cet_html.split('id="vocab-exam-filter"', 1)[1].split("</select>", 1)[0]
+    for other in ("雅思", "托福", "GRE", "考研"):
+        assert other not in block, f"收藏页仍渲染退役考试标签：{other}"
+
+
+def test_base06_dynamic_wordlist_filters_are_scoped(cet_html):
+    """关键回归：GRE/雅思/考研/托福 是 initVocab() 后**动态追加**的按钮。
+
+    静态 Jinja 条件管不到，必须由 renderWordlistFilters() 按同一份集中配置过滤。
+    验收方实测的正是这一类「动态渲染漏收」。
+    """
+    assert "CET_VOCAB_FILTER_KEYS" in cet_html, "缺少动态词表筛选白名单"
+    assert "cetVocabFilterAllowed" in cet_html, "缺少动态词表筛选判定函数"
+    # renderWordlistFilters 必须真的用它过滤，而不是照单全收
+    fn = cet_html.split("function renderWordlistFilters(", 1)[1].split("\n}", 1)[0]
+    assert "cetVocabFilterAllowed" in fn, "renderWordlistFilters 未按集中配置过滤"
+    assert ".filter(" in fn
+    # 白名单只含 CET 相关词表
+    keys_block = cet_html.split("CET_VOCAB_FILTER_KEYS = [", 1)[1].split("]", 1)[0]
+    assert "builtin_cet4" in keys_block and "builtin_cet6" in keys_block
+    for retired in ("builtin_gre", "builtin_ielts", "builtin_ky", "builtin_toefl"):
+        assert retired not in keys_block, f"退役词表仍在 CET 白名单：{retired}"
+
+
+def test_base06_exam_tags_on_word_cards_are_scoped(cet_html):
+    """词卡上的 exam_tags 来自 ECDICT，同一单词会挂多个考试标签。"""
+    assert "CET_EXAM_TAGS" in cet_html
+    assert "cetExamTagVisible" in cet_html
+    tags_block = cet_html.split("CET_EXAM_TAGS = [", 1)[1].split("]", 1)[0]
+    assert "四级" in tags_block and "六级" in tags_block
+    for retired in ("雅思", "托福", "GRE", "考研"):
+        assert retired not in tags_block, f"词卡仍显示退役考试标签：{retired}"
+    # 词卡渲染处必须真的调用过滤，而不是保留原数组
+    assert "entry.exam_tags || []" in cet_html
+    assert ".filter(cetExamTagVisible)" in cet_html, "词卡 exam_tags 未过滤"
+
+
+def test_base06_scenario_filters_are_not_rendered_in_cet(cet_html):
+    """「按造句情况筛选」属已收束的情境造句（scenario_sentence）。"""
+    assert 'id="vocab-practice-filter"' not in cet_html, "CET 模式仍渲染「全部造句情况」筛选"
+    assert "全部造句情况" not in cet_html
+
+
+def test_base06_sentence_pattern_filter_is_not_rendered_in_cet(cet_html):
+    """句子收藏的「按句式练习筛选」属已收束的句式训练。"""
+    assert 'id="sentence-pattern-filter"' not in cet_html, "CET 模式句子收藏仍保留句式练习筛选"
+    assert "全部句式状态" not in cet_html
+
+
+def test_base06_scenario_practice_entry_points_are_not_rendered_in_cet(cet_html):
+    """「情景造句练习」/「AI 情景造句」/「主动造句」入口在 CET 模式不渲染。
+
+    注意断言方式：这些文案在 CET 模式**仍存在于 JS 模板字面量源码里**
+    （按 ``${CET.feature('scenario_sentence') ? ... : ''}`` 条件拼装），
+    这属于「不物理删除通用源码」的约定，不是用户可见入口。
+    验收方明确说过「不是隐藏 JS 字符串误报」，所以这里断言的是
+    **渲染条件结构**，真实 DOM 证据由浏览器实测给出（见收束清单 §九）。
+    """
+    # 每处入口都必须被 scenario_sentence 条件包住
+    for entry in ("情景造句练习", "AI 情景造句", "开始自由造句"):
+        idx = cet_html.index(entry)
+        # 往前找最近的 CET.feature 判定，必须在同一段模板表达式内
+        window = cet_html[max(0, idx - 2000):idx]
+        assert "CET.feature('scenario_sentence')" in window, \
+            f"「{entry}」未被 scenario_sentence 条件收束"
+    # 静态区块直接由 Jinja 条件包住（不是 JS 条件）—— 在**源模板**上断言，
+    # 渲染后的 HTML 里 Jinja 标签已被求值掉，看不到。
+    assert INDEX_TEXT.count("{% if cet_features.scenario_sentence %}") >= 2, \
+        "静态造句筛选区块未用 Jinja 条件收束（收藏页 + 句子收藏页）"
+    assert 'id="vocab-practice-filter"' not in cet_html
+    # 但**词句收藏能力本身必须保留**（不能连收藏一起收掉）
+    assert "收藏句子" in cet_html or "已收藏" in cet_html
+    assert "编辑标签" in cet_html
+    assert "标记已掌握" in cet_html
+    assert "返回原句" in cet_html
+    # 造句实现函数体保留（不物理删除通用源码），只是入口不渲染
+    assert "function startVocabSentenceMaking" in cet_html
+
+
+def test_base06_reading_and_intensive_entries_are_not_rendered_in_cet(cet_html):
+    """材料卡片「阅读」「精读」按钮是动态渲染的，必须按集中配置收束。"""
+    fn = cet_html.split("function buildModeButton(", 1)[1].split("\n}", 1)[0]
+    assert "CET.feature('reading_course')" in fn, "buildModeButton 未按 reading_course 收束"
+    # 精听必须保留
+    assert "mode === 'listening'" in fn
+    # 精读文案不再出现在用户可见标记里
+    visible = _visible_html(cet_html)
+    assert "加入精读" not in visible
+
+
+def test_base06_baidu_pan_init_is_not_unconditional(cet_html):
+    """`index.html:8855` 的无条件 initBaiduPanCard() 绕过模式判断 —— 必须修掉。
+
+    验收方实测 CET 模式首页仍真实请求 /api/v2/lessons/baidu-pan/capability。
+    """
+    # 不允许出现「行首直接调用」的无条件形式
+    assert not re.search(r"^\s*initBaiduPanCard\(\);\s*$", cet_html, re.M), \
+        "仍存在无条件 initBaiduPanCard() 调用"
+    # 所有调用点都必须受 link_import 收束
+    # CET_LINK_IMPORT 就是 CET.feature('link_import') 的别名（Init 块里定义的 const）
+    calls = re.findall(r"[^\n]*initBaiduPanCard\(\);", cet_html)
+    assert calls, "找不到 initBaiduPanCard 调用"
+    for line in calls:
+        guarded = ("CET.feature('link_import')" in line) or ("CET_LINK_IMPORT" in line)
+        assert guarded, f"调用未受模式控制：{line.strip()}"
+        assert line.strip().startswith("if ") or line.strip().startswith("if("), \
+            f"调用不是条件式：{line.strip()}"
+    # 别名确实等于 link_import，不是另立的开关
+    assert "const CET_LINK_IMPORT = CET.feature('link_import');" in cet_html
+
+
+def test_base06_generic_mode_keeps_all_retired_entries(generic_html):
+    """通用模式（ELT_CET_MODE=0）必须完整恢复原版入口（原版回归）。"""
+    assert 'id="vocab-practice-filter"' in generic_html
+    assert "全部造句情况" in generic_html
+    assert 'id="sentence-pattern-filter"' in generic_html
+    assert "情景造句练习" in generic_html
+    assert "AI 情景造句" in generic_html
+    # 动态过滤函数在通用模式下直接放行
+    assert "if (!(window.CET && CET.enabled && CET.enabled())) return true;" in generic_html

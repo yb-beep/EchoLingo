@@ -1662,7 +1662,10 @@
         </label>
         <div id="study-mode-switch" class="study-mode-switch" hidden>
           <button data-study-mode="listening" onclick="switchStudyMode('listening')">精听</button>
-          <button data-study-mode="reading" onclick="switchStudyMode('reading')">阅读</button>
+          {#- BASE-06：CET 模式退出「独立阅读课程」（reading_course），学习页只剩「精听」。
+             这里用 data-cet-feature 标记，由 cetApplyWorkspaceScope() 做**真 DOM 移除**
+             （不是 CSS 遮挡、不是仅换标题）。通用模式下保留原「阅读」入口。 -#}
+          <button data-study-mode="reading" data-cet-feature="reading_course" onclick="switchStudyMode('reading')">阅读</button>
         </div>
       </div>
 
@@ -1691,7 +1694,9 @@
 
       <section id="reading-phase-a" class="reading-mode-panel" aria-label="reading passage" hidden>
         <div class="reading-toolbar">
-          <strong>整篇阅读</strong>
+          {#- BASE-06：CET 模式把「阅读」口径改成「原文」（与 transcript_label 一致），
+              并用 data-cet-feature 让运行时在收束时真移除整个阅读面板。 -#}
+          <strong>{% if cet_on %}整篇原文{% else %}整篇阅读{% endif %}</strong>
           <span>点句末书签收藏整句 · 拖选收藏词或短语</span>
         </div>
         <article id="reading-passage" class="reading-passage" data-segment-index="" data-start-seconds="" data-end-seconds=""></article>
@@ -1745,7 +1750,7 @@
             <div class="review-action-row">
               <button class="review-action" type="button" onclick="copyReviewMarkdown()">复制 Markdown</button>
               <button class="review-action" type="button" onclick="exportReviewHtml()">导出 HTML</button>
-              <button class="review-action review-action--intensive" type="button" onclick="openIntensiveExport(this)">进入精读</button>
+              <button class="review-action review-action--intensive" type="button" data-cet-feature="reading_course" onclick="openIntensiveExport(this)">进入精读</button>
               <span id="review-copy-status" class="review-copy-status"></span>
             </div>
             <div id="sentence-tag-panel" class="sentence-tag-panel"></div>
@@ -1844,9 +1849,59 @@ window.__CET_BOOT__ = {
   if(window.eltCredits){eltCredits.annotate();}
 });</script>
 <script src="/static/natural-tts.js?v=20260814-1"></script>
-<!-- 四六级卡点训练：独立模块，不改原有导航与样式（计划 §1） -->
+<!-- 四六级卡点训练（队友交付模块）：**按集中配置挂载**，不改原有导航与样式（计划 §1）
+     BASE-05 修复：验收方实测「底座无条件加载队友资产 → 连无题材料都出现
+     开始卡点练习 / 今日复习 / 未交卷 / 交卷 等点了没反应的假入口」。
+     挂载开关是 cet_mode.py 的 cet_listening_agent（默认 false = 底座独立运行不加载）。
+     队友真正接入后把 kept 置 True，或设 ELT_CET_FEATURE_CET_LISTENING_AGENT=1，
+     **模板一行不用改**。关闭态是「资产根本不在 DOM」——不是 CSS 遮挡，
+     也不是测试里用 route.abort() 拦浏览器请求。 -->
+{% if cet_features.cet_listening_agent %}
 <link rel="stylesheet" href="/static/cet-listening.css?v=20261105-c8">
 <script src="/static/cet-listening.js?v=20261105-c8"></script>
+<script>
+/* BASE-05 第二层：队友模块**已接入**时的材料适配边界（不改队友算法、不改其文件）。
+ *
+ * 为什么还需要这一层：
+ *   挂载开关只解决「没接入却加载」。实测发现即使模块正常接入，
+ *   **无题材料（questionCount=0）**仍会挂出「四六级题目 / 未交卷 / 交卷」面板：
+ *   点「交卷」既不改变状态也不发任何请求（实测 requests=[]，状态仍是「未交卷」），
+ *   因为根本没有可交的卷 —— 这就是验收方说的「假入口」。
+ *
+ * 边界（实测结论，写清楚避免过度收束）：
+ *   - 「交卷 / 未交卷」面板：无题材料下无意义 → 移除
+ *   - 「开始卡点练习」：进入标记模式确实生效（body.cet-listening=true）→ 保留
+ *   - 「今日复习」：真实请求 /api/cet/reviews，无待复习时明确提示「暂时没有待复习的卡点」→ 保留
+ *
+ * 时机：cet-listening.js 的 boot() 先取材料详情与 questions，再 mount()，
+ * 所以 #cet-questions 出现时 S.questions 已是最终值，不存在误删竞态。
+ * 用 el.remove() 真移除（不是 CSS 遮挡，不可 Tab 聚焦）。
+ */
+(function () {
+  'use strict';
+  function stripEmptyAttemptPanel() {
+    var cet = window.__cet;
+    if (!cet || !cet.S || !Array.isArray(cet.S.questions)) return;
+    if (cet.S.questions.length) return;             // 有题：面板是有效入口，保留
+    var panel = document.getElementById('cet-questions');
+    if (panel) panel.remove();                      // 无题：移除，不留假入口
+  }
+  function watch() {
+    stripEmptyAttemptPanel();
+    if (typeof MutationObserver !== 'function') return;
+    var host = document.querySelector('.side-column') || document.body;
+    if (!host) return;
+    new MutationObserver(stripEmptyAttemptPanel)
+      .observe(host, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', watch);
+  } else {
+    watch();
+  }
+})();
+</script>
+{% endif %}
 <script src="/static/voice-input.js?v=20260715-1"></script>
 <link rel="stylesheet" href="/static/cet-workspace.css?v=20261105-p1">
 <script src="/static/cet-player.js?v=20261105-p1" defer></script>
@@ -2233,6 +2288,9 @@ function toggleChatVoice() {
 
 window.addEventListener('DOMContentLoaded', async () => {
   initSidebarWorkspaceTabs();
+  // BASE-06：先把集中配置的收束规则应用到工作区静态节点（真移除），
+  // 再初始化播放器/轮询，避免用户先看到不该出现的入口。
+  cetApplyWorkspaceScope();
   // CET 模式收束：泛用 AI 聊天（ai_chat_general）不初始化语音输入，也不拉会话/历史，
   // 避免对已收起的模块发起后台请求。DOM 保留，切回通用模式即恢复。
   if (cetFeature('ai_chat_general')) {
@@ -2268,6 +2326,20 @@ function isMediaLesson() {
   return availableStudyModes.includes('listening');
 }
 
+// BASE-06：把集中配置的收束规则应用到**工作区动态 DOM**。
+// 静态 Jinja 条件管不到运行时才挂载/切换的节点，所以这里按同一份
+// window.__CET_BOOT__.features 做真移除（el.remove()，不是 CSS 遮挡，
+// 收起的入口不能被 Tab 聚焦，也不会有残留的事件/请求）。
+// 幂等：重复调用不会出错。
+function cetApplyWorkspaceScope() {
+  if (!CET_ON) return;                     // 通用模式：原版入口全保留
+  document.querySelectorAll('[data-cet-feature]').forEach(el => {
+    const key = el.getAttribute('data-cet-feature');
+    if (!key || cetFeature(key)) return;
+    el.remove();
+  });
+}
+
 function applyStudyMode() {
   if (availableStudyModes.length && !availableStudyModes.includes(activeStudyMode)) {
     activeStudyMode = availableStudyModes[0];
@@ -2284,16 +2356,21 @@ function applyStudyMode() {
   if (collectionPanel) collectionPanel.hidden = !isReading && !CET_ON;
   const switchEl = document.getElementById('study-mode-switch');
   if (switchEl) {
-    switchEl.hidden = availableStudyModes.length < 2;
+    // CET 模式只剩「精听」一个模式时，切换器本身也不该出现（单选项无意义）
+    switchEl.hidden = availableStudyModes.length < 2 || (CET_ON && !cetFeature('reading_course'));
     switchEl.querySelectorAll('button').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.studyMode === activeStudyMode);
     });
   }
+  cetApplyWorkspaceScope();
 }
 
 async function switchStudyMode(mode) {
   if (mode === activeStudyMode) return;
   if (!availableStudyModes.includes(mode)) return;
+  // BASE-06：阅读模式在 CET 模式已收束（reading_course），即使有旧链接/旧状态
+  // 直接调 switchStudyMode('reading')，也不切换 —— 不留半状态。
+  if (mode === 'reading' && CET_ON && !cetFeature('reading_course')) return;
   const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/mode`, {
     method: 'PATCH',
     headers: {'Content-Type': 'application/json'},
@@ -2469,6 +2546,11 @@ async function loadStatus() {
   const hadMedia = lessonData && lessonData.media_url;
   lessonData = data.lesson;
   availableStudyModes = data.available_modes || [];
+  // BASE-06：CET 模式收束阅读课程（reading_course），可用模式里也去掉 reading，
+  // 避免「材料声称可阅读、但入口已收束」的不一致状态。
+  if (CET_ON && !cetFeature('reading_course')) {
+    availableStudyModes = availableStudyModes.filter(mode => mode !== 'reading');
+  }
   if (!hadLesson && availableStudyModes.includes(lessonData.lesson_mode)) {
     activeStudyMode = lessonData.lesson_mode;
   } else if (availableStudyModes.length && !availableStudyModes.includes(activeStudyMode)) {

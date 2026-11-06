@@ -2100,6 +2100,10 @@
         <button class="filter-btn" data-filter="archived" onclick="setFilter('archived')">已归档</button>
         <button class="filter-btn" data-filter="mastered" onclick="setFilter('mastered')">已掌握</button>
       </div>
+      {# BASE-06：造句练习属已收束的泛化训练入口（scenario_sentence），
+         收藏页的「按造句情况筛选」是它的筛选器 —— CET 模式下整块不渲染，
+         不是 CSS 遮挡。保留词句收藏能力与数据本身。 #}
+      {% if cet_features.scenario_sentence %}
       <select class="sort-select" id="vocab-practice-filter" onchange="setPracticeFilter(this.value)" aria-label="按造句情况筛选">
         <option value="all">全部造句情况</option>
         <option value="unattempted">未造句</option>
@@ -2108,6 +2112,7 @@
         <option value="used_hint">使用过提示</option>
         <option value="example_only">只看过 AI 示例但未提交</option>
       </select>
+      {% endif %}
       <select class="sort-select" id="vocab-frq-filter" onchange="setVocabFrqFilter(this.value)" aria-label="按词频档位筛选">
         <option value="all">全部词频</option>
         <option value="le2000">COCA ≤2000</option>
@@ -2311,10 +2316,15 @@
           <option value="understood">上次听懂</option>
           <option value="not_understood">上次听不懂</option>
         </select>
+        {# BASE-06：句式练习属已收束的泛化训练入口（scenario_sentence），
+           句子收藏页的「按句式练习筛选」是它的筛选器 —— CET 模式下不渲染。
+           句子收藏本身（播放原音 / 隐藏原文 / 听懂-听不懂 / 标签 / 归档）全部保留。 #}
+        {% if cet_features.scenario_sentence %}
         <select id="sentence-pattern-filter" aria-label="按句式练习筛选">
           <option value="all">全部句式状态</option>
           <option value="has_pattern">已有句式练习</option>
         </select>
+        {% endif %}
         <select id="sentence-archive-filter" aria-label="按归档状态筛选">
           <option value="active">未归档</option>
           <option value="archived">已归档</option>
@@ -4008,6 +4018,11 @@ function buildModeButton(course, mode, label) {
   const canRead = caps.can_read !== undefined ? caps.can_read : course.available_modes.includes('reading');
   const canListen = caps.can_listen !== undefined ? caps.can_listen : course.available_modes.includes('listening');
   if (mode === 'listening' && !canListen) return '';
+  // BASE-06：CET 模式退出「独立文章/PDF 阅读课程」与「精读课程」（reading_course）。
+  // 这两个按钮是动态渲染的（材料卡片），静态 Jinja 条件管不到，所以在这里按
+  // 同一份集中配置收束。**精听（listening）保留**，材料本身与数据不动。
+  if (mode === 'reading' && !CET.feature('reading_course')) return '';
+  if (mode === 'intensive' && !CET.feature('reading_course')) return '';
   if (mode === 'reading' && !canRead) return '';
   if (mode === 'intensive' && !(course.kind === 'v2' && canRead)) return '';
   const intensiveClass = mode === 'intensive' ? ' intensive' : '';
@@ -4708,7 +4723,7 @@ function renderSentenceReviewList() {
         <div class="sentence-row-detail">
           ${sentence.translation ? `<p class="listening-translation">${esc(sentence.translation)}</p>` : ''}
           ${_sentenceRetellOpenId === Number(sentence.id) ? renderSentenceRetellPanel(sentence) : ''}
-          <div id="sentence-workshop-${sentence.id}">${renderSentencePatternSurface(sentence)}</div>
+          ${CET.feature('scenario_sentence') ? `<div id="sentence-workshop-${sentence.id}">${renderSentencePatternSurface(sentence)}</div>` : ''}
           <div class="sentence-row-toolbar">
             ${links.length > 1 ? `<label>当前来源
               <select onchange="selectSentenceSource(${sentence.id},this.value)">
@@ -4720,7 +4735,9 @@ function renderSentenceReviewList() {
         </div>
       </article>`;
   }).join('') : (_sentenceReviewData.length === 0
-    ? `<div class="empty-state"><p><strong>还没有收藏句。</strong></p><p>在课程的「精读」页点句子的 ☆ 收藏，或在精听时点星标，句子就会汇聚到这里；之后可以播放原音、隐藏原文自测是否听懂。</p></div>`
+    ? `<div class="empty-state"><p><strong>还没有收藏句。</strong></p><p>${CET.feature('reading_course')
+        ? '在课程的「精读」页点句子的 ☆ 收藏，或在精听时点星标，句子就会汇聚到这里；之后可以播放原音、隐藏原文自测是否听懂。'
+        : '在听力工作区点句子的 ☆ 收藏，句子就会汇聚到这里；之后可以播放原音、隐藏原文自测是否听懂。'}</p></div>`
     : `<div class="empty-state"><p>没有符合条件的收藏句。</p></div>`);
   mount.innerHTML = savedRowsHtml;
   const hideAllBtn = document.getElementById('sentence-hide-all-btn');
@@ -5544,10 +5561,25 @@ function _addSourceOpt(menu, key, label) {
   return lbl;
 }
 
+// BASE-06：CET 模式下「考试/词表」类筛选只保留 CET4/CET6（+生词本），
+// 其余词表（GRE / 雅思 / 考研 / 托福 / 牛津3K / COCA5K …）**不在收藏页出现**。
+// 这些按钮是 initVocab() 之后由本函数按 /api/wordlists/config 动态追加的，
+// 静态 Jinja 条件管不到 —— 验收方实测的 GRE/雅思/考研/托福 标签正是这里冒出来的。
+// 底层词表与用户配置一律保留（设置页仍可管理），只是不作收藏页筛选主选项。
+const CET_VOCAB_FILTER_KEYS = ['builtin_cet4', 'builtin_cet6', 'my_vocab'];
+
+function cetVocabFilterAllowed(key) {
+  if (!(window.CET && CET.enabled && CET.enabled())) return true;
+  return CET_VOCAB_FILTER_KEYS.includes(String(key || ''));
+}
+
 function renderWordlistFilters(wordlists) {
   const group = document.getElementById('vocab-filter-group');
   if (!group) return;
-  wordlists.filter(wl => wl.type !== 'exclude').forEach(wl => _addFilterBtn(group, wl.key, wl.tag));
+  wordlists
+    .filter(wl => wl.type !== 'exclude')
+    .filter(wl => cetVocabFilterAllowed(wl.key))
+    .forEach(wl => _addFilterBtn(group, wl.key, wl.tag));
 }
 
 function addUserTags(wordlists) {
@@ -5902,6 +5934,16 @@ function resolveVocabContextSentence(entry, context, analysis) {
   return (analysis.examples || [])[0] || '暂时没有收藏语境。';
 }
 
+// BASE-06：CET 模式只把四级/六级作为考试标签主选项。
+// 后端 exam_tags 来自 ECDICT，是**同一单词挂多个考试**，不过滤就会在收藏页
+// 冒出 GRE / 雅思 / 考研 / 托福 —— 验收方实测到的就是这一类用户可见标签。
+const CET_EXAM_TAGS = ['四级', '六级'];
+
+function cetExamTagVisible(tag) {
+  if (!(window.CET && CET.enabled && CET.enabled())) return true;
+  return CET_EXAM_TAGS.includes(String(tag || ''));
+}
+
 function buildVocabCard(word, entry) {
   if (window.eltCredits && CET.feature('credits_account')) setTimeout(() => eltCredits.annotate(), 0);
   const st  = reviewStatus(entry);
@@ -5909,7 +5951,11 @@ function buildVocabCard(word, entry) {
   const ipa = an.ipa || '';
   const rawLevel = (entry.level||'').replace('cefr_','').toUpperCase();
   const level = /^(A1|A2|B1|B2|C1|C2)$/.test(rawLevel) ? rawLevel : '';
-  const examTags = entry.exam_tags || [];
+  // BASE-06：词卡上的考试标签同样收束 —— ECDICT 会给同一单词挂 GRE/雅思/考研/托福
+  // 等多个考试标签，CET 模式下列出来就是用户可见的「无关训练入口」。
+  // 只留四级/六级（数据本身不删，通用模式下全部显示）。
+  const _allExamTags = entry.exam_tags || [];
+  const examTags = _allExamTags.filter(cetExamTagVisible);
   const frqLabel = entry.frq ? `COCA #${entry.frq}` : '';
   const assessed = _assessedWords.has(word) ? 'true' : 'false';
   const encodedWord = encodeURIComponent(word).replace(/'/g, '%27');
@@ -5984,7 +6030,7 @@ function buildVocabCard(word, entry) {
       <div class="vocab-context-meta"><span>${esc(context.lesson || context.source_title || '最近收藏语境')}</span><span>${contextIndex + 1} / ${Math.max(1, contexts.length)}</span><button type="button" class="context-audio-btn" onclick="speakVocabSentence(event,'${encodeURIComponent(contextSentence).replace(/'/g,'%27')}','${contextAudio}')">🔊 播放整句</button><button type="button" class="context-audio-btn" onclick="saveVocabContextSentence(event,'${contextSavePayload}')"${contextSavedId ? (contextHasLessonLink ? ' data-phaseb-saved="1"' : ` data-sentence-id="${contextSavedId}"`) : ''}>${contextSavedId ? '✓ 已收藏' : '☆ 收藏句子'}</button></div>
       <div class="vocab-card-actions">
         <button type="button" data-toggle-vocab-card>展开词卡</button>
-        <button type="button" onclick="startVocabSentenceMaking(event,decodeURIComponent('${encodedWord}'))">情景造句练习</button>
+        ${CET.feature('scenario_sentence') ? `<button type="button" onclick="startVocabSentenceMaking(event,decodeURIComponent('${encodedWord}'))">情景造句练习</button>` : ''}
         <button type="button" onclick="focusAdjacentVocabCard(event,1)">下一个 →</button>
         ${returnUrl ? `<a href="${esc(returnUrl)}">← 返回原句</a>` : ''}
       </div>
@@ -6016,7 +6062,7 @@ function buildVocabCard(word, entry) {
       ${usage}${ielts}
       ${contextItems?`<div class="detail-section"><div class="detail-label">其他收藏语境</div><div class="context-switcher">${contextItems}</div></div>`:''}
       </div>
-      <div class="detail-section practice-section">
+      ${CET.feature('scenario_sentence') ? `<div class="detail-section practice-section">
         <div class="detail-label">主动造句</div>
         <div class="practice-gate">
           <button class="primary" type="button" onclick="startVocabSentenceMaking(event,decodeURIComponent('${encodedWord}'))">开始自由造句</button>
@@ -6044,7 +6090,7 @@ function buildVocabCard(word, entry) {
         <div class="practice-result" id="result-${esc(word)}"></div>
         <div class="practice-history-panel" id="practice-history-${esc(word)}" hidden></div>
         </div>
-      </div>
+      </div>` : ''}
       <div class="lifecycle-actions">
         <button type="button" onclick="setVocabLifecycle(event,decodeURIComponent('${encodedWord}'),'archived',${entry.archived?'false':'true'})">${entry.archived ? '恢复词汇' : '归档词汇'}</button>
         ${lifecycleButton}
@@ -8852,7 +8898,12 @@ function pollBaiduPanImport(jobId) {
     });
   }
 })();
-initBaiduPanCard();
+// BASE-06：这里原来是无条件的 initBaiduPanCard()，绕过上方 Init 块的
+// `if (CET.feature('player') && CET_LINK_IMPORT)` 判断 —— 验收方实测
+// CET 模式首页仍真实请求 /api/v2/lessons/baidu-pan/capability 就是这一行。
+// 现在与 Init 块读**同一份集中配置**：链接导入（含网盘）在 CET 模式已收束，
+// 未启用的模块不发探测请求。通用模式下行为不变。
+if (CET.feature('link_import')) initBaiduPanCard();
 // ── 普通用户浏览器音视频上传 ─────────────────────────────
 let _userMediaUpload = null;  // {upload_id, filename, quote}
 function onUserMediaSelected() {

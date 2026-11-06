@@ -313,3 +313,111 @@ def test_cet_home_boot_payload_is_json_not_executable_script(monkeypatch):
     assert payload["enabled"] is True
     assert payload["features"]["link_import"]["enabled"] is False
     assert payload["copy"]["home_heading"] == "四六级听力材料"
+
+
+# ══════════════════════════════════════════════════════════════
+# BASE-05：队友模块挂载开关（集中配置，唯一真相）
+# 验收方明确指出：上一轮所谓「关闭」是测试里 route.abort() 拦资产实现的，
+# **不能代表可交付的关闭模式**。这里验证的是正式配置驱动的挂载边界。
+# ══════════════════════════════════════════════════════════════
+
+
+def test_base05_listening_agent_feature_defaults_off(monkeypatch):
+    """底座独立运行（默认 CET 模式）不挂载队友模块。"""
+    monkeypatch.delenv("ELT_CET_FEATURE_CET_LISTENING_AGENT", raising=False)
+    monkeypatch.setenv("ELT_CET_MODE", "1")
+    cfg = _cet_mode().config()
+    item = cfg["features"]["cet_listening_agent"]
+    assert item["enabled"] is False, "底座独立运行默认必须不挂载队友模块"
+    assert item["kept"] is False
+    assert "cet_listening_agent" in cfg["retired_keys"]
+
+
+def test_base05_listening_agent_env_override_enables_it(monkeypatch):
+    """队友接入时用正式配置开启（不需要改模板、不需要改代码）。"""
+    monkeypatch.setenv("ELT_CET_MODE", "1")
+    monkeypatch.setenv("ELT_CET_FEATURE_CET_LISTENING_AGENT", "1")
+    cfg = _cet_mode().config()
+    assert cfg["features"]["cet_listening_agent"]["enabled"] is True
+    assert "cet_listening_agent" not in cfg["retired_keys"]
+
+
+def test_base05_listening_agent_env_override_can_also_disable(monkeypatch):
+    monkeypatch.setenv("ELT_CET_MODE", "0")   # 通用模式默认全开
+    monkeypatch.setenv("ELT_CET_FEATURE_CET_LISTENING_AGENT", "0")
+    cfg = _cet_mode().config()
+    assert cfg["features"]["cet_listening_agent"]["enabled"] is False
+
+
+def test_base05_generic_mode_mounts_teammate_module(monkeypatch):
+    """通用模式（ELT_CET_MODE=0）恢复原版行为：队友模块照旧挂载。"""
+    monkeypatch.delenv("ELT_CET_FEATURE_CET_LISTENING_AGENT", raising=False)
+    monkeypatch.setenv("ELT_CET_MODE", "0")
+    assert _cet_mode().config()["features"]["cet_listening_agent"]["enabled"] is True
+
+
+def _render_workspace(monkeypatch, mode="1", agent="off"):
+    from fastapi.testclient import TestClient
+    from fastapi_server import create_app
+
+    monkeypatch.setenv("ELT_CET_MODE", mode)
+    if agent == "on":
+        monkeypatch.setenv("ELT_CET_FEATURE_CET_LISTENING_AGENT", "1")
+    else:
+        monkeypatch.delenv("ELT_CET_FEATURE_CET_LISTENING_AGENT", raising=False)
+    import db
+
+    lesson = db.create_v2_lesson(
+        source_type="uploaded_media",
+        source_url="upload:base05-fixture",
+        title="BASE-05 fixture",
+        lesson_mode="listening",
+    )
+    resp = TestClient(create_app()).get(f"/workspace/{lesson['id']}")
+    assert resp.status_code == 200
+    return resp.text
+
+
+def test_base05_workspace_does_not_mount_assets_by_default(monkeypatch):
+    """核心回归：默认配置下 cet-listening.css/.js **不在页面里**。
+
+    这是「正式配置驱动的关闭」，不是测试用 route.abort() 拦浏览器请求。
+    """
+    html = _render_workspace(monkeypatch, "1", agent="off")
+    assert "/static/cet-listening.js" not in html, "默认仍加载队友卡点模块脚本"
+    assert "/static/cet-listening.css" not in html, "默认仍加载队友卡点模块样式"
+
+
+def test_base05_workspace_mounts_assets_when_enabled(monkeypatch):
+    """正式配置开启后，资产正常挂载（队友接入路径可用）。"""
+    html = _render_workspace(monkeypatch, "1", agent="on")
+    assert "/static/cet-listening.js" in html
+    assert "/static/cet-listening.css" in html
+    # 挂载位置仍在页面主体之后（模块自行挂载），且在 LESSON_ID 之前
+    assert html.index("/static/cet-listening.js") < html.index("const LESSON_ID")
+
+
+def test_base05_mount_gate_is_jinja_not_css_hiding(monkeypatch):
+    """挂载开关必须是 Jinja 条件渲染，不是 CSS 遮挡 / JS 隐藏。"""
+    source = (REPO / "frontend" / "templates" / "workspace.html").read_text(encoding="utf-8")
+    assert "{% if cet_features.cet_listening_agent %}" in source, \
+        "队友模块资产未用集中配置条件渲染"
+    block = source.split("{% if cet_features.cet_listening_agent %}", 1)[1].split("{% endif %}", 1)[0]
+    assert "/static/cet-listening.js" in block
+    assert "/static/cet-listening.css" in block
+    # 不许用 display:none / hidden 冒充
+    assert "display:none" not in block
+    assert "hidden" not in block
+
+
+def test_base05_no_test_route_abort_as_close_mode():
+    """验收方要求：关闭态不能靠浏览器拦请求实现。
+
+    回归护栏 —— 底座自己的关闭验收测试不得再以 route.abort() 作为唯一手段。
+    """
+    src = (REPO / "tests" / "test_cet_base_mode.py").read_text(encoding="utf-8")
+    # 本文件新增的 BASE-05 用例断言的是模板/配置层
+    assert "cet_listening_agent" in src
+    # 模板层关闭证据必须来自 Jinja 条件，而不是拦截
+    template = (REPO / "frontend" / "templates" / "workspace.html").read_text(encoding="utf-8")
+    assert "{% if cet_features.cet_listening_agent %}" in template

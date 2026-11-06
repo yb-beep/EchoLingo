@@ -21,7 +21,11 @@ cd "$ROOT"
 PORT="${PORT:-${ELT_PORT:-5173}}"
 MOCK_PORT="${CET_MOCK_PORT:-5199}"
 DATA_DIR="${ELT_DATA_DIR:-$ROOT/.cet-qa/data}"
-LOG_DIR="$ROOT/.cet-qa/logs"
+# CET_QA_LOG_DIR 让同一仓库可以跑多个互不干扰的实例（每个实例一套日志/PID）
+LOG_DIR="${CET_QA_LOG_DIR:-$ROOT/.cet-qa/logs}"
+# BASE-04-C：实例记录按端口隔离，不再让所有实例共用一份 server.pid
+INSTANCE_DIR="$LOG_DIR/instances/$PORT"
+MOCK_INSTANCE_DIR="$LOG_DIR/instances/mock-$MOCK_PORT"
 VENV="$ROOT/.venv"
 PY="$VENV/bin/python"
 WITH_MOCK=0
@@ -103,7 +107,7 @@ else
 fi
 
 # ── 4. 数据目录与配置（隔离，不用用户正式数据）──
-mkdir -p "${DATA_DIR}" "${LOG_DIR}" "${ROOT}/.cet-qa/media"
+mkdir -p "${DATA_DIR}" "${LOG_DIR}" "${ROOT}/.cet-qa/media" "${INSTANCE_DIR}" "${MOCK_INSTANCE_DIR}"
 
 export ELT_HOST="${ELT_HOST:-127.0.0.1}"
 export ELT_PORT="${PORT}"
@@ -136,7 +140,19 @@ SERVER_LOG="${LOG_DIR}/server.log"
 : > "${SERVER_LOG}"
 nohup "${PY}" backend/fastapi_server.py >> "${SERVER_LOG}" 2>&1 &
 SERVER_PID=$!
+# 按实例记录：端口 + 数据库 + PID 三者绑定，停止脚本据此核验身份。
+# 共享的 ${LOG_DIR}/server.pid 仍写（兼容旧用法），但只作候选来源，不作停止依据。
+echo "${SERVER_PID}" > "${INSTANCE_DIR}/server.pid"
+cat > "${INSTANCE_DIR}/instance.env" <<INSTEOF
+ELT_INSTANCE_PORT=${PORT}
+ELT_INSTANCE_PID=${SERVER_PID}
+ELT_INSTANCE_DB=$(cd "$(dirname "${ELT_USER_DB}")" 2>/dev/null && pwd -P)/$(basename "${ELT_USER_DB}")
+ELT_INSTANCE_DATA_DIR=$(cd "${DATA_DIR}" 2>/dev/null && pwd -P)
+ELT_INSTANCE_LOG_DIR=${LOG_DIR}
+ELT_INSTANCE_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+INSTEOF
 echo "${SERVER_PID}" > "${LOG_DIR}/server.pid"
+info "实例记录：${INSTANCE_DIR}/instance.env（端口 ${PORT}，库 ${ELT_USER_DB}）"
 info "底座进程 PID=${SERVER_PID}，日志 ${SERVER_LOG}"
 fi
 
@@ -183,7 +199,16 @@ if [ "$WITH_MOCK" -eq 1 ]; then
     : > "$MOCK_LOG"
     CET_MOCK_PORT="$MOCK_PORT" nohup "$PY" tests/mock_cet_api.py >> "$MOCK_LOG" 2>&1 &
     MOCK_PID=$!
+    # Mock 也按端口隔离记录（BASE-04-C：不再所有实例共用一份 mock.pid）
+    echo "$MOCK_PID" > "$MOCK_INSTANCE_DIR/mock.pid"
     echo "$MOCK_PID" > "$LOG_DIR/mock.pid"
+    cat > "$MOCK_INSTANCE_DIR/instance.env" <<MOCKEOF
+ELT_INSTANCE_PORT=${MOCK_PORT}
+ELT_INSTANCE_PID=${MOCK_PID}
+ELT_INSTANCE_KIND=mock
+ELT_INSTANCE_LOG_DIR=${LOG_DIR}
+ELT_INSTANCE_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+MOCKEOF
     for i in $(seq 1 20); do
       if curl -fsS --max-time 2 "http://127.0.0.1:$MOCK_PORT/api/cet/_mock/info" >/dev/null 2>&1; then
         info "Mock 就绪：http://127.0.0.1:$MOCK_PORT （PID=${MOCK_PID}，日志 ${MOCK_LOG}）"

@@ -180,7 +180,6 @@ _COPY_CET = {
     "fix2_favorite_word_cta": "☆ 收藏单词",
     "fix2_favorite_sentence_cta": "☆ 收藏句子",
     "fix2_favorite_added": "✓ 已收藏",
-    "fix2_sync_collections": "同步本课收藏",
     "fix2_my_collections_wordlist": "我的收藏",
     "fix2_lesson_collections": "本课收藏",
     "fix2_lesson_collections_note": "本课收藏的词与句子，收藏后自动进入「我的收藏」。",
@@ -210,10 +209,12 @@ _COPY_GENERIC = {
     "fix2_sentences_eyebrow": "句子精听",
     "fix2_favorites_pane_vocab": "词汇收藏",
     "fix2_favorites_pane_sentences": "句子收藏",
-    "fix2_favorite_word_cta": "☆ 收藏",
+    # 通用模式值必须与返修前 workspace.html 原版一字不差（返修 2.1 A4 核实）：
+    #   :4761  ${saved ? '★ 已收藏' : '☆ 加入生词'}
+    #   :4187  收藏面板状态标签「已在复习本」/「加入复习本」
+    "fix2_favorite_word_cta": "☆ 加入生词",
     "fix2_favorite_sentence_cta": "☆ 收藏句子",
-    "fix2_favorite_added": "✓ 已收藏",
-    "fix2_sync_collections": "同步本课收藏",
+    "fix2_favorite_added": "★ 已收藏",
     "fix2_my_collections_wordlist": "我的生词本",
     # 基线 workspace.html 的收藏面板是 <h2>学习收集</h2> +
     # <span class="panel-note">Phase B · 本课收藏的词、句子和标签。</span>

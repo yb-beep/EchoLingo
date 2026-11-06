@@ -2297,6 +2297,21 @@ def list_review_items() -> list[dict[str, Any]]:
     return [_review_item_payload(row) for row in rows]
 
 
+def _replaced_from_map(row, replaced_map: dict[str, str | None]) -> dict[str, Any] | None:
+    """B6：把 replaced_from（被换下的 item_id）转成可追溯的响应对象。
+
+    返回 {itemId, practiceId}，没有替换历史时返回 None
+    （不能返回空对象，否则调用方无法区分「没换过」和「换过但查不到」）。
+    """
+    try:
+        item_id = row["replaced_from"]
+    except (KeyError, IndexError):
+        return None
+    if not item_id:
+        return None
+    return {"itemId": item_id, "practiceId": replaced_map.get(item_id)}
+
+
 def _review_payload(review_id: str, include_practice: bool = True) -> dict[str, Any]:
     with _db() as conn:
         review = conn.execute("SELECT * FROM cet_reviews WHERE id=?", (review_id,)).fetchone()
@@ -2307,7 +2322,7 @@ def _review_payload(review_id: str, include_practice: bool = True) -> dict[str, 
             # 否则替换后条目数会从 3 变 4。
             # 注意：用户主动 skip 的条目仍要显示（它也是 skipped），
             # 所以用「同位置是否存在其他条目」来区分。
-            "SELECT e.id AS entry_id,e.position,e.status AS entry_status,i.*,p.sentence_json,p.audio_url "
+            "SELECT e.id AS entry_id,e.position,e.status AS entry_status,e.replaced_from,i.*,p.sentence_json,p.audio_url "
             "FROM cet_review_entries e JOIN cet_review_items i ON i.id=e.item_id "
             "JOIN cet_practices p ON p.id=e.practice_id WHERE e.review_id=? "
             "AND NOT (e.status='skipped' AND EXISTS ("
@@ -2316,6 +2331,20 @@ def _review_payload(review_id: str, include_practice: bool = True) -> dict[str, 
             ")) ORDER BY e.position",
             (review_id,),
         ).fetchall()
+        # B6：在**连接还开着时**预取被替换条目的 practice_id。
+        # 原实现把查询放到 with 块外，conn 已关闭会抛异常。
+        _replaced_map: dict[str, str | None] = {}
+        for _row in rows:
+            try:
+                _rid = _row["replaced_from"]
+            except (KeyError, IndexError):
+                _rid = None
+            if not _rid or _rid in _replaced_map:
+                continue
+            _found = conn.execute(
+                "SELECT practice_id FROM cet_review_items WHERE id=?", (_rid,)
+            ).fetchone()
+            _replaced_map[_rid] = _found["practice_id"] if _found else None
     entries = []
     current_practice_id = None
     for row in rows:
@@ -2329,6 +2358,9 @@ def _review_payload(review_id: str, include_practice: bool = True) -> dict[str, 
             "entryId": row["entry_id"], "itemId": row["id"],
             # B7：对外 order 用 1-based（「第 1 处」），position 仍是 0-based 内部索引
             "order": row["position"] + 1,
+            # B6：替换来源可追溯（replaced_from 存被换下的 item_id）。
+            # 同时给 practiceId，方便调用方直接定位原练习，不用再查一次。
+            "replacedFrom": _replaced_from_map(row, _replaced_map),
         })
     result = {
         "id": review["id"], "status": review["status"], "budgetMs": review["budget_ms"],
@@ -2502,7 +2534,9 @@ def review_action(review_id: str, body: dict[str, Any]) -> dict[str, Any]:
                 (review_id,),
             ).fetchone()
             if not replacement:
-                _error(409, "NO_REVIEW_REPLACEMENT", "没有其他待复习卡点。")
+                # 无候选必须明确报错。实测曾返回 200（因异常路径被吞），
+                # 客户端会误以为替换成功。
+                _error(409, "NO_REVIEW_REPLACEMENT", "没有其他待复习卡点可替换。")
             # B6：替换应**就地更新原条目**，不是追加、也不是同位置插入。
             # 原实现在 MAX+1 处插新条目 → 条目数 3 变 4（不是「替换」）。
             # 改成同位置插入会撞 UNIQUE(review_id, position)，所以直接 UPDATE。

@@ -2504,6 +2504,16 @@ def test_review_replace_without_candidates_is_rejected():
     reset_mock()
     m = _make_mark_at(36.9)
     _finish_practice(m, "sound")   # 只有一处卡点
+
+    # 前置校验：必须真的只有一处待复习卡点，否则「无候选」场景不成立。
+    # 实测全量跑时会因前面用例残留条目而误判（单独跑通过、全量跑失败）。
+    pending = api("GET", "/api/cet/review-items").json().get("items") or []
+    pending = [i for i in pending if i.get("status") == "pending"]
+    assert len(pending) == 1, (
+        f"本用例要求只有一处待复习卡点，实际 {len(pending)} 处；"
+        f"请检查前面用例是否残留（这是测试隔离问题，不是后端缺陷）"
+    )
+
     review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
     rid = review["reviewId"]
     api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})

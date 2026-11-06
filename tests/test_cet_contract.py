@@ -758,7 +758,7 @@ def test_local_help_works_without_model():
     mark = _create_confirmed_mark()
     pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
     for action in ("replay", "slow", "chunk", "explain"):
-        r = api("POST", f"/api/cet/practices/{pid}/local", json={"action": action})
+        r = api("POST", f"/api/cet/practices/{pid}/local", json={"action": action, "actionId": _unique("act")})
         assert r.status_code == 200, f"本地动作 {action} 失败：{r.text[:200]}"
         body = r.json()
         assert body["step"]["action"] == action
@@ -777,7 +777,7 @@ def test_playback_events_dedupe_and_count_time():
     # 否则会被正确地判为未播完、不计时 —— 见 test_playback_under_threshold_not_counted。
     payload = {
         "eventId": event_id,
-        "type": "end",
+        "type": "playback_end",
         "stepId": "step-x",
         "playedMs": 4200,
         "visible": True,
@@ -795,7 +795,7 @@ def test_playback_events_dedupe_and_count_time():
     bg = api(
         "POST",
         f"/api/cet/practices/{pid}/events",
-        json={"eventId": _unique("pev"), "type": "end", "playedMs": 5000, "visible": False},
+        json={"eventId": _unique("pev"), "type": "playback_end", "playedMs": 5000, "visible": False},
     )
     assert bg.status_code == 200, bg.text
     assert bg.json()["effectiveMs"] == after_first, "后台播放不应累计有效时长"
@@ -906,8 +906,8 @@ def test_review_session_binds_original_practice_id():
 
     # 暂停 → 重启后按同一 reviewId 恢复
     rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "pause"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "pause", "actionId": _unique("rv")})
     restored = api("GET", f"/api/cet/reviews/{rid}")
     assert restored.status_code == 200, restored.text
     body = restored.json()
@@ -925,9 +925,9 @@ def test_review_skip_keeps_item_pending():
     _finish_practice(m2, "meaning")
     review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
     rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
     first_item = review["items"][0]["itemId"]
-    r = api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "skip", "itemId": first_item})
+    r = api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "skip", "itemId": first_item, "actionId": _unique("rv")})
     assert r.status_code == 200, r.text
     body = r.json()
     skipped = next(i for i in body["items"] if i["itemId"] == first_item)
@@ -949,16 +949,16 @@ def test_review_pause_does_not_accumulate_time():
     _finish_practice(m1, "sound")
     review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
     rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
     t1 = api("POST", f"/api/cet/reviews/{rid}/actions",
              json={"action": "tick", "elapsedMs": 5000, "visible": True}).json()
     assert t1["effectiveMs"] == 5000, f"active 时应计时，实际 {t1['effectiveMs']}"
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "pause"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "pause", "actionId": _unique("rv")})
     t2 = api("POST", f"/api/cet/reviews/{rid}/actions",
              json={"action": "tick", "elapsedMs": 60000, "visible": True}).json()
     assert t2["effectiveMs"] == 5000, f"暂停期间不应计时，实际 {t2['effectiveMs']}"
     # 后台活动也不计
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "resume"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "resume", "actionId": _unique("rv")})
     t3 = api("POST", f"/api/cet/reviews/{rid}/actions",
              json={"action": "tick", "elapsedMs": 4000, "visible": False}).json()
     assert t3["effectiveMs"] == 5000, f"后台活动不应计时，实际 {t3['effectiveMs']}"
@@ -1069,7 +1069,7 @@ def test_concurrent_duplicate_events_count_once():
     event_id = _unique("pev-concurrent")
     payload = {
         "eventId": event_id,
-        "type": "end",
+        "type": "playback_end",
         "stepId": "step-c",
         "playedMs": 4000,
         "visible": True,
@@ -1301,7 +1301,7 @@ def test_step_action_enum():
     assert len(seen) >= 2, f"三类反馈应产生不同动作，实际只有 {seen}"
 
     for action in ("replay", "slow", "chunk", "explain"):
-        r = api("POST", f"/api/cet/practices/{pid}/local", json={"action": action})
+        r = api("POST", f"/api/cet/practices/{pid}/local", json={"action": action, "actionId": _unique("act")})
         assert r.status_code == 200, r.text
         got = r.json()["step"]["action"]
         assert got in CONTRACT_ENUMS["stepAction"], f"本地动作 {got!r} 不在契约枚举内"
@@ -1318,7 +1318,7 @@ def test_review_status_enum_through_lifecycle():
 
     assert review["status"] in CONTRACT_ENUMS["reviewStatus"], review["status"]
     for action, expected in (("start", "active"), ("pause", "paused"), ("resume", "active")):
-        r = api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": action})
+        r = api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": action, "actionId": _unique("act")})
         assert r.status_code == 200, f"{action}: {r.text}"
         got = r.json()["status"]
         assert got in CONTRACT_ENUMS["reviewStatus"], f"{action} 后状态 {got!r} 不合枚举"
@@ -1335,7 +1335,7 @@ def test_review_item_status_always_in_enum():
     _finish_practice(m2, "meaning")
     review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
     rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
 
     def check_all(payload, stage):
         for item in payload["items"]:
@@ -1348,7 +1348,7 @@ def test_review_item_status_always_in_enum():
     first = review["items"][0]["itemId"]
     second = review["items"][1]["itemId"]
     check_all(api("POST", f"/api/cet/reviews/{rid}/actions",
-                  json={"action": "skip", "itemId": first}).json(), "跳过")
+                  json={"action": "skip", "itemId": first, "actionId": _unique("rv")}).json(), "跳过")
     check_all(api("POST", f"/api/cet/reviews/{rid}/actions",
                   json={"action": "done", "itemId": second}).json(), "完成")
 
@@ -1384,6 +1384,8 @@ def test_playback_event_carries_required_fields():
         assert "eventId" in body, "响应应回显 eventId（7.3 要求事件带 ID）"
 
     # 非法类型必须被拒，不能静默接受
+    # 注意：这里必须用**非法**类型。我曾把 "pause" 批量替换成
+    # "playback_interrupt"（合法类型），导致「应被拒」的断言永远失败。
     bad = api("POST", f"/api/cet/practices/{pid}/events", json={
         "eventId": _unique("evt-bad"), "type": "pause", "playedMs": 100,
     })
@@ -1544,7 +1546,7 @@ def test_review_budget_caps_effective_time():
     review = api("POST", "/api/cet/reviews",
                  json={"maxItems": 3, "budgetMs": 10_000}).json()
     rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
 
     r = api("POST", f"/api/cet/reviews/{rid}/actions",
             json={"action": "tick", "elapsedMs": 15_000, "visible": True})
@@ -1566,7 +1568,7 @@ def test_review_can_finish_after_budget_exhausted():
     review = api("POST", "/api/cet/reviews",
                  json={"maxItems": 3, "budgetMs": 5_000}).json()
     rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
     api("POST", f"/api/cet/reviews/{rid}/actions",
         json={"action": "tick", "elapsedMs": 6_000, "visible": True})
 
@@ -1592,7 +1594,7 @@ def test_review_no_more_time_counted_after_budget_exhausted():
     review = api("POST", "/api/cet/reviews",
                  json={"maxItems": 3, "budgetMs": 5_000}).json()
     rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
     api("POST", f"/api/cet/reviews/{rid}/actions",
         json={"action": "tick", "elapsedMs": 6_000, "visible": True})
 
@@ -1725,7 +1727,7 @@ def test_playback_under_threshold_not_counted():
 
     # 只播 500ms，远低于句子时长（~4.6s）的 80%
     r = api("POST", f"/api/cet/practices/{pid}/events", json={
-        "eventId": _unique("thr-low"), "type": "end", "playedMs": 500, "visible": True,
+        "eventId": _unique("thr-low"), "type": "playback_end", "playedMs": 500, "visible": True,
     })
     assert r.status_code == 200, r.text
     body = r.json()
@@ -1743,7 +1745,7 @@ def test_playback_above_threshold_is_counted():
     pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
 
     r = api("POST", f"/api/cet/practices/{pid}/events", json={
-        "eventId": _unique("thr-high"), "type": "end", "playedMs": 4000, "visible": True,
+        "eventId": _unique("thr-high"), "type": "playback_end", "playedMs": 4000, "visible": True,
     })
     assert r.status_code == 200, r.text
     body = r.json()
@@ -1760,7 +1762,7 @@ def test_playback_threshold_reports_expected_duration():
     mark = _create_confirmed_mark()
     pid = api("POST", "/api/cet/practices", json={"markId": mark["markId"]}).json()["practiceId"]
     body = api("POST", f"/api/cet/practices/{pid}/events", json={
-        "eventId": _unique("thr-info"), "type": "end", "playedMs": 1000, "visible": True,
+        "eventId": _unique("thr-info"), "type": "playback_end", "playedMs": 1000, "visible": True,
     }).json()
 
     pt = body.get("playThrough")
@@ -1974,12 +1976,12 @@ def test_review_replace_swaps_in_an_unlisted_item():
 
     review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
     rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
     before = [i["practiceId"] for i in review["items"]]
     target_item = review["items"][0]["itemId"]
 
     r = api("POST", f"/api/cet/reviews/{rid}/actions",
-            json={"action": "replace", "itemId": target_item})
+            json={"action": "replace", "itemId": target_item, "actionId": _unique("rv")})
     assert r.status_code == 200, (
         f"「替换」应被支持（任务书 7.2），实际 {r.status_code}：{r.text[:200]}"
     )
@@ -2002,11 +2004,11 @@ def test_review_replace_keeps_provenance():
         _finish_practice(m, "sound")
     review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
     rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
     original = review["items"][0]
 
     body = api("POST", f"/api/cet/reviews/{rid}/actions",
-               json={"action": "replace", "itemId": original["itemId"]}).json()
+               json={"action": "replace", "itemId": original["itemId"], "actionId": _unique("rv")}).json()
     row = body["items"][0]
     prov = row.get("replacedFrom")
     assert prov, "替换后应记录 replacedFrom，保留被换下的那一处"
@@ -2023,10 +2025,10 @@ def test_review_replace_without_candidates_is_rejected():
     _finish_practice(m, "sound")   # 只有一处卡点
     review = api("POST", "/api/cet/reviews", json={"maxItems": 3}).json()
     rid = review["reviewId"]
-    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start"})
+    api("POST", f"/api/cet/reviews/{rid}/actions", json={"action": "start", "actionId": _unique("rv")})
 
     r = api("POST", f"/api/cet/reviews/{rid}/actions",
-            json={"action": "replace", "itemId": review["items"][0]["itemId"]})
+            json={"action": "replace", "itemId": review["items"][0]["itemId"], "actionId": _unique("rv")})
     assert r.status_code in (400, 409, 422), (
         f"没有其他卡点可换时应明确报错，实际 {r.status_code}：{r.text[:150]}"
     )
@@ -2084,7 +2086,7 @@ def test_save_works_after_ai_failure():
     assert fail.status_code >= 400, f"模拟失败应返回错误，实际 {fail.status_code}"
 
     # 模型失败后：本地动作仍可用
-    local = api("POST", f"/api/cet/practices/{pid}/local", json={"action": "slow"})
+    local = api("POST", f"/api/cet/practices/{pid}/local", json={"action": "slow", "actionId": _unique("act")})
     assert local.status_code == 200, (
         f"模型失败后本地动作应仍可用，实际 {local.status_code}：{local.text[:150]}"
     )

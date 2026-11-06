@@ -1049,7 +1049,8 @@ def _step_payload(row: Any) -> dict[str, Any]:
         "action": row["action"],
         "source": row["source"],
         "playRange": play_range,
-        "playback": play_range,
+        "playback": ({**play_range, "speed": row["speed"]} if play_range
+                     else {"speed": row["speed"]}),
         "speed": row["speed"],
         "showText": show_text,
         "textVisible": show_text,
@@ -1941,10 +1942,14 @@ def record_practice_event(practice_id: str, body: dict[str, Any]) -> dict[str, A
         if applied_ms:
             conn.execute("UPDATE cet_practices SET effective_ms=effective_ms+?,updated_at=? WHERE id=?", (applied_ms, now, practice_id))
             _apply_review_time(conn, review, applied_ms)
+        # C04：在**事务内**提交 effective_ms 累加，
+        # 再让 _practice_payload 读到新值（原实现读到累加前的旧值）。
+        conn.commit()
     result = _practice_payload(practice_id)
     result["event"] = {"eventId": event_id, "duplicate": False, "appliedMs": applied_ms, **payload}
-    # B03：契约要求顶层 effectiveMs（_practice_payload 已带，这里兜底）
+    # B03/C04：契约要求顶层 effectiveMs 与 status
     result.setdefault("effectiveMs", 0)
+    result.setdefault("status", "complete" if result.get("practiceStatus") == "complete" else "active")
     return result
 
 

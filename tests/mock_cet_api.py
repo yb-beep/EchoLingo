@@ -679,10 +679,23 @@ def practice_event(practice_id: str, payload: dict = Body(...)):
             }
 
     etype = str(payload.get("type") or "")
-    if etype not in ("start", "end", "interrupt"):
+    # C04：契约统一后事件名有两套写法，Mock 与真实后端都必须接受：
+    #   短名 start / end / interrupt（早期契约）
+    #   全名 playback_start / playback_end / playback_interrupt（现契约）
+    # 只接受 7.3 定义的三种播放事件（含全名），其余一律拒绝。
+    # 不能把 visibility/feedback 等混进来 —— 那会让非法类型（如 pause）被误放行。
+    _EVENT_ALIASES = {
+        "start": "start", "playback_start": "start",
+        "end": "end", "playback_end": "end",
+        "interrupt": "interrupt", "playback_interrupt": "interrupt",
+    }
+    if etype not in _EVENT_ALIASES:
         raise ScenarioFailure(
-            "INVALID_EVENT", 422, f"事件类型无效：{etype}（应为 start / end / interrupt）"
+            "INVALID_EVENT", 422,
+            f"事件类型无效：{etype}（应为 start/playback_start 等）"
         )
+    # 归一化：后续逻辑统一用短名判断，否则 playback_end 匹配不到 end
+    etype = _EVENT_ALIASES[etype]
     material_version = payload.get("materialVersion")
     if material_version and material_version != practice["materialVersion"]:
         raise ScenarioFailure(
@@ -691,7 +704,10 @@ def practice_event(practice_id: str, payload: dict = Body(...)):
             f"事件材料版本 {material_version} 与练习 {practice['materialVersion']} 不一致",
         )
     step_id = payload.get("stepId")
-    played_ms = payload.get("playedMs", 0)
+    # C04：契约统一后计时字段有两套写法，兼容 playedMs / activeMs
+    played_ms = payload.get("playedMs")
+    if played_ms is None:
+        played_ms = payload.get("activeMs", 0)
     if played_ms is not None and (
         not isinstance(played_ms, (int, float)) or isinstance(played_ms, bool) or played_ms < 0
     ):

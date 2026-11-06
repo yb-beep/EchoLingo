@@ -44,7 +44,6 @@ FIX2_COPY_KEYS = [
     "fix2_favorite_word_cta",
     "fix2_favorite_sentence_cta",
     "fix2_favorite_added",
-    "fix2_sync_collections",
     "fix2_my_collections_wordlist",
     "fix2_lesson_collections",
     # 包1 P1-2 / P1-1 用的 4 个键（返修2 合并后补加，见交付说明 §11）
@@ -253,20 +252,34 @@ def test_p4_1_my_vocab_wordlist_renamed_only_in_cet(cet_html, generic_html):
     assert "我的生词本和你上传的词表都在这里" in _visible_html(generic_html)
 
 
-def test_p4_1_sync_endpoint_exists_and_is_lesson_scoped():
-    """补同步端点必须存在，且复用 activate 同一条写入路径（source=listening）。"""
+def test_p4_1_sync_endpoint_is_gone():
+    """返修 2.1 B3：补同步端点已删除，且不得再加回来。
+
+    为什么删：该端点建立在「工作区收藏进不了我的收藏」这个**错误前提**上
+    （用户主动收藏本来就能进 —— save_word 会调 activate_word_review）。
+    它把 v2_lesson_words 里**自动写入的四六级高亮词**也一并激活进复习本，
+    导致全新库打开一次工作区 + 收藏页就冒出 10 个「收藏」。
+    详见 docs/cet-base/返修2.1/ 与 53-CET底座返修2.1任务书 §0。
+    """
     from webapp.fastapi_routes import vocab as vocab_routes
 
     paths = {getattr(route, "path", "") for route in vocab_routes.router.routes}
-    assert "/api/vocab-review/sync-collections" in paths, "缺少补同步端点"
+    assert "/api/vocab-review/sync-collections" not in paths, \
+        "补同步端点被加回来了 —— 返修2.1 B3 已删除它（见任务书 §0 前提更正）"
     source = (REPO / "backend" / "webapp" / "fastapi_routes" / "vocab.py").read_text(encoding="utf-8")
-    fn = source.split("def sync_lesson_collections(", 1)[1]
-    assert 'source="listening"' in fn, "补同步未用 source=listening（与包1 口径不一致）"
-    assert "db.activate_word_review(" in fn, "补同步未复用 activate 的写入函数"
+    assert "def sync_lesson_collections(" not in source, "补同步实现被加回来了"
+    assert "SyncCollectionsBody" not in source, "补同步请求体残留"
+    # 反向保护：activate 端点必须**保留**（save_word 内部依赖 db.activate_word_review，
+    # 而 A3 删的是前端多余的第二次调用，不是这个端点）
+    assert "/api/vocab-review/activate" in paths, "activate 端点被误删（应保留）"
 
 
-def test_p4_1_sync_is_idempotent_by_construction():
-    """幂等依据：底层是 INSERT ... ON CONFLICT，count 有 <1 保护。"""
+def test_activate_word_review_is_idempotent_by_construction():
+    """activate 的幂等依据：INSERT ... ON CONFLICT，count 有 <1 保护。
+
+    返修 2.1 改名：原属 P4-1「补同步幂等」论证，补同步已删除（B3），
+    但 activate 本身仍是收藏写入路径（save_word 调用），幂等事实仍需守住。
+    """
     db_source = (REPO / "backend" / "db.py").read_text(encoding="utf-8")
     fn = db_source.split("def activate_word_review(", 1)[1].split("\ndef ", 1)[0]
     assert "ON CONFLICT(word) DO UPDATE" in fn, "activate 不是幂等 upsert"
@@ -274,23 +287,22 @@ def test_p4_1_sync_is_idempotent_by_construction():
         "words.count 缺少「不重复计数」保护"
 
 
-def test_p4_1_frontend_syncs_on_favorites_load(cet_html):
-    """「/#favorites」加载时自动补一次（方案：加载时补，不加按钮）。"""
-    assert "cetSyncLessonCollections" in INDEX_TEXT
-    # initVocab（收藏单词页的加载入口）必须调用它
+def test_p4_1_frontend_no_longer_syncs_on_favorites_load(cet_html):
+    """返修 2.1 A2：打开「我的收藏」不得触发任何写库请求。
+
+    原实现（返修 2 P4-1）在 initVocab 尾部调 cetSyncLessonCollections()，
+    打开一个**查看**页面就 POST 写库，且写进去的是自动高亮词。
+    返修 2.1 已删除该调用与函数本身。
+    """
+    assert "cetSyncLessonCollections" not in INDEX_TEXT, \
+        "补同步前端函数被加回来了 —— 返修2.1 A2 已删除"
+    assert "/api/vocab-review/sync-collections" not in INDEX_TEXT, \
+        "前端仍在请求已删除的补同步端点"
+    # initVocab（收藏页加载入口）不得发起任何写库请求
     init_fn = INDEX_TEXT.split("async function initVocab()", 1)[1].split("\n}", 1)[0]
-    assert "cetSyncLessonCollections" in init_fn, "收藏页加载未触发补同步"
-    # 只在 CET 模式执行（通用模式行为不变）
-    sync_fn = INDEX_TEXT.split("async function cetSyncLessonCollections(", 1)[1].split("\n}", 1)[0]
-    assert "CET.enabled" in sync_fn
-    # 必须打的是补同步端点
-    assert "/api/vocab-review/sync-collections" in sync_fn
-
-
-def test_p4_1_sync_does_not_run_in_generic_mode():
-    """通用模式不发起补同步（守卫在函数内部，CET.enabled() 为 false 直接 return）。"""
-    sync_fn = INDEX_TEXT.split("async function cetSyncLessonCollections(", 1)[1].split("\n}", 1)[0]
-    assert "if (!(window.CET && typeof CET.enabled === 'function' && CET.enabled())) return 0;" in sync_fn
+    assert "sync-collections" not in init_fn, "收藏页加载仍在触发补同步"
+    assert "method: 'POST'" not in init_fn and 'method:"POST"' not in init_fn, \
+        "收藏页加载仍有 POST 写库"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -403,48 +415,61 @@ def _get_json(path: str):
 
 
 @service_required
-def test_p4_1_sync_endpoint_is_idempotent_on_live_service():
-    """真实服务：连调两次补同步，第二次必须 0 条且不重复计数。"""
-    first = _post_json("/api/vocab-review/sync-collections", {})
-    assert first.get("ok") is True
-    second = _post_json("/api/vocab-review/sync-collections", {})
-    assert second.get("ok") is True
-    assert second.get("synced") == 0, f"补同步不幂等，第二次仍同步了 {second.get('synced')} 条"
-    assert second.get("words") == []
-
-
-@service_required
-def test_p4_1_sync_dry_run_reports_without_writing():
-    dry = _post_json("/api/vocab-review/sync-collections", {"dry_run": True})
-    assert dry.get("dry_run") is True
-    assert isinstance(dry.get("would_sync"), int)
-    assert isinstance(dry.get("words"), list)
-
-
-@service_required
-def test_p4_1_sync_unknown_lesson_is_404():
+def test_p4_1_sync_endpoint_returns_404_on_live_service():
+    """返修 2.1 B3：真实服务上补同步端点必须已不存在（404）。"""
     with pytest.raises(urllib.error.HTTPError) as excinfo:
-        _post_json("/api/vocab-review/sync-collections", {"lesson_id": 999999})
-    assert excinfo.value.code == 404
+        _post_json("/api/vocab-review/sync-collections", {})
+    assert excinfo.value.code == 404, \
+        f"补同步端点仍可用（HTTP {excinfo.value.code}）—— 返修2.1 B3 已删除它"
 
 
 @service_required
-def test_p4_1_favorites_page_shows_synced_words_and_original_sentence():
-    """端到端：本课收藏的词补同步后，/vocab-log（我的收藏的数据源）能看到它，且带原句。
+def test_p4_1_user_favorite_reaches_my_collections_with_sentence():
+    """端到端（返修 2.1 改写，保留原覆盖）：**用户主动收藏**即进「我的收藏」，且带原句。
 
-    这是 P4-1 验收「工作区收藏 → /#favorites 能看到，且带原句」的服务端证据；
-    浏览器侧真实点击证据见 docs/cet-base/返修2/evidence/ 的截图与
-    test_cet_fix2_p4_browser.py。
+    改写原因：原用例先调 `sync-collections` 再断言 /vocab-log，但那个端点
+    建立在错误前提上、已被 B3 删除。真正要守的契约是 —— **收藏本身就是通的**
+    （`save_word` 末尾调 `db.activate_word_review`），不需要任何补同步。
+
+    本用例改走真实路径：`POST /api/v2/lessons/{id}/word` 收藏一个词，
+    再断言 `/vocab-log`（「我的收藏」的数据源）能查到它且带原句。
     """
-    _post_json("/api/vocab-review/sync-collections", {})
+    materials = _get_json("/api/cet/materials")
+    items = materials if isinstance(materials, list) else (materials.get("materials") or [])
+    lessons = [m for m in items if m.get("sentenceCount")]
+    if not lessons:
+        pytest.skip("当前隔离库没有带时间轴的材料（先跑 import_materials）")
+    lesson_id = lessons[0].get("id") or lessons[0].get("materialId")
+    lesson_id = str(lesson_id).replace("v2-", "")
+
+    subtitles = _get_json(f"/api/v2/lessons/{lesson_id}/subtitles")
+    units = subtitles.get("sentence_units") or []
+    if not units:
+        pytest.skip("该材料没有句子单元")
+    # 挑第一个含 5+ 字母实词的句子（避免短词，短词的原句兜底是 B2 的独立覆盖）
+    target, sentence = None, None
+    for u in units:
+        text = u.get("text") or ""
+        for raw in text.replace(",", " ").replace(".", " ").split():
+            w = raw.strip("\"'!?;:").lower()
+            if w.isalpha() and len(w) >= 5:
+                target, sentence = w, text
+                break
+        if target:
+            break
+    assert target, "该材料找不到可用实词"
+
+    _post_json(f"/api/v2/lessons/{lesson_id}/word", {"word": target, "sentence": sentence})
+
     vocab_log = _get_json("/vocab-log?include_archived=1&include_mastered=1")
     words = {k: v for k, v in vocab_log.items() if not k.startswith("__")}
-    if not words:
-        pytest.skip("当前隔离库没有本课收藏，无法验证回填（先跑 import_materials + 收藏词）")
-    for word, entry in words.items():
-        contexts = entry.get("contexts") or []
-        assert contexts, f"补同步后 {word} 没有原句（P4-1 要求带原句）"
-        assert contexts[0].get("sentence"), f"{word} 的原句为空"
+    assert words, "用户收藏后 /vocab-log 仍为空 —— 收藏到「我的收藏」的通道断了（这是 P1-3/P4-1 的核心契约）"
+    hit = [w for w in words if w.startswith(target[: max(4, len(target) - 2)])]
+    assert hit, f"收藏的 {target!r} 没出现在 /vocab-log（现有词：{sorted(words)[:8]}）"
+    entry = words[hit[0]]
+    contexts = entry.get("contexts") or []
+    assert contexts, f"{hit[0]} 没有原句（要求带原句，供「回到原句」跳转）"
+    assert contexts[0].get("sentence"), f"{hit[0]} 的原句为空"
 
 
 @service_required

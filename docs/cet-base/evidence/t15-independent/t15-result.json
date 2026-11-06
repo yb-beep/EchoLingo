@@ -1,0 +1,105 @@
+{
+  "test": "T15 从交付说明启动，两份不同级别素材走完整流程",
+  "head": "e62009b32ebcf385f82f8f692590dabafc824023",
+  "port": 5200,
+  "passed": 16,
+  "total": 16,
+  "steps": [
+    {
+      "step": "0a 端口空闲（全新启动）",
+      "pass": true,
+      "expected": "",
+      "actual": "5200 空闲"
+    },
+    {
+      "step": "1 空库启动成功（无 AI key）",
+      "pass": true,
+      "expected": "",
+      "actual": "http://127.0.0.1:5200/health 200"
+    },
+    {
+      "step": "2 空库材料列表为空且不报错",
+      "pass": true,
+      "expected": "200 + items=[]",
+      "actual": "200 count=0"
+    },
+    {
+      "step": "3 按交付说明导入样例材料",
+      "pass": true,
+      "expected": "",
+      "actual": "完成。启动后用 GET /api/cet/materials 确认。"
+    },
+    {
+      "step": "4 接口反查到两份不同级别材料",
+      "pass": true,
+      "expected": "cet4 与 cet6 各至少 1 份",
+      "actual": "{\"cet4\": [2], \"cet6\": [1]}"
+    },
+    {
+      "step": "5 首页标题为 CET 口径",
+      "pass": true,
+      "expected": "",
+      "actual": "EchoLingo · 四六级听力"
+    },
+    {
+      "step": "6 四级材料真实播放",
+      "pass": true,
+      "expected": "",
+      "actual": "played=0.82s dur=80.5s"
+    },
+    {
+      "step": "7 四级材料拖动到 30s",
+      "pass": true,
+      "expected": "≈30.0",
+      "actual": "currentTime=30"
+    },
+    {
+      "step": "8 四级材料倍速 1.5x 生效",
+      "pass": true,
+      "expected": "1.5",
+      "actual": "1.5"
+    },
+    {
+      "step": "9 四级音源正确",
+      "pass": true,
+      "expected": "",
+      "actual": "utput/v2_assets/cet/cet4-sample-hope-wish.mp3"
+    },
+    {
+      "step": "10 刷新后播放器仍可用",
+      "pass": true,
+      "expected": "",
+      "actual": "{\"t\": 30, \"dur\": 80.5}"
+    },
+    {
+      "step": "11 六级材料音源已切换",
+      "pass": true,
+      "expected": "",
+      "actual": "00/output/v2_assets/cet/cet6-202512-conv2.mp3"
+    },
+    {
+      "step": "12 六级材料时长正确（≠ 四级）",
+      "pass": true,
+      "expected": "两份时长应不同",
+      "actual": "cet4=80.5s cet6=105.5s"
+    },
+    {
+      "step": "13 六级材料拖动到 60s",
+      "pass": true,
+      "expected": "≈60.0",
+      "actual": "currentTime=60"
+    },
+    {
+      "step": "14 六级材料原文已渲染",
+      "pass": true,
+      "expected": "",
+      "actual": "{\"sel\": \"#subtitle-timeline\", \"len\": 754}"
+    },
+    {
+      "step": "15 无致命 JS 错误",
+      "pass": true,
+      "expected": "",
+      "actual": "[]"
+    }
+  ]
+}

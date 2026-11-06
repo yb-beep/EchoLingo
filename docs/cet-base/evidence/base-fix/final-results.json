@@ -1,0 +1,49 @@
+{
+  "sha": "ec674728058714effc4b62d36555e678333567c0",
+  "date": "2026-11-05",
+  "purpose": "独立验收退回项 BASE-01..06 的 Lead 集成复验",
+  "results": {
+    "BASE_01_手动归类": {
+      "pass": true,
+      "detail": "只改级别→cet6/样例；只改类别→cet6/练习；未传字段保留"
+    },
+    "BASE_02_JSON坏条目": {
+      "pass": true,
+      "detail": "HTTP 422, errorCount=4, 位置[2,3,1,4], 零落库"
+    },
+    "BASE_03A_并发去重": {
+      "pass": true,
+      "detail": "duplicate=[false,true], lessonIds=[3,3] 只建一份"
+    },
+    "BASE_03B_坏音频": {
+      "pass": true,
+      "detail": "HTTP 422 application/json, code=IMPORT_VALIDATION_FAILED, reason=invalid_audio"
+    },
+    "BASE_04A_check不删库": {
+      "pass": true,
+      "detail": "sentinel 完好，输出「只检查模式：不删除任何数据」"
+    },
+    "BASE_04B_活服务拒清库": {
+      "pass": true,
+      "detail": "空闲零句柄时 /health 判据仍拒绝，exit 3，sentinel 完好"
+    },
+    "BASE_04C_按实例停止": {
+      "pass": true,
+      "detail": "两实例停 A → A DOWN / B 200"
+    },
+    "BASE_05_队友模块开关": {
+      "pass": true,
+      "detail": "默认 js/css 不在 DOM、假入口 0；ELT_CET_FEATURE_CET_LISTENING_AGENT=1 时有题材料显示交卷、无题材料移除假面板"
+    },
+    "BASE_06_收藏页收束": {
+      "pass": true,
+      "detail": "退役标签 0、句式筛选 0、材料卡阅读/精读 0、baidu-pan 请求 0；收藏能力保留"
+    }
+  },
+  "regression": {
+    "unit": "192+ passed",
+    "full": "2 failed / 769 passed / 28 skipped",
+    "note": "2 项为环境基线：bdpan CLI 未装、planning 私有模块缺失"
+  },
+  "user_flow": "13/13（播放 0.85s / 拖动 42s / 倍速 1.5x / 刷新恢复 42s / 原文 754 字符 / 无 JS 错误 / 无 4xx）"
+}

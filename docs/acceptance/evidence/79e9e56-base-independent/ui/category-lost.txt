@@ -1,0 +1,100 @@
+- heading "🎧 EchoLingo · 四六级听力" [level=1]
+- tablist "主导航":
+  - tab "🎧 听力材料" [selected]
+  - tab "⭐ 我的收藏"
+  - tab "⚙️ 设置"
+- region "听力材料入口":
+  - heading "四六级听力材料" [level=2]
+  - paragraph: 选择四级或六级，导入本地听力材料，逐句精听。
+  - group "按级别查看材料":
+    - button "全部" [pressed]
+    - button "四级"
+    - button "六级"
+    - button "待分类"
+  - link "继续学习 验收六级听力样例 · 已学 3%":
+    - /url: /workspace/1
+    - generic: 继续学习
+    - generic: 验收六级听力样例 · 已学 3%
+    - generic: →
+- heading "＋ 导入听力材料" [level=2]
+- button "收起 ▲"
+- heading "本地音频" [level=3]
+- generic: 支持 .mp3 / .m4a / .wav / .ogg / .flac / .aac
+- generic: 未选择
+- button "选择音频文件"
+- generic: 只有音频也能导入并整段播放
+- generic: 标题
+- textbox "标题":
+  - /placeholder: 留空则用文件名
+- generic: 级别
+- combobox "级别":
+  - option "待分类" [selected]
+  - option "四级"
+  - option "六级"
+- generic: 素材类别
+- combobox "素材类别":
+  - option "未标注" [selected]
+  - option "真题"
+  - option "练习"
+  - option "样例"
+  - option "开发夹具"
+- heading "配套原文（可选）" [level=3]
+- generic: .srt / .vtt / .json / .txt：带时间轴的可逐句定位；纯文本只作原文，不伪造时间戳
+- generic: 未选择
+- button "选择字幕 / 文本文件"
+- generic: 不选也能导入，导入后显示「暂无逐句定位」
+- button "导入并打开材料"
+- button "仅校验"
+- region "最近学习":
+  - heading "最近学习" [level=2]
+  - generic: 1 份
+  - article:
+    - generic: 六级
+    - generic: 未标注
+    - generic: 可逐句精听
+    - generic "验收六级听力样例"
+    - generic: 级别 六级 · 时长 1分45秒 · 类别 未标注 · 32 句
+    - generic: 年份 / 月份 / 套次 / 题型：未标注
+    - generic "学习进度 3%"
+    - button "打开"
+    - button "材料管理": ⋯
+- region "听力材料":
+  - heading "听力材料" [level=2]
+  - paragraph: 级别、时长、素材类别与可用状态都来自材料本身；缺失一律显示「未标注」。
+  - searchbox "按标题搜索材料"
+  - combobox "按级别筛选":
+    - option "全部级别" [selected]
+    - option "四级"
+    - option "六级"
+    - option "待分类"
+  - combobox "按素材类别筛选":
+    - option "全部类别" [selected]
+    - option "真题"
+    - option "练习"
+    - option "样例"
+    - option "开发夹具"
+    - option "未标注"
+  - combobox "按学习模式筛选":
+    - option "全部模式" [selected]
+    - option "精听"
+  - combobox "按课程状态筛选":
+    - option "未归档" [selected]
+    - option "已归档"
+    - option "全部状态"
+  - combobox "按标签筛选":
+    - option "全部标签" [selected]
+    - option "#cet6"
+  - generic: 四级 0 份 · 六级 1 份
+  - article:
+    - generic: 六级
+    - generic: 未标注
+    - generic: 可逐句精听
+    - generic "验收六级听力样例"
+    - generic: 级别 六级 · 时长 1分45秒 · 类别 未标注 · 32 句
+    - generic: 年份 / 月份 / 套次 / 题型：未标注
+    - generic "学习进度 3%"
+    - button "打开"
+    - button "材料管理": ⋯
+  - button "← 上一页" [disabled]
+  - generic: 第 1 / 1 页 · 1 份
+  - button "下一页 →" [disabled]

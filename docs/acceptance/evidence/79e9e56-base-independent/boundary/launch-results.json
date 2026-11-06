@@ -1,0 +1,18 @@
+{
+  "freshCheck": {
+    "command": "scripts/cet/run.sh --check --fresh --data-dir <temporary-dir> --port 52961",
+    "exitCode": 0,
+    "dbExistsAfter": false,
+    "stdout": "==================================================================\n  四六级听力训练 · 启动检查\n  端口：52961   数据：/tmp/cet-base-79e9-boundary/fresh-data/vocab.db\n==================================================================\n\n-- 1. 运行环境 --\n  [OK] Python 3.11.16\n  [OK] ffprobe 9.0.2\n\n-- 2. 端口占用 --\n  [OK] 端口 52961 空闲\n\n-- 3. 数据隔离 --\n  [OK] 已清空隔离数据库（--fresh）\n  [!]  检测到正式数据 resources/vocab.db —— 本脚本不会读写它\n\n-- 4. 样例材料 --\n  [OK] cet6-202512-conv2（音频 + 时间轴）\n  [OK] cet4-sample-hope-wish（音频 + 时间轴）\n\n-- 5. 前端接入 --\n  [OK] cet-listening.js\n  [OK] cet-listening.css\n  [OK] workspace.html 已引用卡点模块\n  [OK] 原 natural-tts 引用保留\n\n==================================================================\n  检查通过\n==================================================================\n",
+    "stderr": ""
+  },
+  "wrongPortStop": {
+    "requestedPort": 49923,
+    "pidFileForPort": 49924,
+    "requestedServerAlive": true,
+    "otherServerAlive": false,
+    "exitCode": 0,
+    "stdout": "== 停止四六级检测服务 ==\n  底座：进程 64909 未响应 TERM，改用 KILL\n  底座：已停止（PID 64909）\n  Mock API：无 PID 文件（可能不是本脚本启动的）\n  底座：端口 49923 仍被其它进程占用：\n      python3.1 64908 a1111    3u  IPv4 0x8be25863bd2ef889      0t0  TCP 127.0.0.1:49923 (LISTEN)\n  如确认可停，用 scripts/qa/stop_cet.sh --all\n  Mock API：端口 49925 已释放\n\n== 状态 ==\n  停止后可直接再次启动：\n    scripts/qa/start_cet.sh --mock\n  数据保留在 /private/tmp/cet-base-79e9-boundary/lifecycle-fixture/.cet-qa/data（未删除，重启后可验证恢复）\n",
+    "stderr": ""
+  }
+}

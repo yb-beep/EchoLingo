@@ -128,6 +128,16 @@ _FEATURES: dict[str, dict[str, Any]] = {
         "label": "积分/登录/个人档案",
         "note": "本机单用户运行非基础依赖，隐藏入口；**不绕过鉴权、不改服务安全配置**",
     },
+    # ── 队友模块挂载开关（BASE-05）──
+    # 验收方指出：底座此前**无条件**加载 cet-listening.js/.css，导致新导入的无题
+    # 材料仍出现「开始卡点练习/今日复习/交卷」等点了没反应的假入口。
+    # 这里给一个正式开关：底座独立运行默认不挂载；队友真正接入后置 kept=True
+    # 或设 ELT_CET_FEATURE_CET_LISTENING_AGENT=1 即可开启，无需改模板。
+    "cet_listening_agent": {
+        "kept": False,
+        "label": "卡点陪练模块（队友交付）",
+        "note": "队友卡点/智能复习模块；底座独立运行默认不挂载，真正接入后开启",
+    },
 }
 
 # 导航结构：CET 模式下的默认导航（任务书 §3.2）
@@ -189,24 +199,45 @@ def cet_mode_enabled() -> bool:
 
 
 def feature_enabled(key: str) -> bool:
-    """单项功能在**当前模式**下是否启用。未知 key 一律按「未启用」处理并显式报错更安全。
+    """单项功能在**当前模式**下是否启用。
 
-    这里选择抛 KeyError：拼错的开关名如果静默返回 False，会变成难查的「入口莫名消失」。
+    优先级：
+      1. 环境变量 `ELT_CET_FEATURE_<KEY>`（显式覆盖，验收/接入时用正式配置开关）
+      2. 通用模式（`ELT_CET_MODE=0`）→ 全部启用，保证原版回归可用
+      3. `_FEATURES[key]["kept"]`
+
+    未知 key 抛 KeyError（故意）：拼错的开关名如果静默返回 False，
+    会变成难查的「入口莫名消失」。
     """
     item = _FEATURES.get(key)
     if item is None:
         raise KeyError(f"unknown CET feature: {key}")
+
+    # 1. 环境变量显式覆盖：ELT_CET_FEATURE_CET_LISTENING_AGENT=1 / 0
+    raw = (os.environ.get(f"ELT_CET_FEATURE_{key.upper()}") or "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+
+    # 2. 通用模式：全部保留，保证原版可用
     if not cet_mode_enabled():
-        return True  # 通用模式：全部保留，保证原版可用
+        return True
+
+    # 3. 模式内默认值
     return bool(item["kept"])
 
 
 def config() -> dict[str, Any]:
-    """完整配置快照。后端模板上下文与 `/api/cet/mode` 共用这一份。"""
+    """完整配置快照。后端模板上下文与 `/api/cet/mode` 共用这一份。
+
+    每项 `enabled` 统一走 `feature_enabled()`，保证 `/api/cet/mode` 与模板、
+    与 `ELT_CET_FEATURE_*` 覆盖三者完全一致。
+    """
     enabled = cet_mode_enabled()
     features = {
         key: {
-            "enabled": True if not enabled else bool(item["kept"]),
+            "enabled": feature_enabled(key),
             "kept": bool(item["kept"]),
             "label": item["label"],
             "note": item["note"],

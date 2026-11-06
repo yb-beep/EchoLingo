@@ -36,6 +36,9 @@ RETIRED_FEATURES = {
     "link_import", "reading_course", "text_to_speech_course", "video_learning",
     "memory_story", "scenario_sentence", "ielts_reuse", "free_retell",
     "ai_chat_general", "outline_generation", "credits_account",
+    # BASE-05：队友卡点模块挂载开关。底座独立运行默认不挂载；
+    # 队友真正接入后置 kept=True 或设 ELT_CET_FEATURE_CET_LISTENING_AGENT=1 开启。
+    "cet_listening_agent",
 }
 
 

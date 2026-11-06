@@ -829,6 +829,37 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
     if existing:
         if existing["material_id"] != material_id:
             _error(409, "IDEMPOTENCY_CONFLICT", "attemptId 已用于另一份材料。")
+        # D1：重复交卷必须**比对答案**。
+        # 原实现直接返回旧结果，等于「静默接受改答案」——
+        # 用户以为改成功了，实际还是旧答案，这是隐性数据错误。
+        # 规则：答案完全相同 → 幂等返回；有变化 → 409 显式拒绝。
+        submitted = {}
+        for item in (body.get("answers") or []):
+            if isinstance(item, dict) and item.get("questionId"):
+                raw = item.get("choice")
+                if raw is None:
+                    raw = item.get("answer")
+                if isinstance(raw, int) and not isinstance(raw, bool):
+                    submitted[str(item["questionId"])] = "ABCDE"[raw] if 0 <= raw < 5 else ""
+                else:
+                    submitted[str(item["questionId"])] = str(raw or "").strip().upper()
+        if submitted:
+            with _db() as _conn:
+                rows = _conn.execute(
+                    "SELECT question_id, answer FROM cet_attempt_answers WHERE attempt_id=?",
+                    (attempt_id,),
+                ).fetchall()
+            stored = {r["question_id"]: str(r["answer"] or "").strip().upper() for r in rows}
+            changed = [
+                qid for qid, ans in submitted.items()
+                if qid in stored and stored[qid] != ans
+            ]
+            if changed:
+                _error(
+                    409, "ATTEMPT_ANSWER_CONFLICT",
+                    "交卷后不能修改答案。如需重做请使用新的听音会话。",
+                    attemptId=attempt_id, changedQuestionIds=changed,
+                )
         return _attempt_payload(attempt_id)
     material = get_material(material_id)
     if body.get("materialVersion") != material["materialVersion"]:

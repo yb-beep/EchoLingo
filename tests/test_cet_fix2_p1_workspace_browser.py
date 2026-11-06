@@ -453,7 +453,12 @@ def test_p1_3_favoriting_a_word_makes_it_appear_in_my_collections(browser, mater
     )
     assert word, "当前句没有可用于收藏的实词"
 
-    # 先确保未收藏（可重复跑）：删本课收藏 + 从复习本移除
+    # 先确保可重复跑：删本课收藏，并把该词从「归档/已掌握」放回可见状态。
+    #
+    # 为什么是 unarchive 而不是 archive：`activate_word_review` 的
+    # `ON CONFLICT DO UPDATE` **不会**改 archived/mastered（见 backend/db.py:1063-1075），
+    # 所以若上一轮把词归档了，这一轮 activate 后它仍不在 /vocab-log 默认视图里，
+    # 断言会假失败。测试要的是「收藏后它出现在我的收藏」，所以先把它恢复可见。
     pg.evaluate(
         f"""async () => {{
             await fetch('/api/v2/lessons/{lesson_id}/word/' + encodeURIComponent({word!r}), {{method: 'DELETE'}});
@@ -461,7 +466,7 @@ def test_p1_3_favoriting_a_word_makes_it_appear_in_my_collections(browser, mater
             if (log[{word!r}]) {{
                 await fetch('/api/vocab-review/' + encodeURIComponent({word!r}) + '/lifecycle',
                             {{method: 'PATCH', headers: {{'Content-Type': 'application/json'}},
-                              body: JSON.stringify({{archived: true}})}});
+                              body: JSON.stringify({{archived: false, mastered: false}})}});
             }}
         }}"""
     )

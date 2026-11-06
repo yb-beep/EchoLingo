@@ -1,0 +1,56 @@
+{
+  "final_sha": "ce0e8a60992f9d06329cb862898c812ddd5e648c",
+  "branch": "codex/cet-listening",
+  "date": "2026-11-05",
+  "verification": {
+    "unit_template_layer": {
+      "command": "ELT_CONFIG_DIR=/tmp/UL pytest tests/test_cet_base_*.py -q",
+      "result": "192 passed"
+    },
+    "full_regression": {
+      "command": "ELT_CONFIG_DIR=/tmp/LAST2 pytest -q --ignore=ui --ignore=contract",
+      "result": "2 failed / 709 passed / 28 skipped",
+      "note": "2 项为环境基线：bdpan CLI 未装、planning 私有模块缺失"
+    },
+    "verify_base": {
+      "command": "scripts/cet/verify_base.py --port 5201",
+      "result": "60 passed / 0 failed / 0 skipped"
+    },
+    "lead_trial": {
+      "command": "scripts/cet/lead_trial.py --base http://127.0.0.1:5200",
+      "result": "26/26"
+    },
+    "fullflow": {
+      "command": "TRIAL_BASE=... fullflow.py",
+      "result": "13/13"
+    },
+    "t15_independent": {
+      "result": "11/11 (Lead) + 16/16 (QA)"
+    }
+  },
+  "deliverables": {
+    "功能收束清单": "docs/cet-base/功能收束清单.md (266 行)",
+    "使用与启动": "docs/cet-base/使用与启动.md (370 行)",
+    "队友接入说明": "docs/cet-base/队友接入说明.md (520 行)",
+    "自验报告": "docs/cet-base/自验报告.md (433 行)",
+    "导入与材料": "docs/cet-base/导入与材料.md (427 行)"
+  },
+  "known_issues_fixed_during_integration": [
+    "D-IMPORT-1: 导入后 subtitle_status 停 pending → 前端永久「字幕生成中」+ /reading 409",
+    "D-WS-1: 工作区徽标硬编码「字幕生成中」",
+    "D-WS-2: 非 reading 课仍轮询 /reading 导致 409 刷屏",
+    "D-HOME-1: #favorites hash 不切页（死链接）",
+    "D-HOME-2: /api/credits/rates 404",
+    "播放器重建清零位置（seek 后 currentTime 归零）",
+    "元数据未就绪时 seek 被静默丢弃",
+    "cet_base 路由未注册（测试绿但产品 404）",
+    "pytest 污染正式库 resources/vocab.db",
+    "test_public_single_user_compat: FastAPI 0.162 _IncludedRouter 不兼容"
+  ],
+  "verification_methodology_fixes": [
+    "「41 failed」假基线：ELT_USER_DB 覆盖 monkeypatch 导致测试互相污染，真实基线 2 failed",
+    "判「虚假加载」不能只看静态 HTML（会误命中内联 JS 的按需字符串）",
+    "判「CET 高亮」不能只看单次 DOM 快照（顺序依赖）",
+    "测试自己 FastAPI()+include_router 会掩盖「真实 app 未注册」"
+  ]
+}

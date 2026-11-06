@@ -1,0 +1,190 @@
+{
+  "base": "http://127.0.0.1:5200",
+  "passed": 26,
+  "total": 26,
+  "elapsed_sec": 19.1,
+  "items": [
+    {
+      "item": "A1 CET 模式配置可用",
+      "pass": true,
+      "expected": "200 + features",
+      "actual": "200 keys=['enabled', 'features', 'nav', 'copy', 'wordlists']",
+      "evidence": ""
+    },
+    {
+      "item": "A2 材料列表返回",
+      "pass": true,
+      "expected": "200 + items 数组",
+      "actual": "200 count=2",
+      "evidence": ""
+    },
+    {
+      "item": "A3 存在四六级材料",
+      "pass": true,
+      "expected": ">=1 份 cet4/cet6",
+      "actual": "2 份: ['cet4', 'cet6']",
+      "evidence": ""
+    },
+    {
+      "item": "A4 级别筛选 cet4",
+      "pass": true,
+      "expected": "全部 level=cet4",
+      "actual": "200 count=1 all_match=True",
+      "evidence": ""
+    },
+    {
+      "item": "A4 级别筛选 cet6",
+      "pass": true,
+      "expected": "全部 level=cet6",
+      "actual": "200 count=1 all_match=True",
+      "evidence": ""
+    },
+    {
+      "item": "A5 待分类材料可查",
+      "pass": true,
+      "expected": "200（可为空）",
+      "actual": "200 count=0",
+      "evidence": ""
+    },
+    {
+      "item": "A6 材料详情含句子",
+      "pass": true,
+      "expected": "200 + sentences 非空",
+      "actual": "200 sentences=32",
+      "evidence": ""
+    },
+    {
+      "item": "A7 句子时间轴有序",
+      "pass": true,
+      "expected": "startSec/endSec 且递增",
+      "actual": "keys=['materialId', 'materialVersion', 'sentenceId', 'index', 'startSec', 'endSec'] ordered=True",
+      "evidence": ""
+    },
+    {
+      "item": "A8 材料带 lessonUrl",
+      "pass": true,
+      "expected": "/workspace/<id>",
+      "actual": "/workspace/2",
+      "evidence": ""
+    },
+    {
+      "item": "A9 进度写入并读回",
+      "pass": true,
+      "expected": "12.5",
+      "actual": "write=200 read=200 pos=12.5",
+      "evidence": ""
+    },
+    {
+      "item": "A10 字幕接口可用",
+      "pass": true,
+      "expected": "200",
+      "actual": "200",
+      "evidence": ""
+    },
+    {
+      "item": "B1 首页标题为四六级口径",
+      "pass": true,
+      "expected": "含「四六级」或「听力」",
+      "actual": "EchoLingo · 四六级听力",
+      "evidence": ""
+    },
+    {
+      "item": "B2 导航收束",
+      "pass": true,
+      "expected": "无「个人档案」",
+      "actual": "['🎧 听力材料', '⭐ 我的收藏', '⚙️ 设置']",
+      "evidence": ""
+    },
+    {
+      "item": "B3 工作区标题为听力口径",
+      "pass": true,
+      "expected": "不含 Video Workspace",
+      "actual": "听力工作区 - EchoLingo",
+      "evidence": ""
+    },
+    {
+      "item": "B4 无虚假加载态",
+      "pass": true,
+      "expected": "无「正在生成内容大纲/AI 正在分析」",
+      "actual": "无",
+      "evidence": ""
+    },
+    {
+      "item": "B5 播放器已挂载",
+      "pass": true,
+      "expected": "audio/video 元素",
+      "actual": "True",
+      "evidence": ""
+    },
+    {
+      "item": "B6 队友模块引用保留",
+      "pass": true,
+      "expected": "cet-listening.js 已加载",
+      "actual": "True",
+      "evidence": ""
+    },
+    {
+      "item": "B7 拖动定位真实生效",
+      "pass": true,
+      "expected": "currentTime≈5.0",
+      "actual": "{\"ok\": true, \"before\": 12.5, \"after\": 5, \"rate\": 1.5, \"paused\": true, \"duration\": 80.53, \"readyState\": 1, \"src\": \"27.0.0.1:5200/output/v2_assets/cet/cet4-sample-hope-wish.mp3\"}",
+      "evidence": ""
+    },
+    {
+      "item": "B8 倍速真实生效",
+      "pass": true,
+      "expected": "playbackRate=1.5",
+      "actual": "1.5",
+      "evidence": ""
+    },
+    {
+      "item": "B9 音源非空且与材料对应",
+      "pass": true,
+      "expected": "非空音频地址",
+      "actual": "27.0.0.1:5200/output/v2_assets/cet/cet4-sample-hope-wish.mp3",
+      "evidence": ""
+    },
+    {
+      "item": "B10 原文已渲染",
+      "pass": true,
+      "expected": "原文文本 >20 字符",
+      "actual": "{\"sel\": \"#subtitle-timeline\", \"len\": 730}",
+      "evidence": ""
+    },
+    {
+      "item": "B11 刷新后页面仍可用",
+      "pass": true,
+      "expected": "播放器仍在",
+      "actual": "{\"t\": 5, \"dur\": 80.53}",
+      "evidence": ""
+    },
+    {
+      "item": "B12 收藏页可用",
+      "pass": true,
+      "expected": "有内容渲染",
+      "actual": "352 字符",
+      "evidence": ""
+    },
+    {
+      "item": "B13 设置页可用",
+      "pass": true,
+      "expected": "有内容渲染",
+      "actual": "690 字符",
+      "evidence": ""
+    },
+    {
+      "item": "B14 窄窗口无横向溢出",
+      "pass": true,
+      "expected": "scrollWidth <= clientWidth+4",
+      "actual": "{\"scrollW\": 375, \"clientW\": 375}",
+      "evidence": ""
+    },
+    {
+      "item": "B15 无 JS 运行时错误",
+      "pass": true,
+      "expected": "无 pageerror",
+      "actual": "[]",
+      "evidence": ""
+    }
+  ]
+}

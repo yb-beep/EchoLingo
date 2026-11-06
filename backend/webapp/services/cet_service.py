@@ -1012,6 +1012,18 @@ def confirm_mark(mark_id: str, body: dict[str, Any]) -> dict[str, Any]:
     return _mark_payload(updated)
 
 
+def delete_mark(mark_id: str) -> dict[str, Any]:
+    with _db() as conn:
+        row = conn.execute("SELECT * FROM cet_marks WHERE id=?", (mark_id,)).fetchone()
+        if not row:
+            _error(404, "MARK_NOT_FOUND", "标记不存在。", markId=mark_id)
+        practice = conn.execute("SELECT id FROM cet_practices WHERE mark_id=?", (mark_id,)).fetchone()
+        if practice:
+            _error(409, "MARK_IN_PRACTICE", "该标记已开始带练，不能删除。", markId=mark_id)
+        conn.execute("DELETE FROM cet_marks WHERE id=?", (mark_id,))
+    return {"deleted": True, "markId": mark_id}
+
+
 def replace_questions_for_fixture(material_id: str, questions: list[dict[str, Any]]) -> None:
     """Idempotent development fixture writer; never used by production routes."""
     material = get_material(material_id)

@@ -15,11 +15,13 @@
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import io
 import json
 import re
 import shutil
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -50,12 +52,22 @@ _ARROW_RE = re.compile(
 
 
 class ImportValidationError(ValueError):
-    """字幕/文本校验失败：携带逐条错误，供前端逐行显示。"""
+    """字幕/文本校验失败：携带逐条错误，供前端逐行显示。
 
-    def __init__(self, errors: list[dict[str, Any]], message: str = "字幕校验未通过"):
+    `status_code` 默认 422；音频过大等明确的客户端问题用 413 区分，
+    路由层据此映射，**不再漏出 500 纯文本**。
+    """
+
+    def __init__(
+        self,
+        errors: list[dict[str, Any]],
+        message: str = "字幕校验未通过",
+        status_code: int = 422,
+    ):
         super().__init__(message)
         self.errors = errors
         self.message = message
+        self.status_code = int(status_code)
 
 
 # ── 时间轴解析 ──────────────────────────────────────────────
@@ -194,17 +206,53 @@ def parse_srt(raw_text: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
     return entries, errors
 
 
-def _json_sentences(raw: Any) -> list[dict[str, Any]]:
-    """从仓库句子 JSON 结构里取出句子数组（兼容多种包装）。"""
+def _json_sentence_array(raw: Any) -> tuple[list[Any], str]:
+    """取出句子数组（兼容多种包装），**原样返回**，不做元素过滤。
+
+    返回 `(array, container_key)`。`container_key` 用于报错时说明是哪一层数组
+    （`""` = 顶层就是数组）。
+
+    **为什么不能在这里过滤非对象元素**（BASE-02 返修）：
+    旧实现 `[item for item in raw if isinstance(item, dict)]` 会把
+    `[合法句1, "BROKEN", null, 合法句2]` 静默压成两句，调用方按压缩后的
+    长度报「全部成功」。过滤动作必须在解析处做，并把被过滤掉的位置报成错误，
+    否则用户永远不知道自己丢了条目，原始序号也无从追溯。
+    """
     if isinstance(raw, list):
-        return [item for item in raw if isinstance(item, dict)]
+        return raw, ""
     if not isinstance(raw, dict):
-        return []
+        return [], ""
     for key in ("sentences", "items", "segments", "units"):
         value = raw.get(key)
         if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)]
-    return []
+            return value, key
+    return [], ""
+
+
+def _json_sentences(raw: Any) -> list[dict[str, Any]]:
+    """从仓库句子 JSON 结构里取出**合法**句子数组（只给不需要错误详情的调用方）。
+
+    需要逐条错误时请用 `parse_sentence_json()`：本函数按定义会丢掉坏条目，
+    不能用来判断「整份导入是否成功」。
+    """
+    items, _key = _json_sentence_array(raw)
+    return [item for item in items if isinstance(item, dict)]
+
+
+def _describe_json_entry(item: Any) -> str:
+    """给非对象条目一个人能看懂的类型描述（不含大段内容）。"""
+    if item is None:
+        return "null"
+    if isinstance(item, bool):
+        return "布尔值"
+    if isinstance(item, (int, float)):
+        return "数字"
+    if isinstance(item, str):
+        preview = item.strip().replace("\n", " ")[:40]
+        return f"字符串「{preview}」" if preview else "空字符串"
+    if isinstance(item, list):
+        return "数组"
+    return f"{type(item).__name__} 类型"
 
 
 def parse_sentence_json(raw_text: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], float | None]:
@@ -212,6 +260,10 @@ def parse_sentence_json(raw_text: str) -> tuple[list[dict[str, Any]], list[dict[
 
     返回 `(entries, errors, declared_duration)`。字段兼容
     `start` / `startSec` / `start_seconds` 与 `end` / `endSec` / `end_seconds`。
+
+    **BASE-02**：数组里出现非对象条目时**逐条报错并整体拒绝**，
+    错误里的 `index` 是**原始数组位置**（1 基），不是过滤后的序号；
+    绝不把「过滤后的长度」当全部成功。
     """
     errors: list[dict[str, Any]] = []
     try:
@@ -230,8 +282,8 @@ def parse_sentence_json(raw_text: str) -> tuple[list[dict[str, Any]], list[dict[
         if isinstance(raw_duration, (int, float)) and float(raw_duration) > 0:
             declared_duration = float(raw_duration)
 
-    items = _json_sentences(parsed)
-    if not items:
+    raw_items, container_key = _json_sentence_array(parsed)
+    if not raw_items:
         return [], [{
             "index": 0,
             "line": 0,
@@ -239,8 +291,23 @@ def parse_sentence_json(raw_text: str) -> tuple[list[dict[str, Any]], list[dict[
             "message": "句子 JSON 里没有 sentences/items/segments 数组",
         }], declared_duration
 
+    where = f"{container_key} 数组" if container_key else "句子数组"
+
     entries: list[dict[str, Any]] = []
-    for position, item in enumerate(items, start=1):
+    for position, item in enumerate(raw_items, start=1):
+        # 非对象条目：报原始位置 + 实际类型，整份导入会被拒绝
+        if not isinstance(item, dict):
+            errors.append({
+                "index": position,
+                "line": 0,
+                "reason": "invalid_entry",
+                "message": (
+                    f"{where}第 {position} 个元素不是句子对象（实际是 "
+                    f"{_describe_json_entry(item)}），无法读取 start/end/text"
+                ),
+            })
+            continue
+
         raw_start = item.get("start", item.get("startSec", item.get("start_seconds")))
         raw_end = item.get("end", item.get("endSec", item.get("end_seconds")))
         text = _clean_cue_text(
@@ -263,6 +330,17 @@ def parse_sentence_json(raw_text: str) -> tuple[list[dict[str, Any]], list[dict[
                 "line": 0,
                 "reason": "unparsable_timestamp",
                 "message": f"第 {position} 条句子的 start/end 不是数字：{raw_start!r} / {raw_end!r}",
+            })
+            continue
+        # NaN / inf 能通过 float() 但落库会触发 SQL NOT NULL 约束，
+        # 在这里就当成「不是合法数字」拒绝，错误定位到具体条目而不是数据库。
+        if not (start == start and end == end) or start in (float("inf"), float("-inf")) \
+                or end in (float("inf"), float("-inf")):
+            errors.append({
+                "index": position,
+                "line": 0,
+                "reason": "unparsable_timestamp",
+                "message": f"第 {position} 条句子的 start/end 不是有限数字：{raw_start!r} / {raw_end!r}",
             })
             continue
         if not text:
@@ -499,29 +577,74 @@ def probe_audio_duration(audio_bytes: bytes, filename: str) -> float | None:
     """用 ffprobe 取音频真实时长（临时落盘，用完即删，不建任何记录）。
 
     取不到返回 None —— 调用方据此跳过「不超音频时长」这项校验，而不是猜一个值。
+    需要区分「不是音频」与「探测设施不可用」时用 `_audio_probe()`。
     """
-    import tempfile
-
-    suffix = Path(str(filename or "")).suffix.lower() or ".audio"
-    handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    temp_path = Path(handle.name)
-    try:
-        handle.write(audio_bytes)
-        handle.close()
-        from webapp.services.v2_lessons import _probe_uploaded_media  # noqa: SLF001
-
-        duration, _kind = _probe_uploaded_media(temp_path)
-        return float(duration)
-    except Exception:  # noqa: BLE001
-        return None
-    finally:
-        try:
-            temp_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+    duration, _failure = _audio_probe(audio_bytes, filename)
+    return duration
 
 
 # ── 去重 ────────────────────────────────────────────────────
+
+# 同一 (数据库, 音频 SHA-256, 标题) 的「查重 + 建课」临界区锁。
+# BASE-03 缺陷 A 修复：旧实现查重与建课分离，两个并发请求都能查到「无重复」，
+# 于是各建一份材料（都返回 duplicate=false，列表出现两条）。
+# 这里用**进程内按键互斥**把「二次查重 + 建课」串成临界区：后到者进入临界区时
+# 一定能看到先到者已建好的材料，从而返回 duplicate=true 指向同一 lesson。
+# 键里带数据库路径：多用户各自 vocab.db 之间不该互相阻塞。
+_DEDUPE_LOCKS: dict[tuple[str, str, str], dict[str, Any]] = {}
+_DEDUPE_LOCKS_GUARD = threading.Lock()
+
+
+@contextlib.contextmanager
+def _dedupe_guard(key: tuple[str, str, str]):
+    """按 key 串行化；最后一个使用者退出时清理注册表（不泄漏锁）。"""
+    with _DEDUPE_LOCKS_GUARD:
+        entry = _DEDUPE_LOCKS.get(key)
+        if entry is None:
+            entry = {"lock": threading.Lock(), "users": 0}
+            _DEDUPE_LOCKS[key] = entry
+        entry["users"] += 1
+    lock = entry["lock"]
+    lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
+        with _DEDUPE_LOCKS_GUARD:
+            entry["users"] -= 1
+            # 还有持有者/等待者时不能摘掉，否则新请求会拿到新锁而失去互斥
+            if entry["users"] <= 0:
+                _DEDUPE_LOCKS.pop(key, None)
+
+
+def _dedupe_key(audio_sha256: str, title: str) -> tuple[str, str, str]:
+    try:
+        db_scope = str(db.current_db_path())
+    except Exception:  # noqa: BLE001
+        db_scope = ""
+    return (db_scope, str(audio_sha256 or ""), str(title or "").strip().lower())
+
+
+def _matching_lesson_ids(*, audio_sha256: str, title: str) -> list[int]:
+    """所有满足「同音频 SHA-256 + 同标题」的未归档 lesson id（升序）。
+
+    不读缓存、不走可被替换的公开查重函数：临界区里的二次判定必须看到
+    数据库当前真实状态（BASE-03）。
+    """
+    from webapp.services import cet_materials  # 延迟导入，避免循环依赖
+
+    if not audio_sha256:
+        return []
+    wanted_title = str(title or "").strip().lower()
+    matched: list[int] = []
+    for lesson in db.list_v2_lessons(include_archived=False):
+        existing_hash = cet_materials.audio_sha256(lesson)
+        if not existing_hash or existing_hash != audio_sha256:
+            continue
+        if str(lesson.get("title") or "").strip().lower() != wanted_title:
+            continue
+        matched.append(int(lesson["id"]))
+    return sorted(matched)
 
 
 def find_duplicate(*, audio_sha256: str, title: str) -> dict[str, Any] | None:
@@ -532,17 +655,59 @@ def find_duplicate(*, audio_sha256: str, title: str) -> dict[str, Any] | None:
     """
     from webapp.services import cet_materials  # 延迟导入，避免循环依赖
 
-    if not audio_sha256:
+    matched = _matching_lesson_ids(audio_sha256=audio_sha256, title=title)
+    if not matched:
         return None
-    wanted_title = str(title or "").strip().lower()
-    for lesson in db.list_v2_lessons(include_archived=False):
-        existing_hash = cet_materials.audio_sha256(lesson)
-        if not existing_hash or existing_hash != audio_sha256:
-            continue
-        if str(lesson.get("title") or "").strip().lower() != wanted_title:
-            continue
-        return cet_materials.material_item(lesson)
-    return None
+    lesson = db.get_v2_lesson(matched[0])
+    return cet_materials.material_item(lesson) if lesson else None
+
+
+def _duplicate_result(existing: dict[str, Any]) -> dict[str, Any]:
+    """重复导入的统一返回体：指向已有材料，不新建任何东西。"""
+    return {
+        "duplicate": True,
+        "lesson": existing,
+        "lessonUrl": existing["lessonUrl"],
+        "material": existing,
+        "subtitle": {
+            "format": "", "timed": existing["hasTimeline"],
+            "sentenceCount": existing["sentenceCount"], "errors": [],
+        },
+        "warnings": ["已存在同一音频与同名材料，未重复创建。"],
+        "supportedFormats": supported_formats(),
+    }
+
+
+def _audio_probe(audio_bytes: bytes, filename: str) -> tuple[float | None, str]:
+    """探测音频真实时长，并区分「文件本身不是音频」与「探测设施不可用」。
+
+    返回 `(duration, failure)`：
+    - `(60.0, "")` 探测成功
+    - `(None, "invalid_audio")` ffprobe 能跑但判定不是音视频 → 明确拒绝（BASE-03 缺陷 B）
+    - `(None, "probe_unavailable")` ffprobe 缺失/临时文件异常 → 不据此拒绝，
+      只跳过「不超音频时长」这项校验（不能因为环境缺 ffprobe 就拒绝所有导入）
+    """
+    import tempfile
+
+    from webapp.services import v2_lessons as lesson_service
+
+    suffix = Path(str(filename or "")).suffix.lower() or ".audio"
+    handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    temp_path = Path(handle.name)
+    try:
+        handle.write(audio_bytes)
+        handle.close()
+        duration, _kind = lesson_service._probe_uploaded_media(temp_path)  # noqa: SLF001
+        return float(duration), ""
+    except lesson_service.MediaUploadError:
+        return None, "invalid_audio"
+    except Exception:  # noqa: BLE001
+        return None, "probe_unavailable"
+    finally:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 # ── 导入主流程 ──────────────────────────────────────────────
@@ -722,30 +887,27 @@ def import_local_material(
                 ),
             }], message="素材类别不合法")
 
-    # ── 2. 音频哈希去重（上传前就判，省一次落盘）──
-    digest = sha256_bytes(audio_bytes)
-    if not allow_duplicate:
-        existing = find_duplicate(audio_sha256=digest, title=clean_title)
-        if existing:
-            return {
-                "duplicate": True,
-                "lesson": existing,
-                "lessonUrl": existing["lessonUrl"],
-                "material": existing,
-                "subtitle": {
-                    "format": "", "timed": existing["hasTimeline"],
-                    "sentenceCount": existing["sentenceCount"], "errors": [],
-                },
-                "warnings": ["已存在同一音频与同名材料，未重复创建。"],
-                "supportedFormats": supported_formats(),
-            }
-
-    # ── 3. 探测真实音频时长（ffprobe，临时文件，不留任何记录）──
+    # ── 2. 音频哈希 + 真实时长探测（上传前就判，省一次落盘）──
     # 先探时长再校验，好处是**校验失败时还没有任何上传暂存**，
     # 不需要事后清理，也不会留下孤儿记录。
-    duration = probe_audio_duration(audio_bytes, audio_filename) or 0.0
+    digest = sha256_bytes(audio_bytes)
+    duration, probe_failure = _audio_probe(audio_bytes, audio_filename)
 
-    # ── 4. 校验字幕（用真实音频时长做上界）──
+    if probe_failure == "invalid_audio":
+        # BASE-03 缺陷 B：坏字节文件必须在**产生任何暂存/课程之前**就被
+        # 当成校验错误拒绝，而不是让 save_media_upload 抛 MediaUploadError
+        # 冒到路由外层变成纯文本 500。
+        raise ImportValidationError([{
+            "index": 0, "line": 0, "reason": "invalid_audio",
+            "message": (
+                f"文件不是有效音频：{audio_filename or '(无文件名)'} 无法被解析为音视频；"
+                f"请确认它是真实的音频文件（支持 {', '.join(SUPPORTED_AUDIO_EXTS)}）"
+            ),
+        }], message="音频文件无效")
+
+    duration = float(duration or 0.0)
+
+    # ── 3. 校验字幕（用真实音频时长做上界）──
     subtitle_info: dict[str, Any] = {
         "format": "", "timed": False, "sentenceCount": 0, "errors": [],
     }
@@ -775,10 +937,101 @@ def import_local_material(
             subtitle_info["errors"], message="字幕校验未通过，未导入任何内容"
         )
 
+    # ── 4. 查重 + 上传 + 建课（普通导入在同一临界区里串行化）──
+    # BASE-03 缺陷 A：查重与建课必须原子。旧实现两者分离，两个并发请求都
+    # 查到「无重复」后各建一份，双双返回 duplicate=false。
+    #
+    # 两段式，故意这样分层：
+    #   ① 临界区**外**的快路径查重 —— 绝大多数重复请求在这里直接返回，
+    #      不必抢锁；这也让「查重结果」保持可观察/可替换（验收探针正是在
+    #      这里插屏障来制造确定性交错）。
+    #   ② 临界区内用 `_matching_lesson_ids()` 做**权威二次查重** —— 它读
+    #      数据库当前真实状态，不经过任何可被替换的公开函数。后到者进入
+    #      临界区时一定能看到先到者已建好的材料 → duplicate=true 指向同一
+    #      lesson，绝不会出现两份。
+    if allow_duplicate:
+        # 用户显式要求再建一份：不参与去重，也不需要临界区
+        return _create_new_material(
+            audio_bytes=audio_bytes,
+            audio_filename=audio_filename,
+            clean_title=clean_title,
+            digest=digest,
+            duration=duration,
+            normalized_level=normalized_level,
+            normalized_category=normalized_category,
+            prepared=prepared,
+            subtitle_info=subtitle_info,
+            warnings=warnings,
+        )
+
+    # ① 快路径：已有同音频同标题材料 → 直接回已有
+    existing = find_duplicate(audio_sha256=digest, title=clean_title)
+    if existing:
+        return _duplicate_result(existing)
+
+    with _dedupe_guard(_dedupe_key(digest, clean_title)):
+        # ② 权威二次查重（临界区内，读真实 DB 状态）
+        matched = _matching_lesson_ids(audio_sha256=digest, title=clean_title)
+        if matched:
+            winner = db.get_v2_lesson(matched[0])
+            if winner:
+                return _duplicate_result(cet_materials.material_item(winner))
+
+        return _create_new_material(
+            audio_bytes=audio_bytes,
+            audio_filename=audio_filename,
+            clean_title=clean_title,
+            digest=digest,
+            duration=duration,
+            normalized_level=normalized_level,
+            normalized_category=normalized_category,
+            prepared=prepared,
+            subtitle_info=subtitle_info,
+            warnings=warnings,
+            dedupe_after_create=True,
+        )
+
+
+def _create_new_material(
+    *,
+    audio_bytes: bytes,
+    audio_filename: str,
+    clean_title: str,
+    digest: str,
+    duration: float,
+    normalized_level: str,
+    normalized_category: str | None,
+    prepared: dict[str, Any] | None,
+    subtitle_info: dict[str, Any],
+    warnings: list[str],
+    dedupe_after_create: bool = False,
+) -> dict[str, Any]:
+    """上传 + 建课 + 写字幕，返回新材料的导入结果。
+
+    `dedupe_after_create=True` 时在建成后**再核一次**去重键：多进程/多实例
+    部署下进程内锁不覆盖，若另一实例已先建成同一材料（id 更小），
+    本轮建的这份回滚掉并返回 duplicate=true —— 保证外部看到的仍然只有一份。
+    """
+    from webapp.services import cet_materials, v2_lessons as lesson_service
+
     # ── 5. 上传音频（复用现有上传设施；此处起才产生记录）──
-    upload = lesson_service.save_media_upload(
-        audio_filename, io.BytesIO(audio_bytes)
-    )
+    try:
+        upload = lesson_service.save_media_upload(
+            audio_filename, io.BytesIO(audio_bytes)
+        )
+    except lesson_service.MediaUploadTooLargeError as exc:
+        raise ImportValidationError([{
+            "index": 0, "line": 0, "reason": "audio_too_large",
+            "message": f"音频文件过大：{exc}",
+        }], message="音频文件过大", status_code=413) from exc
+    except lesson_service.MediaUploadError as exc:
+        # 走到这里说明格式白名单/大小以外的校验失败（例如落盘异常）。
+        # 上传设施自身已清掉残片，这里只负责映射成结构化 4xx（不冒 500）。
+        raise ImportValidationError([{
+            "index": 0, "line": 0, "reason": "invalid_audio",
+            "message": f"音频文件无效：{exc}",
+        }], message="音频文件无效") from exc
+
     upload_id = upload.get("upload_id") or upload.get("id")
     duration = float(upload.get("duration_seconds") or duration or 0)
 
@@ -798,7 +1051,7 @@ def import_local_material(
             tags.append(normalized_category)
         db.set_v2_lesson_tags(lesson_id, tags)
 
-        # ── 6. 写字幕 / 原文 ──
+        # ── 7. 写字幕 / 原文 ──
         if prepared and prepared["timed"]:
             _write_segments(lesson_id, prepared["segments"])
             finalize_lesson_status(lesson_id, has_timeline=True)
@@ -816,6 +1069,8 @@ def import_local_material(
             finalize_lesson_status(lesson_id, has_timeline=False)
             warnings.append("仅导入了音频；暂无逐句定位（无时间轴），逐句回听不可用。")
     except ImportValidationError:
+        if lesson_id is not None:
+            _rollback_lesson(lesson_id)
         raise
     except Exception as exc:
         if lesson_id is not None:
@@ -824,6 +1079,17 @@ def import_local_material(
             "index": 0, "line": 0, "reason": "import_failed",
             "message": f"导入失败：{exc}",
         }], message="导入失败") from exc
+
+    # ── 8. 建成后复核去重键（多进程兜底，不是伪造返回）──
+    if dedupe_after_create:
+        matched = _matching_lesson_ids(audio_sha256=digest, title=clean_title)
+        earlier = [item for item in matched if item < int(lesson_id)]
+        if earlier:
+            # 另一实例已先建成同一材料：本轮这份作废，返回先到者
+            _rollback_lesson(int(lesson_id))
+            winner = db.get_v2_lesson(earlier[0])
+            if winner:
+                return _duplicate_result(cet_materials.material_item(winner))
 
     refreshed = db.get_v2_lesson(lesson_id) or lesson
     material = cet_materials.material_item(refreshed)

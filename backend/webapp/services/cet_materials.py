@@ -444,15 +444,22 @@ def _level_tag(level: str) -> str | None:
     return None if level == "unspecified" else level
 
 
-def _strip_managed_tags(tags: list[str]) -> list[str]:
-    """去掉级别标签与类别标签，保留用户自己的其他标签。"""
-    kept: list[str] = []
-    for tag in tags:
-        key = tag.strip().lower()
-        if key in _LEVEL_TAGS or key in _CATEGORY_ALIASES:
-            continue
-        kept.append(tag)
-    return kept
+def _is_level_tag(tag: str) -> bool:
+    return tag.strip().lower() in _LEVEL_TAGS
+
+
+def _is_category_tag(tag: str) -> bool:
+    return tag.strip().lower() in _CATEGORY_ALIASES
+
+
+def _strip_level_tags(tags: list[str]) -> list[str]:
+    """只去掉级别标签，保留类别标签与用户自己的其他标签。"""
+    return [tag for tag in tags if not _is_level_tag(tag)]
+
+
+def _strip_category_tags(tags: list[str]) -> list[str]:
+    """只去掉类别标签，保留级别标签与用户自己的其他标签。"""
+    return [tag for tag in tags if not _is_category_tag(tag)]
 
 
 def update_material(
@@ -465,42 +472,71 @@ def update_material(
 ) -> dict[str, Any]:
     """改材料信息 / 手动归类 / 归档恢复（任务书 P1）。
 
+    **PATCH 语义（BASE-01 返修）**：未传的字段一律保留原值，
+    只有显式传入的字段才会被改写。
+
+    - `level=None`（未传）→ 级别标签原样保留；`level="unspecified"` → 退回待分类
+    - `category=None`（未传）→ 类别标签原样保留；`category=""` → 清除类别
+    - `title=None`（未传）→ 标题不变；`archived=None`（未传）→ 归档状态不变
+
+    为什么不能「先删两类标签再重建」：首页「手动归类」只提交 `level`，
+    旧实现会顺手把类别标签删掉且不重建，用户看到的是「六级/未标注」，
+    样例类别凭空丢失；反方向只改类别又会把级别变成 `unspecified`。
+
     级别与类别都写进 `v2_lessons.tags`（冻结约定 §3：只用现有列）。
-    传 `level="unspecified"` 表示退回待分类；传 `category=""` 表示清除类别。
+    级别标签去重后置首，类别标签追加在后；用户自定义标签一律保留。
     """
     lesson = db.get_v2_lesson(int(lesson_id))
     if not lesson:
         raise KeyError(f"lesson {lesson_id} 不存在")
 
-    tags = _strip_managed_tags(_json_tags(lesson.get("tags")))
-    changed = False
-
+    # ── 1. 先把所有校验做完，任何一项不合法都不写库（避免半改）──
+    normalized_level: str | None = None
     if level is not None:
-        normalized = normalize_level(level)
-        tag = _level_tag(normalized)
-        if tag:
-            tags.insert(0, tag)
-        changed = True
+        normalized_level = normalize_level(level)
 
+    normalized_category: str | None = None
+    clear_category = False
     if category is not None:
         if str(category).strip() == "":
-            pass  # 清除类别
+            clear_category = True
         else:
             normalized_category = normalize_category(category)
             if normalized_category is None:
                 raise ValueError(
                     f"category 仅支持 {'、'.join(CATEGORIES)}，收到：{category!r}"
                 )
-            tags.append(normalized_category)
-        changed = True
 
+    new_title: str | None = None
     if title is not None:
         new_title = str(title).strip()
         if not new_title:
             raise ValueError("标题不能为空")
-        db.update_v2_lesson_metadata(int(lesson_id), title=new_title[:200])
+        new_title = new_title[:200]
 
-    if changed:
+    # ── 2. 只重写本次显式传入的那一类受管标签 ──
+    tags = _json_tags(lesson.get("tags"))
+    tags_changed = False
+
+    if normalized_level is not None:
+        tags = _strip_level_tags(tags)
+        tag = _level_tag(normalized_level)
+        if tag:
+            tags.insert(0, tag)
+        tags_changed = True
+
+    if clear_category:
+        tags = _strip_category_tags(tags)
+        tags_changed = True
+    elif normalized_category is not None:
+        tags = _strip_category_tags(tags)
+        tags.append(normalized_category)
+        tags_changed = True
+
+    if new_title is not None:
+        db.update_v2_lesson_metadata(int(lesson_id), title=new_title)
+
+    if tags_changed:
         db.set_v2_lesson_tags(int(lesson_id), tags)
 
     if archived is not None:

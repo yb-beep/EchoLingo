@@ -540,3 +540,167 @@ def test_supported_formats_declared(isolated_db):
     summary = cet_materials.library_summary()
     assert summary["supportedLevels"] == ["cet4", "cet6", "unspecified"]
     assert summary["supportedCategories"] == ["真题", "练习", "样例", "开发夹具"]
+
+
+# ── BASE-01 回归：PATCH 未传字段必须保留（互不串改）────────────
+# 缺陷：`update_material()` 一进来就 `_strip_managed_tags()` 把级别与类别
+# 标签**全部删掉**，然后只重建本次请求传入的字段。
+# 真实路径：首页「手动归类」只提交 `level`，于是类别被删且不重建，
+# 六级/样例 材料点一下「仍填六级」就变成「六级/未标注」。
+# 反方向只改 `category` 会把级别变成 unspecified。
+#
+# 下面四条覆盖验收要求的四个互不串改场景，第五条是组合场景。
+
+
+def test_patch_level_only_keeps_category(isolated_db):
+    """只改级别 → 类别原样保留（验收方原始场景）。"""
+    lesson_id = _make_lesson(
+        title="六级样例材料", source_url="file://cet6-sample.mp3",
+        tags=["cet6", "样例", "我的标签"],
+    )
+
+    updated = cet_materials.update_material(lesson_id, level="cet6")
+
+    assert updated["level"] == "cet6"
+    # 关键断言：类别没有被顺手删掉
+    assert updated["category"] == "样例"
+    assert "样例" in updated["tags"]
+    # 用户自定义标签也不能丢
+    assert "我的标签" in updated["tags"]
+    # 旧级别标签被替换而不是并存
+    assert updated["tags"].count("cet6") == 1
+
+    # 落库后重新读一遍（不是只看返回值）
+    reloaded = cet_materials.get_material(lesson_id)
+    assert (reloaded["level"], reloaded["category"]) == ("cet6", "样例")
+
+
+def test_patch_category_only_keeps_level(isolated_db):
+    """只改类别 → 级别原样保留（验收方 API 反方向场景）。"""
+    lesson_id = _make_lesson(
+        title="六级样例材料", source_url="file://cet6-sample.mp3",
+        tags=["cet6", "样例"],
+    )
+
+    updated = cet_materials.update_material(lesson_id, category="真题")
+
+    assert updated["category"] == "真题"
+    # 关键断言：级别没有变成 unspecified
+    assert updated["level"] == "cet6"
+    assert "cet6" in updated["tags"]
+    assert "样例" not in updated["tags"]  # 旧类别被替换
+    assert cet_materials.library_summary()["pendingClassification"] == 0
+
+    reloaded = cet_materials.get_material(lesson_id)
+    assert (reloaded["level"], reloaded["category"]) == ("cet6", "真题")
+
+
+def test_patch_title_only_keeps_level_and_category(isolated_db):
+    """只改标题 → 级别与类别都不动。"""
+    lesson_id = _make_lesson(
+        title="旧标题", source_url="file://cet6-sample.mp3",
+        tags=["cet6", "样例"],
+    )
+
+    updated = cet_materials.update_material(lesson_id, title="新标题")
+
+    assert updated["title"] == "新标题"
+    assert updated["level"] == "cet6"
+    assert updated["category"] == "样例"
+    # 只改标题不该重写 tags（内容与顺序都不变）
+    assert updated["tags"] == ["cet6", "样例"]
+
+
+def test_patch_archive_only_keeps_level_and_category(isolated_db):
+    """只归档 / 恢复 → 级别与类别都不动。"""
+    lesson_id = _make_lesson(
+        title="要归档的材料", source_url="file://cet6-sample.mp3",
+        tags=["cet6", "样例"],
+    )
+
+    archived = cet_materials.update_material(lesson_id, archived=True)
+    assert archived["archived"] is True
+    assert archived["level"] == "cet6"
+    assert archived["category"] == "样例"
+
+    restored = cet_materials.update_material(lesson_id, archived=False)
+    assert restored["archived"] is False
+    assert restored["level"] == "cet6"
+    assert restored["category"] == "样例"
+    assert restored["tags"] == ["cet6", "样例"]
+
+
+def test_patch_level_and_category_together(isolated_db):
+    """同时改级别和类别 → 两者都生效，互不残留旧值。"""
+    lesson_id = _make_lesson(
+        title="材料", source_url="file://a.mp3", tags=["cet4", "练习", "我的标签"],
+    )
+
+    updated = cet_materials.update_material(lesson_id, level="cet6", category="真题")
+
+    assert updated["level"] == "cet6"
+    assert updated["category"] == "真题"
+    assert "cet4" not in updated["tags"]
+    assert "练习" not in updated["tags"]
+    assert "我的标签" in updated["tags"]
+    assert updated["tags"] == ["cet6", "我的标签", "真题"]
+
+
+def test_patch_explicit_clear_only_clears_that_field(isolated_db):
+    """明确清空才删除，且只删被清的那一类（BASE-01 另一半语义）。"""
+    lesson_id = _make_lesson(
+        title="材料", source_url="file://a.mp3", tags=["cet6", "样例"],
+    )
+
+    # 只清级别：类别保留
+    back_to_pending = cet_materials.update_material(lesson_id, level="unspecified")
+    assert back_to_pending["level"] == "unspecified"
+    assert back_to_pending["category"] == "样例"
+    assert cet_materials.library_summary()["pendingClassification"] == 1
+
+    # 恢复级别后只清类别：级别保留
+    cet_materials.update_material(lesson_id, level="cet6")
+    cleared = cet_materials.update_material(lesson_id, category="")
+    assert cleared["category"] is None
+    assert cleared["level"] == "cet6"
+    assert "样例" not in cleared["tags"]
+
+
+def test_patch_invalid_value_does_not_partially_write(isolated_db):
+    """一项不合法就整体不写：不能出现「级别改了、类别报错」的半改状态。"""
+    lesson_id = _make_lesson(
+        title="材料", source_url="file://a.mp3", tags=["cet6", "样例"],
+    )
+
+    with pytest.raises(ValueError):
+        cet_materials.update_material(lesson_id, level="cet4", category="随便写的")
+
+    untouched = cet_materials.get_material(lesson_id)
+    assert untouched["level"] == "cet6"
+    assert untouched["category"] == "样例"
+    assert untouched["tags"] == ["cet6", "样例"]
+
+
+def test_route_patch_level_only_keeps_category(client, isolated_db):
+    """验收方浏览器路径的 HTTP 等价：PATCH 只带 level，类别必须还在。"""
+    lesson_id = _make_lesson(
+        title="六级样例材料", source_url="file://cet6-sample.mp3",
+        tags=["cet6", "样例"],
+    )
+
+    resp = client.patch(
+        f"/api/cet/base/materials/{lesson_id}", json={"level": "cet6"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["level"] == "cet6"
+    assert data["category"] == "样例"
+
+    # 反方向：只带 category，级别必须还在
+    resp = client.patch(
+        f"/api/cet/base/materials/{lesson_id}", json={"category": "真题"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["level"] == "cet6"
+    assert data["category"] == "真题"

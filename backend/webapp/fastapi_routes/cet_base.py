@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from webapp.services import cet_import, cet_materials
@@ -40,6 +41,44 @@ def _validation_payload(exc: cet_import.ImportValidationError) -> dict[str, Any]
         "message": exc.message,
         "errors": exc.errors,
         "errorCount": len(exc.errors),
+    }
+
+
+def _validation_status(exc: cet_import.ImportValidationError) -> int:
+    """校验错误的状态码：默认 422；文件过大用 413 区分（BASE-03）。"""
+    return int(getattr(exc, "status_code", 422) or 422)
+
+
+def _media_upload_error_types() -> tuple[type[BaseException], ...]:
+    """上传设施的错误类型（延迟导入，避免路由模块启动时硬依赖服务实现）。"""
+    from webapp.services.v2_lessons import (
+        MediaUploadConsumedError,
+        MediaUploadError,
+        MediaUploadTooLargeError,
+    )
+
+    return (MediaUploadTooLargeError, MediaUploadConsumedError, MediaUploadError)
+
+
+def _media_upload_error_status(exc: BaseException) -> int:
+    from webapp.services.v2_lessons import MediaUploadTooLargeError
+
+    return 413 if isinstance(exc, MediaUploadTooLargeError) else 422
+
+
+def _media_upload_error_payload(exc: BaseException) -> dict[str, Any]:
+    """上传错误 → 与 ImportValidationError 同构的结构化错误体。"""
+    from webapp.services.v2_lessons import MediaUploadTooLargeError
+
+    reason = "audio_too_large" if isinstance(exc, MediaUploadTooLargeError) else "invalid_audio"
+    return {
+        "code": "IMPORT_VALIDATION_FAILED",
+        "message": "音频文件过大" if reason == "audio_too_large" else "音频文件无效",
+        "errors": [{
+            "index": 0, "line": 0, "reason": reason,
+            "message": str(exc) or type(exc).__name__,
+        }],
+        "errorCount": 1,
     }
 
 
@@ -216,5 +255,33 @@ async def import_material(
             allow_duplicate=allow_duplicate,
         )
     except cet_import.ImportValidationError as exc:
-        raise HTTPException(status_code=422, detail=_validation_payload(exc)) from exc
+        raise HTTPException(
+            status_code=_validation_status(exc), detail=_validation_payload(exc)
+        ) from exc
+    except _media_upload_error_types() as exc:
+        # BASE-03 缺陷 B：上传设施的错误（扩展名伪装、ffprobe 不认、空文件、
+        # 超大小）必须映射成结构化 4xx。服务层已映射过一次，这里是第二道
+        # 保险：任何绕过服务层映射的上传错误也不能漏成纯文本 500。
+        raise HTTPException(
+            status_code=_media_upload_error_status(exc),
+            detail=_media_upload_error_payload(exc),
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        # 真正的程序异常**不吞**：状态码仍是 500（不谎报成用户的输入错误），
+        # 但响应体是结构化 JSON 而不是纯文本 "Internal Server Error"，
+        # 前端能拿到可读原因，服务端日志仍保留完整栈。
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": {
+                    "code": "IMPORT_INTERNAL_ERROR",
+                    "message": f"导入过程出现未预期错误：{type(exc).__name__}",
+                    "errors": [{
+                        "index": 0, "line": 0, "reason": "internal_error",
+                        "message": str(exc) or type(exc).__name__,
+                    }],
+                    "errorCount": 1,
+                },
+            },
+        )
     return result

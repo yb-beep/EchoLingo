@@ -1,0 +1,254 @@
+{
+  "problem1_autoplay_steal": {
+    "records": [
+      {
+        "i": 1,
+        "t_before_key": 3.758,
+        "t_120ms_after": 3.884,
+        "t_after_1.5s": 5.283
+      },
+      {
+        "i": 2,
+        "t_before_key": 5.284,
+        "t_120ms_after": 5.404,
+        "t_after_1.5s": 6.804
+      },
+      {
+        "i": 3,
+        "t_before_key": 6.804,
+        "t_120ms_after": 6.938,
+        "t_after_1.5s": 8.338
+      }
+    ],
+    "pressedAtSec_of_marks": [
+      3.76,
+      5.284,
+      6.805
+    ],
+    "rewind_detected": false
+  },
+  "problem2_dup": {
+    "S_marks_before": 3,
+    "S_marks_after": 4,
+    "dom_rows": 4,
+    "delta": 1
+  },
+  "problem4_row_text": [
+    "标记于 0:03.76 待确认 → 候选句 0:00.01–0:03.49 It's getting late and we're both displaying signs of weariness. 回听 前一句 后一句 确认这句 删除",
+    "标记于 0:05.28 待确认 → 候选句 0:00.01–0:03.49 It's getting late and we're both displaying signs of weariness. 回听 前一句 后一句 确认这句 删除"
+  ],
+  "problem5_delete_btn": [
+    {
+      "disabled": false,
+      "title": "删除这个标记"
+    },
+    {
+      "disabled": false,
+      "title": "删除这个标记"
+    },
+    {
+      "disabled": false,
+      "title": "删除这个标记"
+    }
+  ],
+  "problem6_timeline": [
+    {
+      "sec": "0.01",
+      "state": "pending",
+      "title": "0:00.01 候选句 · 待确认（0:00.01–0:03.49｜标记于 0:03.76）"
+    },
+    {
+      "sec": "0.01",
+      "state": "pending",
+      "title": "0:00.01 候选句 · 待确认（0:00.01–0:03.49｜标记于 0:05.28）"
+    },
+    {
+      "sec": "3.55",
+      "state": "pending",
+      "title": "0:03.55 候选句 · 待确认（0:03.55–0:07.01｜标记于 0:06.80）"
+    },
+    {
+      "sec": "3.55",
+      "state": "pending",
+      "title": "0:03.55 候选句 · 待确认（0:03.55–0:07.01｜标记于 0:08.34）"
+    }
+  ],
+  "problem6_marks": [
+    {
+      "id": "mark-2bc71de38bde",
+      "pressed": 3.76,
+      "sug": "v2-1-0",
+      "conf": null
+    },
+    {
+      "id": "mark-e6b9490fa6d1",
+      "pressed": 5.284,
+      "sug": "v2-1-0",
+      "conf": null
+    },
+    {
+      "id": "mark-bdb64468bd89",
+      "pressed": 6.805,
+      "sug": "v2-1-1",
+      "conf": null
+    },
+    {
+      "id": "mark-36106065404c",
+      "pressed": 8.342,
+      "sug": "v2-1-1",
+      "conf": null
+    }
+  ],
+  "problem6_sentences": {
+    "v2-1-0": [
+      0.01,
+      3.49
+    ],
+    "v2-1-1": [
+      3.55,
+      7.01
+    ],
+    "v2-1-2": [
+      7.28,
+      9.6
+    ],
+    "v2-1-3": [
+      9.78,
+      11.46
+    ],
+    "v2-1-4": [
+      11.7,
+      13.68
+    ],
+    "v2-1-5": [
+      14.72,
+      16.5
+    ],
+    "v2-1-6": [
+      16.76,
+      17.5
+    ],
+    "v2-1-7": [
+      17.5,
+      23.96
+    ],
+    "v2-1-8": [
+      24.48,
+      26.12
+    ],
+    "v2-1-9": [
+      26.28,
+      28.14
+    ],
+    "v2-1-10": [
+      28.64,
+      29.34
+    ],
+    "v2-1-11": [
+      30.09,
+      36.22
+    ],
+    "v2-1-12": [
+      36.77,
+      41.41
+    ],
+    "v2-1-13": [
+      41.59,
+      46.07
+    ],
+    "v2-1-14": [
+      47.24,
+      48.86
+    ],
+    "v2-1-15": [
+      49.06,
+      50
+    ],
+    "v2-1-16": [
+      50.32,
+      51.28
+    ],
+    "v2-1-17": [
+      51.68,
+      56.62
+    ],
+    "v2-1-18": [
+      57.28,
+      62.28
+    ],
+    "v2-1-19": [
+      62.54,
+      65.51
+    ],
+    "v2-1-20": [
+      65.84,
+      67.01
+    ],
+    "v2-1-21": [
+      67.22,
+      71.23
+    ],
+    "v2-1-22": [
+      71.6,
+      72.08
+    ],
+    "v2-1-23": [
+      72.34,
+      74.64
+    ],
+    "v2-1-24": [
+      75.11,
+      79.84
+    ],
+    "v2-1-25": [
+      80.39,
+      85.25
+    ],
+    "v2-1-26": [
+      85.69,
+      88.61
+    ],
+    "v2-1-27": [
+      89.17,
+      90.99
+    ],
+    "v2-1-28": [
+      90.99,
+      91.57
+    ],
+    "v2-1-29": [
+      92.06,
+      97.66
+    ],
+    "v2-1-30": [
+      98.05,
+      101.23
+    ],
+    "v2-1-31": [
+      101.8,
+      105.28
+    ]
+  },
+  "problem3_lesson3": {
+    "url": "/workspace/3",
+    "toolbar": false,
+    "toolbarText": null,
+    "questions": false,
+    "cetS": {
+      "mid": "v2-3",
+      "sent": 0
+    }
+  },
+  "problem3_lesson4": {
+    "url": "/workspace/4",
+    "toolbar": false,
+    "toolbarText": null,
+    "questions": false,
+    "cetS": null
+  },
+  "problem3_lesson1_control": {
+    "toolbar": true,
+    "toolbarText": "开始卡点练习 今日复习 标记后自动回听"
+  },
+  "pageerrors": []
+}

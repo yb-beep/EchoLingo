@@ -212,6 +212,38 @@ body.cet-listening .learning-controls {
   box-shadow: inset 0 -2px 0 #e08e0b;
 }
 
+/* ── 卡点修复 A-1：标记后自动回听开关 ─────────────────── */
+/* 默认关闭（不打断播放位置）。样式与工具栏其他控件同一套变量，不引新设计系统。 */
+.cet-autoplay-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted, #687069);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.cet-autoplay-switch input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--brand, #2f6f5e);
+}
+
+/* ── 卡点修复 A-4：把「标记时刻」与「候选句区间」明确分成两段 ── */
+/* 原来两个不同口径并排、看不出关系，用户以为标错。 */
+.cet-mark-arrow {
+  color: var(--muted, #687069);
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+.cet-mark-sentence-none {
+  color: var(--muted, #687069);
+  font-style: italic;
+}
+
 /* 窄窗口不溢出（计划 T16） */
 @media (max-width: 720px) {
   .cet-toolbar { margin-left: 0; width: 100%; }

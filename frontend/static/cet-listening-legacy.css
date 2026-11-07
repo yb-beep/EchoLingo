@@ -1,0 +1,576 @@
+/* 四六级卡点训练 · 样式
+ *
+ * 原则：复用 EchoLingo 原有 CSS 变量与圆角/间距，不引入新设计系统。
+ * 只加本功能必需的类，避免影响原页面。
+ */
+
+/* 工具栏：挂在 .learning-controls 里，与原控件同一行 */
+.cet-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.cet-btn {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--brand, #2f6f5e);
+  border-radius: 8px;
+  background: var(--brand, #2f6f5e);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: filter .15s;
+}
+.cet-btn:hover { filter: brightness(1.06); }
+.cet-btn.active { background: #b8860b; border-color: #b8860b; }
+.cet-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+.cet-btn-sm {
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink, #202421);
+  font-size: 12px;
+  cursor: pointer;
+}
+.cet-btn-sm:hover { border-color: var(--brand, #2f6f5e); color: var(--brand, #2f6f5e); }
+.cet-btn-danger { border-color: #e7c5bd; background: #fff7f5; color: #a33d2c; }
+.cet-btn-danger:hover { border-color: #c9573f; color: #8f2f1f; }
+
+.cet-hint {
+  font-size: 12px;
+  color: var(--muted, #687069);
+}
+.cet-hint.error { color: #c0392b; }
+
+/* 标记列表 */
+.cet-marks {
+  margin-top: 12px;
+  border-top: 1px dashed var(--line, #d9ded8);
+  padding-top: 10px;
+}
+.cet-marks-title {
+  font-size: 12px;
+  color: var(--muted, #687069);
+  margin-bottom: 8px;
+}
+
+.cet-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 9px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  border-left: 3px solid transparent;
+  background: #fafbf9;
+}
+
+/* 三态：颜色 + 文字双重标识（不只靠颜色，见计划 §4） */
+.cet-mark-pending { border-left-color: #e08e0b; background: #fff8ec; }
+.cet-mark-ready   { border-left-color: #276fbf; background: #eef4fc; }
+.cet-mark-done    { border-left-color: #2f8f4e; background: #eef8f1; }
+
+.cet-mark-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted, #687069);
+  min-width: 52px;
+}
+
+.cet-mark-badge {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.cet-mark-badge-pending { background: #fdebc8; color: #8a5a00; }
+.cet-mark-badge-ready   { background: #d8e6f8; color: #17457a; }
+.cet-mark-badge-done    { background: #d6eedd; color: #1c5c33; }
+
+.cet-mark-sentence {
+  flex: 1 1 200px;
+  color: var(--ink, #202421);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cet-mark-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+/* 侧栏面板 */
+.cet-panel {
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.cet-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.cet-panel-state {
+  font-size: 11px;
+  color: var(--muted, #687069);
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #f1f3f0;
+}
+.cet-panel-state.done { background: #d6eedd; color: #1c5c33; }
+
+.cet-panel-foot { margin-top: 10px; }
+
+.cet-empty {
+  font-size: 12px;
+  color: var(--muted, #687069);
+  padding: 8px 0;
+}
+
+/* 题目 */
+.cet-q { margin-bottom: 14px; }
+.cet-q-stem {
+  font-size: 13px;
+  line-height: 1.55;
+  margin-bottom: 7px;
+}
+.cet-q-opts { display: flex; flex-direction: column; gap: 5px; }
+
+.cet-opt {
+  text-align: left;
+  padding: 7px 10px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 7px;
+  background: #fff;
+  font-size: 12.5px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.cet-opt:hover { border-color: var(--brand, #2f6f5e); }
+.cet-opt.sel {
+  border-color: var(--brand, #2f6f5e);
+  background: #eef6f3;
+}
+
+/* 交卷结果 */
+.cet-q-result {
+  padding: 9px 10px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
+.cet-q-ok  { background: #e8f5e9; border: 1px solid #a5d6a7; }
+.cet-q-no  { background: #fdecea; border: 1px solid #f5b7b1; }
+.cet-q-unk { background: #f2f2f2; border: 1px solid #d5d5d5; }
+
+.cet-q-evidence {
+  margin-top: 6px;
+  padding-left: 9px;
+  border-left: 3px solid rgba(0, 0, 0, .1);
+  font-size: 11.5px;
+  color: var(--muted, #687069);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  line-height: 1.5;
+}
+
+/* 带练 */
+.cet-feedback {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.cet-practice-out {
+  font-size: 12.5px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #f6f7f4;
+  margin-bottom: 10px;
+  min-height: 34px;
+  line-height: 1.5;
+}
+.cet-practice-out.ok { background: #eef6f3; }
+.cet-practice-out.error { background: #fdecea; color: #a3312a; }
+
+/* 练习模式下给播放器一点视觉提示 */
+body.cet-listening .learning-controls {
+  box-shadow: inset 0 -2px 0 #e08e0b;
+}
+
+/* ── 卡点修复 A-1：标记后自动回听开关 ─────────────────── */
+/* 默认关闭（不打断播放位置）。样式与工具栏其他控件同一套变量，不引新设计系统。 */
+.cet-autoplay-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted, #687069);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.cet-autoplay-switch input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--brand, #2f6f5e);
+}
+
+/* ── 卡点修复 A-4：把「标记时刻」与「候选句区间」明确分成两段 ── */
+/* 原来两个不同口径并排、看不出关系，用户以为标错。 */
+.cet-mark-arrow {
+  color: var(--muted, #687069);
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+.cet-mark-sentence-none {
+  color: var(--muted, #687069);
+  font-style: italic;
+}
+
+/* 窄窗口不溢出（计划 T16） */
+@media (max-width: 720px) {
+  .cet-toolbar { margin-left: 0; width: 100%; }
+  .cet-mark-sentence { flex-basis: 100%; white-space: normal; }
+}
+
+/* ── 复习面板（M3）────────────────────────────────────── */
+.cet-review-card {
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: #fafbf9;
+}
+
+.cet-review-sentence {
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 9px;
+}
+
+.cet-review-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cet-review-list {
+  border-top: 1px dashed var(--line, #d9ded8);
+  padding-top: 9px;
+  margin-bottom: 9px;
+}
+
+.cet-review-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  background: #fff;
+}
+
+.cet-review-current { background: #eef4fc; border-left: 3px solid #276fbf; }
+.cet-review-done    { background: #eef8f1; border-left: 3px solid #2f8f4e; }
+.cet-review-skipped { background: #f6f6f6; border-left: 3px solid #bbb; color: #888; }
+.cet-review-pending { border-left: 3px solid #e08e0b; }
+
+.cet-review-idx {
+  width: 18px;
+  text-align: center;
+  color: var(--muted, #687069);
+  flex: none;
+}
+.cet-review-label {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: #eef2ed;
+  color: var(--muted, #687069);
+  flex: none;
+}
+.cet-review-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cet-review-ctrl {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* AI 等待提示 */
+.cet-ai-note {
+  font-size: 12px;
+  color: var(--muted, #687069);
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f6f7f4;
+}
+.cet-ai-note.warn {
+  background: #fff8e1;
+  color: #8a5a00;
+}
+
+/* ── F08：候选预览标记 ─────────────────────────────────── */
+.cet-mark-preview-tag {
+  font-size: 11px;
+  color: #8a5a00;
+  background: #fdf3dc;
+  padding: 1px 6px;
+  border-radius: 9px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 「确认这句」是真正落库的动作，比「前/后一句」更醒目 */
+.cet-btn-confirm {
+  border-color: #2f6f5e;
+  background: #2f6f5e;
+  color: #fff;
+}
+.cet-btn-confirm:hover { filter: brightness(1.06); color: #fff; }
+
+/* ── F05：隐藏原文（只控显隐，不改结构）────────────────── */
+/* 进入卡点练习或换句检验时给 body 加 .cet-hide-text。
+   覆盖三处泄露原文的区域：当前句字幕、翻译、内容大纲摘要、整篇阅读正文。
+   用 visibility/opacity 之外的「内容遮挡」方式，避免布局跳动；
+   同时保留元素占位（原 UI 结构不变）。 */
+body.cet-hide-text #current-subtitle,
+body.cet-hide-text #subtitle-translation {
+  position: relative;
+  color: transparent !important;
+  user-select: none;
+}
+body.cet-hide-text #current-subtitle::after,
+body.cet-hide-text #subtitle-translation::after {
+  content: '原文已隐藏（听力模式）';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  color: var(--muted, #687069);
+  font-size: 12px;
+  font-style: italic;
+}
+/* 生词卡与句子元信息同样泄露原文（截图实测：练习模式下
+   「displaying · v. 展出；使展现」仍然可见，等于把卡住的词告诉了用户） */
+/* 生词卡是独立着色的子元素（.vocab-chip / .meaning 各有自己的 color），
+   只把容器设 transparent 挡不住（截图实测仍然显示「displaying v. 展出」）。
+   所以用 visibility:hidden 整体藏掉，再用 ::after 在容器上显示替代文案。 */
+body.cet-hide-text #vocab-chips .vocab-chip,
+body.cet-hide-text #vocab-chips .vocab-chip * {
+  visibility: hidden !important;
+}
+/* 点词查询浮层（#word-popover）也是原文出口：截图实测它悬在字幕区，
+   显示「displaying / v. 展出；使展现」，等于直接给答案。
+   练习模式下整体藏掉，并禁掉它被打开。 */
+body.cet-hide-text #word-popover {
+  display: none !important;
+}
+/* 真正的漏点：当前句区的「点词查询」把每个词渲染成
+   <ruby class="lookup-word-wrap"><button class="subtitle-word">displaying</button>
+   <rt class="word-gloss">v. 展出；使展现</rt></ruby>
+   —— 按钮和 ruby 注释各有自己的 color，父级 transparent 挡不住。
+   用 visibility:hidden 连同子元素整体藏掉。 */
+body.cet-hide-text .lookup-word-wrap,
+body.cet-hide-text .lookup-word-wrap *,
+body.cet-hide-text .subtitle-word,
+body.cet-hide-text .word-gloss {
+  visibility: hidden !important;
+}
+/* #subtitle-meta / #subtitle-position 本身只有一行文本，
+   用 color:transparent 就能藏住文字，且保留自己的 ::after 提示 */
+body.cet-hide-text #subtitle-meta,
+body.cet-hide-text #subtitle-position {
+  color: transparent !important;
+  user-select: none;
+  position: relative;
+  min-height: 16px;
+}
+body.cet-hide-text #vocab-chips {
+  position: relative;
+  min-height: 22px;
+}
+body.cet-hide-text #vocab-chips::after,
+body.cet-hide-text #subtitle-meta::after {
+  content: '（原文已隐藏）';
+  color: var(--muted, #687069);
+  font-size: 11px;
+  font-style: italic;
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+}
+
+/* 大纲里的句子摘要同样泄露原文 */
+body.cet-hide-text .outline-preview,
+body.cet-hide-text .outline-title {
+  color: transparent !important;
+  user-select: none;
+}
+body.cet-hide-text .outline-preview::after {
+  content: '（原文已隐藏）';
+  color: var(--muted, #687069);
+  font-size: 11px;
+}
+/* 整篇阅读正文 */
+body.cet-hide-text #reading-passage {
+  color: transparent !important;
+  user-select: none;
+}
+
+/* ── F10：时间线颜色标记 ───────────────────────────────── */
+.cet-timeline {
+  margin-top: 8px;
+  padding: 8px 10px 6px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 8px;
+  background: #fafbf9;
+}
+
+.cet-timeline-track {
+  position: relative;
+  height: 26px;
+  border-radius: 6px;
+  background: #eef1ec;
+  border: 1px solid #e2e6e0;
+  overflow: visible;
+}
+
+.cet-timeline-empty {
+  font-size: 11.5px;
+  color: var(--muted, #687069);
+  padding: 4px 8px;
+  line-height: 18px;
+}
+
+/* 单个标记：竖条 + 状态文字（颜色 + 文字双重标识） */
+.cet-timeline-mark {
+  position: absolute;
+  top: -3px;
+  transform: translateX(-50%);
+  min-width: 20px;
+  height: 30px;
+  padding: 0 4px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: transform .12s;
+}
+.cet-timeline-mark:hover { transform: translateX(-50%) scale(1.12); z-index: 3; }
+.cet-timeline-mark:focus-visible {
+  outline: 2px solid #17457a;
+  outline-offset: 1px;
+}
+
+/* 三态颜色 */
+.cet-timeline-mark-pending { background: #e08e0b; border-color: #b8730a; }
+.cet-timeline-mark-ready   { background: #276fbf; border-color: #1d5596; }
+.cet-timeline-mark-done    { background: #2f8f4e; border-color: #23713d; }
+
+.cet-timeline-mark-text {
+  pointer-events: none;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .25);
+}
+
+/* 图例：颜色 + 文字 */
+.cet-timeline-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--muted, #687069);
+}
+.cet-timeline-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cet-timeline-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.cet-timeline-dot-pending { background: #e08e0b; }
+.cet-timeline-dot-ready   { background: #276fbf; }
+.cet-timeline-dot-done    { background: #2f8f4e; }
+
+/* ── F05：换句检验区 ───────────────────────────────────── */
+.cet-transfer {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.cet-transfer-stem {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--ink, #202421);
+}
+
+.cet-transfer-meta {
+  font-size: 11px;
+  color: var(--muted, #687069);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 7px;
+}
+
+.cet-transfer-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.cet-transfer-question {
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin: 8px 0 7px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: #f2f6f3;
+}
+
+/* 选项未听完时禁用，视觉上明确「还没解锁」 */
+#cet-transfer-box .cet-opt:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  border-style: dashed;
+}

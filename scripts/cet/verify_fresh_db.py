@@ -124,7 +124,9 @@ def main() -> int:
     for m in cet:
         check(f"{m['materialId']} 句子数 32", m.get("sentenceCount") == 32,
               f"实际 {m.get('sentenceCount')}")
-        check(f"{m['materialId']} 题目数 5", m.get("questionCount") == 5,
+        # 卡点融合 D1：演示材料导入时过滤「(样例占位)」题（answer 未确认），
+        # 两份样例各剩 4 道可判分题；夹具文件仍保留第 9 题覆盖未知答案路径。
+        check(f"{m['materialId']} 题目数 4（样例占位题已过滤）", m.get("questionCount") == 4,
               f"实际 {m.get('questionCount')}")
 
     print()

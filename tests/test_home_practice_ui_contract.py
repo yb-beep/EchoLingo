@@ -12,7 +12,11 @@ INDEX_HTML = (
 
 
 def test_sentence_library_is_browse_first_and_has_inline_listening_controls():
-    assert "今日复习" not in INDEX_HTML
+    # 卡点融合 H3：首页允许新增「今日复习」卡（模板中受 cet_listening_agent 门控），
+    # 但句子收藏区仍必须是「浏览优先 + 行内听力控制」的旧结构。
+    assert 'id="cet-today-review"' in INDEX_HTML
+    assert 'class="sentence-library-heading"' in INDEX_HTML
+    assert 'class="sentence-library-tools sentence-playback-tools"' in INDEX_HTML
 
 
 def test_planning_filters_are_not_exposed_in_vocab_or_sentence_libraries():

@@ -360,10 +360,12 @@ def test_p1_6_cet_does_not_break_when_credits_script_absent(cet_html):
 
 def test_cet_player_cache_buster_bumped():
     src = _text(WORKSPACE)
-    assert "/static/cet-player.js?v=20261106-fix2" in src, (
-        "cet-player.js 缓存串未 bump，包2 改完后真实用户刷新仍拿到旧 JS"
+    # 卡点融合 W 包改了 cet-player.js 行为（§2 句播放接口），缓存串必须升到 drill-w。
+    assert "/static/cet-player.js?v=20261107-drill-w" in src, (
+        "cet-player.js 缓存串未 bump 到 20261107-drill-w，真实用户刷新仍拿到旧 JS"
     )
-    assert "?v=20261105-p1" not in src.split("cet-player.js", 1)[1].split(">", 1)[0]
+    player_line = src.split("cet-player.js", 1)[1].split(">", 1)[0]
+    assert "20261106-fix2" not in player_line, "旧的 cet-player.js 缓存串仍在模板里"
 
 
 def test_cet_favorites_cache_buster_bumped():

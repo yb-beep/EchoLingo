@@ -463,21 +463,18 @@ def test_defect5_inpractice_null_falls_back_to_clickable():
     静态断言：前端的判断必须写成「明确为 true 才禁用」，而不是「不是 false 就禁用」。
     """
     src = LISTENING_JS.read_text(encoding="utf-8")
-    rm_start = src.index("function renderMarks(")
-    rm_body = src[rm_start:rm_start + 7000]
-    del_pos = rm_body.find("const del = el('button'")
-    assert del_pos != -1
-    del_block = rm_body[del_pos:del_pos + 900]
+    rm_start = src.index("function buildMarkMenu(")
+    rm_body = src[rm_start:rm_start + 5000]
 
-    # 必须是 === true / == true 这类「显式真值」判断，不能是 !== false / !m.inPractice
+    # 必须是 === true 这类「显式真值」判断，不能是 !== false / !m.inPractice
     import re as _re
-    explicit_true = _re.search(r"inPractice\s*===\s*true|inPractice\s*==\s*true", del_block)
-    negated = _re.search(r"!\s*m\.inPractice|inPractice\s*!==\s*false", del_block)
+    explicit_true = _re.search(r"inPractice\s*===\s*true", rm_body)
+    negated = _re.search(r"!\s*m\.inPractice|inPractice\s*!==\s*false", rm_body)
 
-    assert explicit_true or not negated, (
-        "删除按钮把「inPractice 非 false」当成禁用条件 —— 当 inPractice 为 null（旧路径/字段缺失）时"
+    assert explicit_true and not negated, (
+        "删除菜单项把「inPractice 非 false」当成禁用条件 —— 当 inPractice 为 null（旧路径/字段缺失）时"
         "会把所有标记都锁死。应写成「inPractice === true 才禁用」，null 按可点处理（后端兜底）。"
-        f"删除按钮代码块：{del_block!r}"
+        f"删除菜单代码块：{rm_body!r}"
     )
 
 
@@ -494,21 +491,18 @@ def test_defect5_frontend_disable_condition_uses_inpractice():
     """
     src = LISTENING_JS.read_text(encoding="utf-8")
 
-    rm_start = src.index("function renderMarks(")
-    rm_body = src[rm_start:rm_start + 7000]
-    del_pos = rm_body.find("const del = el('button'")
-    assert del_pos != -1, "找不到删除按钮的创建代码"
-    del_block = rm_body[del_pos:del_pos + 900]
+    rm_start = src.index("function buildMarkMenu(")
+    rm_body = src[rm_start:rm_start + 5000]
 
-    # 断言 1：删除按钮本身必须有禁用逻辑
-    assert "del.disabled = true" in del_block, (
-        "删除按钮没有任何禁用逻辑（缺陷 5 完全未修）—— "
+    # 断言 1：菜单删除项本身必须有禁用逻辑
+    assert "btn.disabled = true" in rm_body, (
+        "删除菜单项没有任何禁用逻辑（缺陷 5 完全未修）—— "
         "已带练的标记删除按钮仍无条件可点，用户点了才看到「不能删除」"
     )
 
     # 断言 2：禁用依据必须是 inPractice（后端权威字段）
-    assert "inPractice" in del_block, (
-        "删除按钮的禁用条件没有读后端权威字段 `inPractice`。"
+    assert "inPractice" in rm_body, (
+        "删除菜单项的禁用条件没有读后端权威字段 `inPractice`。"
         "后端 delete_mark() 是「cet_practices 有行就拒绝」，与 practice.status 无关；"
         "若前端用 markState()==='done'（仅 status==='complete'）判断，"
         "则 status='active'（刚开始带练，最常见）时按钮仍可点、点了才报错 —— 缺陷 5 未真正修复。"
@@ -547,16 +541,15 @@ def test_defect6_timeline_click_jumps_to_same_place_as_tick():
     """静态：点刻度跳的位置 == 刻度画的位置（同一来源，不能两套口径）。"""
     src = LISTENING_JS.read_text(encoding="utf-8")
     start = src.index("function renderTimelineMarks(")
-    body = src[start:start + 3000]
+    body = src[start:start + 4000]
 
-    # 刻度定位用的 sec 与点击跳转用的句子必须来自同一候选
-    tick_sec = re.search(r"const sec = (.+?);", body)
-    assert tick_sec, "找不到时间线刻度的 sec 计算"
-    assert "sent" in tick_sec.group(1), (
-        f"刻度位置（{tick_sec.group(1)!r}）不是来自候选句对象"
+    # 新交互：点刻度先开聚合气泡，气泡里的回听必须与刻度同一候选句。
+    assert "openTimelinePopover(btn, group.items)" in body, (
+        "点刻度没有打开气泡/弹层"
     )
-    assert "replayRange(sent.startSeconds" in body, (
-        "点刻度没有跳到候选句起点（与刻度位置不一致）"
+    assert "cet-timeline-popover-play" in src, "气泡里没有回听按钮"
+    assert "playMark(item.mark, item.sentenceId)" in src, (
+        "气泡回听没有按同一候选句播放（与刻度位置不一致）"
     )
 
 

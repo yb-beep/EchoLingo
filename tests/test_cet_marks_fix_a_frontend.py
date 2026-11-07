@@ -146,30 +146,22 @@ def test_a1_switch_is_persisted(js: str):
     assert "localStorage.setItem" in body, "saveAutoplayPref() 没有落盘"
 
 
-def test_a1_switch_is_mounted_in_toolbar(js: str):
-    """开关必须挂在工具栏里（和「开始卡点练习 / 今日复习」并列），用户能看见。"""
+def test_a1_switch_api_kept_without_legacy_toolbar(js: str):
+    """三步流程不再把自动回听做成旧工具栏复选框，但开关 API 与偏好必须保留。"""
     body = _block(js, "function mount()", "function setListening(")
-    assert "cet-autoplay-mark" in body, "工具栏里没有自动回听开关"
-    assert "标记后自动回听" in body, "开关缺少可读文案"
-    # 必须真的追加进工具栏，而不是创建了没挂
-    assert re.search(r"bar\.appendChild\(\s*autoWrap\s*\)", body), "开关没有追加进工具栏"
+    assert "cet-autoplay-mark" not in body, "旧工具栏自动回听复选框应随 #cet-toolbar 一起移除"
+    assert "function setAutoplayOnMark(" in js, "setAutoplayOnMark API 被删了"
+    assert "autoplayKey: 'cet.marks.autoplay.v1'" in js, "自动回听偏好键丢失"
 
 
-def test_a1_switch_blurs_after_toggle(js_raw: str):
-    """勾完开关必须 blur。
+def test_a1_switch_blurs_after_toggle(js: str):
+    """调用 setAutoplayOnMark(..., {blur:true}) 时必须把焦点从控件移走。
 
-    否则焦点留在 <input> 上，而 isTypingTarget() 把 input 一律当输入目标，
-    之后按 M 全被吞掉（实测：勾完开关按 M 不产生标记）。
-
-    注意：用**去注释前**的原文找代码块 —— 这段代码块后面紧邻的注释标题
-    `// ── UI 挂载` 在去注释后会被一起删掉，块边界就找不到了。
+    否则焦点留在 input/button 上，而 isTypingTarget() 会吞掉之后的 M 键。
     """
-    body = _block(js_raw, "function setAutoplayOnMark(", "// ── UI 挂载")
+    body = _block(js, "function setAutoplayOnMark(", "async function api(")
     assert "blur()" in body, "setAutoplayOnMark() 没有把焦点从复选框移走"
-    mount_body = _block(_strip_js_comments(js_raw), "function mount()", "function setListening(")
-    assert re.search(r"setAutoplayOnMark\(autoBox\.checked,\s*\{\s*blur:\s*true\s*\}\)", mount_body), (
-        "复选框 onchange 没有传 { blur: true }"
-    )
+    assert "opts && opts.blur" in body, "setAutoplayOnMark() 不再支持 { blur: true } 选项"
 
 
 def test_a1_css_has_switch_style(css: str):
@@ -248,8 +240,8 @@ def test_a4_row_labels_pressed_time_explicitly(js: str):
     """列表里必须显式写「标记于 X」，不能只放一个裸时间。"""
     body = _block(js, "function renderMarks()", "function previewMark(")
     assert "标记于" in body, "标记行没有显式的「标记于」文案"
-    assert re.search(r"`标记于 \$\{fmt\(m\.pressedAtSec\)\}`", body), (
-        "「标记于」后面应带 pressedAtSec"
+    assert re.search(r"`标记于 \$\{fmtClock\(m\.pressedAtSec\)\}`", body), (
+        "「标记于」后面应带 pressedAtSec（新实现用 fmtClock）"
     )
 
 
@@ -264,10 +256,12 @@ def test_a4_row_labels_sentence_as_candidate(js: str):
     )
 
 
-def test_a4_row_has_arrow_separator(js: str):
-    """两段之间要有可见的关系符号，让人一眼看出是「标记位置 → 吸附出的候选句」。"""
+def test_a4_row_hides_sentence_before_review(js: str):
+    """blind 步骤的卡点行不得泄露候选句原文；review/drill 才显示句子与状态。"""
     body = _block(js, "function renderMarks()", "function previewMark(")
-    assert "cet-mark-arrow" in body, "缺少标记时刻与候选句之间的箭头分隔"
+    assert "S.step !== 'blind'" in body, "卡点行没有按步骤控制句子/确认入口的显隐"
+    assert "cet-mark-sentence" in body, "review/drill 的候选句展示被删掉了"
+    assert "确认这句" in body and "开始带练" in body, "review 步骤的主动作缺失"
 
 
 def test_a4_css_has_arrow_style(css: str):
@@ -280,27 +274,21 @@ def test_a4_css_has_arrow_style(css: str):
 
 
 def test_a5_delete_disabled_by_in_practice(js: str):
-    """删除按钮必须按后端透出的 `inPractice` 禁用，不能用 markState()。
+    """「开始带练」后删除按钮必须按后端透出的 `inPractice` 禁用（在 ⋯ 菜单里）。
 
     为什么不能用 markState()：
         markState() 只在 status==='complete' 时返回 'done'，
         而 cet_practices 默认 status 是 'active'；后端 delete_mark() 的拒绝条件是
         「cet_practices 里有没有对应行」，与 status 无关。
-        所以「已开始带练但没练完」这个最常见状态下 markState() 返回 'ready'，
-        按钮仍可点，用户点下去才收到 409 MARK_IN_PRACTICE。
     """
-    body = _block(js, "function renderMarks()", "function previewMark(")
-    assert re.search(r"if\s*\(\s*m\.inPractice\s*===\s*true\s*\)", body), (
+    body = _block(js, "function buildMarkMenu(", "function renderMarks(")
+    assert re.search(r"m\.inPractice\s*===\s*true", body), (
         "删除按钮没有按 `m.inPractice === true` 判断（必须严格等于 true，"
         "因为 inPractice 可能是 null）"
     )
-    assert re.search(r"del\.disabled\s*=\s*true", body), "已带练时没有禁用删除按钮"
+    assert re.search(r"btn\.disabled\s*=\s*true", body), "已带练时没有禁用菜单删除按钮"
     assert "该标记已开始带练，不能删除" in body, "缺少 title 说明"
-    # 反向：不得再退回 markState()==='done' 的判定（漏掉 active 态）
-    i = body.find("const del = el('button'")
-    assert i > 0, "找不到删除按钮构造处"
-    del_block = body[i:i + 900]
-    assert "st === 'done'" not in del_block, (
+    assert "st === 'done'" not in body, (
         "删除按钮又变回按 markState()==='done' 判定 —— "
         "会漏掉「已开始带练但未完成（active）」这个最常见状态"
     )
@@ -308,17 +296,12 @@ def test_a5_delete_disabled_by_in_practice(js: str):
 
 def test_a5_in_practice_null_means_deletable(js: str):
     """inPractice 为 null（旧接口/未查场景）时按「可点」处理，只有 true 才禁用。"""
-    body = _block(js, "function renderMarks()", "function previewMark(")
-    i = body.find("const del = el('button'")
-    del_block = body[i:i + 900]
-    assert "else {" in del_block, "缺少 else 分支（null/false 应保持可点）"
-    assert re.search(r"del\.title = '删除这个标记'", del_block), "可点态缺少 title"
-    # 不允许把 null 也当禁用（`if (m.inPractice)` 会把 null 判成 false 反而没事，
-    # 但 `!m.inPractice` / `m.inPractice === false` 这类写法会把 null 误判成可点/不可点，
-    # 所以明确锁定「=== true」这一种写法）
-    assert not re.search(r"if\s*\(\s*!\s*m\.inPractice\s*\)", body), (
-        "不要用 !m.inPractice 取反判断（语义容易反）"
+    body = _block(js, "function buildMarkMenu(", "function renderMarks(")
+    assert re.search(r"m\.inPractice\s*===\s*true", body), "删除菜单没有严格按 === true 判断"
+    assert not re.search(r"!\s*m\.inPractice", body), (
+        "不要用 !m.inPractice 取反判断（null 会被误判成可点/不可点）"
     )
+    assert "add('删除'" in body, "找不到删除菜单项"
 
 
 def test_a5_start_practice_syncs_local_flag(js: str):
@@ -332,12 +315,12 @@ def test_a5_start_practice_syncs_local_flag(js: str):
 
 def test_a5_delete_still_enabled_for_other_states(js: str):
     """未带练的标记必须保持可点（后端仍会最终校验，前端只是提前反馈）。"""
-    body = _block(js, "function renderMarks()", "function previewMark(")
-    i = body.find("if (m.inPractice === true)")
-    assert i > 0
-    tail = body[i:i + 900]
-    assert re.search(r"else\s*\{", tail), "inPractice 之外没有 else 分支（可能把全部行都禁用了）"
-    assert "del.onclick" in tail, "非禁用态没有绑定删除动作"
+    body = _block(js, "function buildMarkMenu(", "function renderMarks(")
+    assert re.search(
+        r"add\('删除',\s*\(\)\s*=>\s*deleteMark\(m\),\s*m\.inPractice\s*===\s*true,",
+        body,
+    ), "删除菜单项的禁用条件不是 inPractice === true"
+    assert "btn.onclick" in body, "非禁用态没有绑定删除动作"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -347,7 +330,7 @@ def test_a5_delete_still_enabled_for_other_states(js: str):
 
 def test_a6_timeline_uses_candidate_start(js: str):
     """刻度位置必须用候选句起点，不是 pressedAtSec。"""
-    body = _block(js, "function renderTimelineMarks(", "function mountQuestionPanel(")
+    body = _block(js, "function timelineItems(", "function groupTimelineItems(")
     assert re.search(
         r"const\s+sentId\s*=\s*st\s*===\s*'pending'\s*\?\s*previewSentenceId\(m\)\s*:\s*m\.confirmedSentenceId",
         body,
@@ -365,28 +348,28 @@ def test_a6_timeline_uses_candidate_start(js: str):
 
 def test_a6_timeline_keeps_test_hooks(js: str):
     """保留 data-cet-mark-sec 供测试用，并补上可追溯的属性。"""
-    body = _block(js, "function renderTimelineMarks(", "function mountQuestionPanel(")
+    body = _block(js, "function renderTimelineMarks(", "function scoreLabel(")
     assert "data-cet-mark-sec" in body, "data-cet-mark-sec 被删了（测试依赖）"
     assert "data-cet-mark-sentence" in body, "缺少「该刻度对应哪句」的可追溯属性"
     assert "data-cet-mark-pressed" in body, "缺少原始按键时刻属性（便于对账）"
 
 
 def test_a6_timeline_title_shows_relation(js: str):
-    """title 要能看出「刻度 = 候选句」且带原始标记时刻。"""
-    body = _block(js, "function renderTimelineMarks(", "function mountQuestionPanel(")
-    assert "候选句 · " in body, "title 没有标出「候选句」"
-    assert "标记于" in body, "title 没有带上原始按键时刻（用户无法对账）"
+    """title 要能看出「刻度 = 候选句区间」且带原始标记时刻。"""
+    body = _block(js, "function renderTimelineMarks(", "function scoreLabel(")
+    assert " 标记 · " in body, "title 没有标出「标记 · 状态」关系"
+    assert "fmtClock(first.mark.pressedAtSec)" in body or "fmtClock(item.mark.pressedAtSec)" in body, (
+        "title 没有带上原始按键时刻（用户无法对账）"
+    )
+    assert "fmt(first.sentence.startSeconds)" in body, "title 没有带候选句区间"
 
 
 def test_a6_timeline_click_lands_on_tick(js: str):
-    """点刻度跳到的位置必须与刻度画的位置一致（都是候选句起点）。"""
-    body = _block(js, "function renderTimelineMarks(", "function mountQuestionPanel(")
-    i = body.find("tick.onclick")
-    assert i > 0, "刻度没有点击行为"
-    tail = body[i:]
-    assert re.search(r"replayRange\(sent\.startSeconds,\s*sent\.endSeconds\)", tail), (
-        "点刻度没有回放候选句区间"
-    )
+    """点刻度先打开聚合气泡，回听按钮播放的必须与刻度同一候选句。"""
+    body = _block(js, "function renderTimelineMarks(", "function scoreLabel(")
+    assert "openTimelinePopover(btn, group.items)" in body, "点刻度没有打开气泡/弹层"
+    assert "cet-timeline-popover-play" in js, "气泡里没有回听按钮"
+    assert "playMark(item.mark, item.sentenceId)" in js, "气泡回听没有按同一候选句播放"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -407,6 +390,7 @@ def test_no_regression_space_still_not_taken(js: str):
 def test_no_regression_manual_replay_kept(js: str):
     """「回听 / 前一句 / 后一句 / 开始带练」等手动入口必须保留。"""
     body = _block(js, "function renderMarks()", "function previewMark(")
+    body += _block(js, "function buildMarkMenu(", "function renderMarks(")
     for label in ("回听", "前一句", "后一句", "确认这句", "开始带练", "改一下", "删除"):
         assert label in body, f"手动入口「{label}」不见了"
 

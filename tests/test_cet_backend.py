@@ -695,10 +695,16 @@ def test_model_output_validation_and_missing_key(client: TestClient, monkeypatch
     practice = create_practice(client, "missing-key")
     meaning = send_feedback(client, play_current(client, practice, "missing-key-play"), "meaning", "missing-key-feedback")
     response = next_step(client, meaning.json(), "missing-key-request")
-    assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "AI_NOT_CONFIGURED"
+    # D2：无 key 的 feedback=meaning 不再 503，改为 200 + 离线 ECDICT 兜底结构。
+    assert response.status_code == 200
+    body = response.json()
+    data = (body.get("currentStep") or {}).get("data") or {}
+    assert data.get("mode") == "offline"
+    assert data.get("hint") == "配置模型后可获得讲解"
+    assert isinstance(data.get("words"), list) and data["words"]
+    assert all({"word", "ipa", "meaning"} <= set(item) for item in data["words"])
     local = client.post(
         f"/api/cet/practices/{practice['id']}/local",
-        json=practice_body(client, meaning.json(), actionId="missing-key-local", action="replay"),
+        json=practice_body(client, response.json(), actionId="missing-key-local", action="replay"),
     )
     assert local.status_code == 200

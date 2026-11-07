@@ -1674,12 +1674,24 @@
   </header>
 
   <main class="main-grid">
+    {#- W2：顶部步骤条。只在「CET 模式 + 卡点模块启用」时渲染；step 为空时 JS 隐藏。
+        顺序固定：盲听做题 → 对答案·找卡点 → 精练·复习。 -#}
+    {% if cet_on and cet_features.cet_listening_agent %}
+    <nav id="ws-step-bar" class="ws-step-bar" aria-label="练习步骤" hidden>
+      <ol class="ws-step-list">
+        <li class="ws-step-item" data-ws-step="blind"><span class="ws-step-no">①</span><span class="ws-step-label">盲听做题</span></li>
+        <li class="ws-step-item" data-ws-step="review"><span class="ws-step-no">②</span><span class="ws-step-label">对答案·找卡点</span></li>
+        <li class="ws-step-item" data-ws-step="drill"><span class="ws-step-no">③</span><span class="ws-step-label">精练·复习</span></li>
+      </ol>
+    </nav>
+    {% endif %}
     <section class="watch-column" aria-label="video and current subtitle">
       <div class="video-card">
         <div id="youtube-player"></div>
       </div>
 
-      <div class="learning-controls" aria-label="playback and subtitle controls">
+      <div class="learning-controls" aria-label="playback and subtitle controls"{% if cet_on and cet_features.cet_listening_agent %} data-ws-controls="cet"{% endif %}>
+        {% if cet_on and cet_features.cet_listening_agent %}<div class="ws-control-row ws-control-row--primary">{% endif %}
         <label class="control-group">
           字幕
           <select id="subtitle-mode" onchange="onSubtitleModeChange()">
@@ -1732,6 +1744,13 @@
           <span id="intensive-entry-hint" class="intensive-entry-hint" hidden>{{ cet_copy.get('fix2_intensive_need_timeline', '需要逐句时间轴') }}</span>
         </div>
         {% endif %}
+        {% if cet_on and cet_features.cet_listening_agent %}
+        <div id="ws-hotkey-slot" class="ws-hotkey-slot"></div>
+        </div>
+        <div class="ws-control-row ws-control-row--actions" id="ws-step-actions-row">
+          <div id="ws-step-actions" class="ws-step-actions" aria-live="polite"></div>
+        </div>
+        {% endif %}
       </div>
 
       <section class="subtitle-card" aria-label="current subtitle">
@@ -1769,10 +1788,18 @@
     </section>
 
     <aside class="side-column" aria-label="learning workspace">
-      <div class="sidebar-workspace-tabs" role="tablist" aria-label="学习工具"{% if cet_on %} data-cet-tabs="2"{% endif %}>
+      <div class="sidebar-workspace-tabs" role="tablist" aria-label="学习工具"{% if cet_on %} data-cet-tabs="{{ '3' if cet_features.cet_listening_agent else '2' }}"{% endif %}>
+        {#- W4：右栏单面板 + tab。只有卡点模块启用时才出现「本步骤」；
+            题目/带练/复习都由 K 通过 window.__ws.mountStepPanel 挂进这里。 -#}
+        {% if cet_on and cet_features.cet_listening_agent %}
+        <button class="sidebar-workspace-tab" type="button" role="tab" data-sidebar-target="step"
+                aria-controls="ws-step-panel" aria-selected="true" tabindex="0">
+          本步骤<span class="sidebar-tab-status" aria-hidden="true"></span>
+        </button>
+        {% endif %}
         <button class="sidebar-workspace-tab" type="button" role="tab" data-sidebar-target="outline"
                 aria-controls="content-outline-panel" aria-selected="true" tabindex="0">
-          {% if cet_on %}句段导航{% else %}导航{% endif %}<span class="sidebar-tab-status" aria-hidden="true"></span>
+          {% if cet_on and cet_features.cet_listening_agent %}大纲{% elif cet_on %}句段导航{% else %}导航{% endif %}<span class="sidebar-tab-status" aria-hidden="true"></span>
         </button>
         <button class="sidebar-workspace-tab" type="button" role="tab" data-sidebar-target="collection"
                 aria-controls="reading-phase-b" aria-selected="false" tabindex="-1">
@@ -1784,6 +1811,21 @@
           AI 伴读<span class="sidebar-tab-status" aria-hidden="true"></span>
         </button>
       </div>
+
+      {% if cet_on and cet_features.cet_listening_agent %}
+      <section id="ws-step-panel" class="timeline-card ws-step-panel" data-sidebar-panel="step">
+        <div class="panel-head">
+          <h2>本步骤</h2>
+          <span class="panel-note">按当前练习步骤显示题目、带练或复习内容。</span>
+        </div>
+        <div id="ws-step-panel-body" class="ws-step-panel-body">
+          <div class="ws-step-empty">进入练习后在这里显示本步骤内容。</div>
+        </div>
+      </section>
+      {#- K 在初始化时一次注册三步面板并按 id 渲染；非当前步骤的槽位放在隐藏容器里，
+          这样 K 即使还没切到该步骤也能查询/填充自己的面板。 -#}
+      <div id="ws-step-panel-store" class="ws-step-panel-store" hidden></div>
+      {% endif %}
 
       <section id="content-outline-panel" class="timeline-card" data-sidebar-panel="outline">
         <div class="panel-head">
@@ -1947,8 +1989,8 @@ window.__CET_BOOT__ = {
      **模板一行不用改**。关闭态是「资产根本不在 DOM」——不是 CSS 遮挡，
      也不是测试里用 route.abort() 拦浏览器请求。 -->
 {% if cet_features.cet_listening_agent %}
-<link rel="stylesheet" href="/static/cet-listening.css?v=20261107-marks-fix">
-<script src="/static/cet-listening.js?v=20261107-marks-fix"></script>
+<link rel="stylesheet" href="/static/cet-listening.css?v=20261107-drill-k">
+<script src="/static/cet-listening.js?v=20261107-drill-k"></script>
 <script>
 /* BASE-05 第二层：队友模块**已接入**时的材料适配边界（不改队友算法、不改其文件）。
  *
@@ -1998,10 +2040,10 @@ window.__CET_BOOT__ = {
 {% if cet_features.ai_chat_general %}
 <script src="/static/voice-input.js?v=20260715-1"></script>
 {% endif %}
-<link rel="stylesheet" href="/static/cet-workspace.css?v=20261106-fix21">
+<link rel="stylesheet" href="/static/cet-workspace.css?v=20261107-drill-w">
 {#- 返修2：cet-player.js 行为有变更（包2 快捷键），缓存串必须 bump，
     否则真实用户刷新后仍拿到旧 JS。 -#}
-<script src="/static/cet-player.js?v=20261106-fix2" defer></script>
+<script src="/static/cet-player.js?v=20261107-drill-w" defer></script>
 <script src="/static/cet-favorites.js?v=20261106-fix2" defer></script>
 <script>
 const LESSON_ID = {{ lesson_id }};
@@ -2079,8 +2121,18 @@ let subtitleModeInitialized = false;
 // /subtitles 是否已成功回来过：首屏徽标在它之前只能显示「—」，不能断言「无原文」
 let subtitlesLoaded = false;
 const SIDEBAR_ACTIVE_PANEL_KEY = 'english-tool:sidebar-active-panel';
-const SIDEBAR_PANEL_KEYS = ['outline', 'collection', 'ai'];
+// W4：CET 卡点模式新增「本步骤」；其余 tab 保留原键位。
+const SIDEBAR_PANEL_KEYS = ['step', 'outline', 'collection', 'ai'];
 let activeSidebarPanel = 'outline';
+
+// ── W1/W2/W4/W5：步骤融合状态 ─────────────────────────────
+const WS_STEP_KEYS = ['blind', 'review', 'drill'];
+const wsStepSlots = {blind: null, review: null, drill: null};
+let wsCurrentStep = null;
+let wsTranscriptHidden = false;
+const wsHotkeyHelpEntries = new Map();
+let wsOutlineCountTimer = null;
+let wsOutlineCountSignature = '';
 const sidebarPanelStatuses = {};
 const OUTLINE_POLL_INTERVAL_MS = 700;
 let outlinePollStartedAt = null;
@@ -2157,8 +2209,10 @@ function setActiveSidebarPanel(panelKey, {persist = true, focus = false} = {}) {
 function initSidebarWorkspaceTabs() {
   const tabs = [...document.querySelectorAll('.sidebar-workspace-tab[data-sidebar-target]')].filter(tab => !tab.hidden);
   if (!tabs.length) return;
-  let initialPanel = 'outline';
-  try { initialPanel = localStorage.getItem(SIDEBAR_ACTIVE_PANEL_KEY) || 'outline'; } catch (_) {}
+  // W4：卡点模式下默认打开「本步骤」（用户保存过其它选择时尊重用户选择）。
+  const hasStepTab = tabs.some(tab => tab.dataset.sidebarTarget === 'step');
+  let initialPanel = hasStepTab ? 'step' : 'outline';
+  try { initialPanel = localStorage.getItem(SIDEBAR_ACTIVE_PANEL_KEY) || initialPanel; } catch (_) {}
   if (!tabs.some(tab => tab.dataset.sidebarTarget === initialPanel)) initialPanel = tabs[0].dataset.sidebarTarget;
   setActiveSidebarPanel(initialPanel, {persist: false});
   tabs.forEach((tab, index) => {
@@ -2401,6 +2455,10 @@ function toggleChatVoice() {
 
 window.addEventListener('DOMContentLoaded', async () => {
   initSidebarWorkspaceTabs();
+  // W1/W5：原文隐藏状态观察 + W2 首帧步骤兜底读取（裁决 5：W 主动读 __cet.step）。
+  wsInitTranscriptObserver();
+  wsInitStepActionsObserver();
+  wsSetCurrentStep((window.__cet && window.__cet.step) || null, null);
   // BASE-06：先把集中配置的收束规则应用到工作区静态节点（真移除），
   // 再初始化播放器/轮询，避免用户先看到不该出现的入口。
   cetApplyWorkspaceScope();
@@ -2567,6 +2625,11 @@ function syncIntensiveEntry() {
 async function switchStudyMode(mode) {
   if (mode === activeStudyMode) return;
   if (!availableStudyModes.includes(mode)) return;
+  // §2 裁决：切学习模式属于「用户手动操作播放器」，先按 interrupted 结束句播放。
+  const wsPlayer = window.__cetPlayer;
+  if (wsPlayer && typeof wsPlayer.interruptSentencePlayback === 'function') {
+    wsPlayer.interruptSentencePlayback('switch-study-mode');
+  }
   // BASE-06：阅读模式在 CET 模式已收束（reading_course），即使有旧链接/旧状态
   // 直接调 switchStudyMode('reading')，也不切换 —— 不留半状态。
   if (mode === 'reading' && CET_ON && !cetFeature('reading_course')) return;
@@ -3267,6 +3330,13 @@ function seekTo(seconds) {
 }
 
 function onPlaybackRateChange() {
+  // §2 裁决：用户手动改倍速属于「手动操作播放器」，程序化句播放立即 interrupted。
+  // playSentence 自己设置临时倍速时会置 rateApplyInProgress 静默标记，不触发打断。
+  const player = window.__cetPlayer;
+  if (player && typeof player.interruptSentencePlayback === 'function') {
+    const state = player._state;
+    if (!state || !state.rateApplyInProgress) player.interruptSentencePlayback('rate-change');
+  }
   const select = document.getElementById('playback-rate');
   const rate = Number(select ? select.value : 1) || 1;
   if (localMedia) {
@@ -3406,9 +3476,20 @@ function renderOutline() {
     return;
   }
 
+  // W5：原文隐藏时，大纲只显示时间段和每段卡点数（不泄露任何原文/标题摘要）。
+  const transcriptHidden = document.body.classList.contains('cet-hide-text');
+  const markCounts = transcriptHidden ? wsMarkCountsBySentenceIndex() : null;
   container.innerHTML = outlineSections.map((section, idx) => {
     const selected = isInSelectedRange(idx) ? ' selected' : '';
     const active = idx === activeSectionIdx ? ' active' : '';
+    if (transcriptHidden) {
+      const count = wsSectionMarkCount(section, markCounts);
+      const countHtml = count == null ? '' : `<span class="ws-outline-mark-count">${count} 个卡点</span>`;
+      return `<div class="outline-section ws-outline-hidden-mode${active}${selected}" data-idx="${idx}" onclick="onOutlineJump(${idx})">
+        <span class="outline-time">${formatTime(section.start)} – ${formatTime(section.end)}</span>
+        <span class="outline-body">${countHtml}</span>
+      </div>`;
+    }
     // A/B 讨论区间只服务于「按区间提问」的 AI 聊天；CET 模式收束该模块时不显示。
     const rangeActions = cetFeature('ai_chat_general')
       ? `<span class="outline-actions">
@@ -4540,6 +4621,11 @@ function updateSaveState() {
 
 function jumpSentence(delta) {
   if (!sentenceUnits.length) return;
+  // §2 裁决：jumpSentence 属于「用户手动操作播放器」，先让程序化句播放 interrupted。
+  const player = window.__cetPlayer;
+  if (player && typeof player.interruptSentencePlayback === 'function') {
+    player.interruptSentencePlayback('jumpSentence');
+  }
   const current = activeSentenceIdx >= 0 ? activeSentenceIdx : 0;
   const next = Math.max(0, Math.min(sentenceUnits.length - 1, current + delta));
   const sentence = sentenceUnits[next];
@@ -5457,12 +5543,16 @@ function flashCitationTarget(element) {
 
 function playMediaPlayback() {
   if (localMedia && typeof localMedia.play === 'function') {
-    localMedia.play().catch(() => {});
-    return;
+    // 返回原 Promise 供 playSentence 判断「play() 被浏览器拒绝」；错误已吞掉，
+    // 不影响原有调用方（__ws.play / 按钮点击）。
+    const promise = localMedia.play();
+    if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+    return promise;
   }
   if (ytPlayer && typeof ytPlayer.playVideo === 'function') {
     try { ytPlayer.playVideo(); } catch (_) {}
   }
+  return null;
 }
 
 function formatChatInline(content) {
@@ -5682,6 +5772,341 @@ document.addEventListener('click', () => {
   if (pop) pop.style.display = 'none';
 });
 
+// ══════════════════════════════════════════════════════════════
+// W1–W5：卡点融合工作区接口（window.__ws 的新增实现）
+// ══════════════════════════════════════════════════════════════
+
+// ── W1：句播放：实现唯一来源是 cet-player.js（与 L/R 共用同一套播放原语）──
+function wsPlaySentence(index, options) {
+  const player = window.__cetPlayer;
+  if (player && typeof player.playSentence === 'function') {
+    return player.playSentence(index, options);
+  }
+  console.warn('[ws] cet-player 未就绪，playSentence 返回 interrupted');
+  return Promise.resolve('interrupted');
+}
+
+function wsStopSentence() {
+  const player = window.__cetPlayer;
+  if (player && typeof player.stopSentence === 'function') return player.stopSentence();
+  return false;
+}
+
+// ── W1/W5：统一「原文隐藏」──────────────────────────────────────
+// body.cet-hide-text 是 W/K 共用契约：K 的 cet-listening.css 保留既有隐藏规则，
+// W 在 cet-workspace.css 补齐大纲/收藏面板规则。这里同时维护 aria-hidden、
+// 关闭点词浮层，并在隐藏时把大纲切换为「时间 + 每段卡点数」。
+function wsSyncTranscriptAria(hidden) {
+  const hide = Boolean(hidden);
+  const ids = ['current-subtitle', 'subtitle-translation', 'vocab-chips',
+    'subtitle-meta', 'subtitle-position', 'reading-passage', 'word-popover'];
+  ids.forEach(id => {
+    const node = document.getElementById(id);
+    if (node) node.setAttribute('aria-hidden', hide ? 'true' : 'false');
+  });
+  document.querySelectorAll('.outline-preview, .outline-title').forEach(node => {
+    node.setAttribute('aria-hidden', hide ? 'true' : 'false');
+  });
+  // 收藏面板：只遮文本（按钮仍可用），读屏不读原文。
+  document.querySelectorAll('#cet-favorites .cet-fav-text, #cet-favorites .cet-fav-meta').forEach(node => {
+    node.setAttribute('aria-hidden', hide ? 'true' : 'false');
+  });
+  document.querySelectorAll('#reading-saved-items .reading-saved-item').forEach(node => {
+    node.setAttribute('aria-hidden', hide ? 'true' : 'false');
+  });
+  const timeline = document.getElementById('subtitle-timeline');
+  if (timeline) timeline.setAttribute('data-cet-text-hidden', hide ? '1' : '0');
+}
+
+function wsSetTranscriptHidden(hidden) {
+  const want = Boolean(hidden);
+  wsTranscriptHidden = want;
+  document.body.classList.toggle('cet-hide-text', want);
+  if (!want) {
+    // 裁决 4：false = 强制显示，不恢复用户此前的手动选择。
+    // 若用户把「字幕」下拉选到「隐藏字幕」，这里也要强制切回可见模式。
+    const select = document.getElementById('subtitle-mode');
+    if (select && select.value === 'none') {
+      select.value = 'lookup';
+      onSubtitleModeChange();
+    }
+  } else {
+    closeWordPopover();
+  }
+  wsSyncTranscriptAria(want);
+  renderOutline();
+  if (want) wsStartOutlineCountRefresh();
+  else wsStopOutlineCountRefresh();
+  return want;
+}
+
+/** 从 window.__cet.marks 计算「每个句子索引上的卡点数」。没有 __cet/marks 返回 null（不显示）。 */
+function wsMarkCountsBySentenceIndex() {
+  const cet = window.__cet;
+  if (!cet) return null;
+  let marks = null;
+  try { marks = cet.marks; } catch (_) { return null; }
+  if (!Array.isArray(marks)) return null;
+  const cetSentences = (cet.S && Array.isArray(cet.S.sentences)) ? cet.S.sentences : [];
+  const counts = {};
+  for (const mark of marks) {
+    const sid = mark && (mark.confirmedSentenceId || mark.suggestedSentenceId);
+    let idx = -1;
+    if (sid != null) {
+      const sent = cetSentences.find(item => String(item.sentenceId) === String(sid));
+      if (sent) {
+        const start = Number(sent.startSeconds ?? sent.startSec ?? sent.start);
+        if (Number.isFinite(start)) idx = findUnitByTime(sentenceUnits, start);
+      }
+    }
+    if (idx < 0) {
+      const pressed = Number(mark && mark.pressedAtSec);
+      if (Number.isFinite(pressed)) idx = findUnitByTime(sentenceUnits, pressed);
+    }
+    if (idx >= 0) counts[idx] = (counts[idx] || 0) + 1;
+  }
+  return counts;
+}
+
+function wsSectionMarkCount(section, counts) {
+  if (!counts || !section) return null;
+  let total = 0;
+  (section.sentence_indexes || []).forEach(idx => { total += counts[idx] || 0; });
+  return total;
+}
+
+function wsUpdateOutlineMarkCounts() {
+  const counts = wsMarkCountsBySentenceIndex();
+  document.querySelectorAll('#subtitle-timeline .outline-section[data-idx]').forEach(section => {
+    const idx = Number(section.dataset.idx);
+    const outline = outlineSections[idx];
+    const countEl = section.querySelector('.ws-outline-mark-count');
+    if (!countEl || !outline) return;
+    const total = wsSectionMarkCount(outline, counts);
+    if (total == null) {
+      countEl.remove();
+    } else {
+      countEl.textContent = `${total} 个卡点`;
+    }
+  });
+}
+
+function wsOutlineCountsSignature() {
+  const counts = wsMarkCountsBySentenceIndex();
+  if (!counts) return 'none';
+  return Object.keys(counts).sort((a, b) => Number(a) - Number(b))
+    .map(key => `${key}:${counts[key]}`).join('|');
+}
+
+function wsStartOutlineCountRefresh() {
+  if (wsOutlineCountTimer) return;
+  wsOutlineCountSignature = wsOutlineCountsSignature();
+  // K 没有 marks 变更事件契约；轮询只做轻量文本更新，不重渲染大纲（不打断滚动）。
+  wsOutlineCountTimer = window.setInterval(() => {
+    if (!document.body.classList.contains('cet-hide-text')) {
+      wsStopOutlineCountRefresh();
+      return;
+    }
+    const signature = wsOutlineCountsSignature();
+    if (signature === wsOutlineCountSignature) return;
+    wsOutlineCountSignature = signature;
+    wsUpdateOutlineMarkCounts();
+  }, 1500);
+}
+
+function wsStopOutlineCountRefresh() {
+  if (!wsOutlineCountTimer) return;
+  window.clearInterval(wsOutlineCountTimer);
+  wsOutlineCountTimer = null;
+}
+
+// ── W1/W2：步骤条 ────────────────────────────────────────────
+function wsUpdateStepBar(step) {
+  const bar = document.getElementById('ws-step-bar');
+  if (!bar) return;                             // 卡点模块关闭：模板不渲染，静默跳过
+  const valid = WS_STEP_KEYS.includes(step);
+  bar.hidden = !valid;
+  if (!valid) {
+    delete bar.dataset.step;
+    bar.querySelectorAll('[data-ws-step]').forEach(item => {
+      item.classList.remove('active');
+      item.removeAttribute('aria-current');
+    });
+    return;
+  }
+  bar.dataset.step = step;
+  bar.querySelectorAll('[data-ws-step]').forEach(item => {
+    const active = item.dataset.wsStep === step;
+    item.classList.toggle('active', active);
+    if (active) item.setAttribute('aria-current', 'step');
+    else item.removeAttribute('aria-current');
+  });
+}
+
+function wsSetCurrentStep(step, detail) {
+  const normalized = WS_STEP_KEYS.includes(step) ? step : null;
+  const changed = normalized !== wsCurrentStep;
+  wsCurrentStep = normalized;
+  wsUpdateStepBar(normalized);
+  const stepBar = document.getElementById('ws-step-bar');
+  if (stepBar && detail) {
+    // 供调试/验收读取；视觉上不额外渲染，避免步骤条含义被题量/交卷状态带偏。
+    stepBar.dataset.hasQuestions = String(Boolean(detail.hasQuestions));
+    stepBar.dataset.submitted = String(Boolean(detail.submitted));
+  }
+  wsRenderStepPanel();
+  const stepTab = document.querySelector('.sidebar-workspace-tab[data-sidebar-target="step"]');
+  if (normalized && stepTab && changed) {
+    // 裁决 1：切换到新步骤时自动切到「本步骤」tab；同一步内 hasQuestions/submitted
+    // 变化不抢用户正在看的大纲/收藏面板。
+    setActiveSidebarPanel('step');
+  }
+  if (document.body.classList.contains('cet-hide-text')) wsUpdateOutlineMarkCounts();
+  return normalized;
+}
+
+// ── W1/W4：右栏「本步骤」单面板 ────────────────────────────────
+function wsStepPanelStore() {
+  let store = document.getElementById('ws-step-panel-store');
+  if (!store) {
+    store = document.createElement('div');
+    store.id = 'ws-step-panel-store';
+    store.className = 'ws-step-panel-store';
+    store.hidden = true;
+    const side = document.querySelector('.side-column');
+    if (side) side.appendChild(store);
+  }
+  // 清掉误入的占位空态等非槽位节点（只保留 K 注册的三步面板）。
+  const slots = Object.values(wsStepSlots);
+  [...store.children].forEach(child => {
+    if (!slots.includes(child)) child.remove();
+  });
+  return store;
+}
+
+function wsRenderStepPanel() {
+  const bodyEl = document.getElementById('ws-step-panel-body');
+  if (!bodyEl) return;
+  const slot = wsCurrentStep ? wsStepSlots[wsCurrentStep] : null;
+  if (bodyEl.firstChild !== slot) {
+    // 旧槽位退回隐藏容器（保留 K 已渲染的 DOM，切回时不丢内容）。
+    const store = wsStepPanelStore();
+    const slots = Object.values(wsStepSlots);
+    while (bodyEl.firstChild) {
+      const child = bodyEl.firstChild;
+      if (slots.includes(child)) store.appendChild(child);
+      else child.remove();
+    }
+    if (slot) bodyEl.appendChild(slot);
+  }
+  if (slot) {
+    bodyEl.classList.remove('ws-step-panel-empty');
+  } else {
+    bodyEl.innerHTML = '<div class="ws-step-empty">当前步骤暂无内容。</div>';
+    bodyEl.classList.add('ws-step-panel-empty');
+  }
+}
+
+function wsMountStepPanel(stepKey, element) {
+  if (!WS_STEP_KEYS.includes(stepKey)) {
+    console.warn('[ws] mountStepPanel 未知步骤：', stepKey);
+    return false;
+  }
+  if (element == null) {
+    const old = wsStepSlots[stepKey];
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    wsStepSlots[stepKey] = null;
+  } else if (element && element.nodeType === 1) {
+    wsStepSlots[stepKey] = element;
+    // 关键：槽位必须先进 DOM（隐藏容器），否则 K 在非当前步骤渲染时
+    // 用 document.getElementById 找不到自己的面板节点，会渲染成空壳。
+    const store = wsStepPanelStore();
+    if (!store.contains(element) && element.parentElement !== document.getElementById('ws-step-panel-body')) {
+      store.appendChild(element);
+    }
+  } else {
+    console.warn('[ws] mountStepPanel 只接受 Element 或 null');
+    return false;
+  }
+  if (wsCurrentStep === stepKey) {
+    wsRenderStepPanel();
+    if (element && document.querySelector('.sidebar-workspace-tab[data-sidebar-target="step"]')) {
+      setActiveSidebarPanel('step');
+    }
+  }
+  return true;
+}
+
+// ── W1/W3：工具栏第二行（本步骤动作区，单槽位整体替换）──────────
+function wsTruncateStepHints(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('.cet-hint, .ws-step-hint, [data-ws-step-hint]').forEach(node => {
+    if (!node) return;
+    if (node.scrollWidth > node.clientWidth + 1) node.title = String(node.textContent || '').trim();
+  });
+}
+
+function wsSetStepActions(element) {
+  const host = document.getElementById('ws-step-actions');
+  if (!host) return false;
+  if (element == null) {
+    host.innerHTML = '';
+    return true;
+  }
+  if (!element || element.nodeType !== 1) {
+    console.warn('[ws] setStepActions 只接受 Element 或 null');
+    return false;
+  }
+  host.innerHTML = '';
+  host.appendChild(element);
+  wsTruncateStepHints(host);
+  return true;
+}
+
+/** W3：K 会在切换步骤时改写提示文案；内容一变就重新计算是否需要 title（不改变行高）。 */
+function wsInitStepActionsObserver() {
+  const host = document.getElementById('ws-step-actions');
+  if (!host || typeof MutationObserver !== 'function') return;
+  const observer = new MutationObserver(() => wsTruncateStepHints(host));
+  observer.observe(host, {childList: true, subtree: true, characterData: true});
+}
+
+// ── W1：快捷键帮助注册（只展示，不绑键；M 的监听在 K）──────────
+function wsRegisterHotkeyHelp(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+  const key = String(entry.key || '').trim();
+  const label = String(entry.label || '').trim();
+  if (!key || !label) return false;
+  wsHotkeyHelpEntries.set(key, {key, label});
+  const player = window.__cetPlayer;
+  if (player && typeof player.registerHotkeyHelp === 'function') {
+    player.registerHotkeyHelp({key, label});
+  }
+  return true;
+}
+
+// ── W5：K 的 applyTextVisibility 会直接 toggle body class（旧版行为）；
+// 用 MutationObserver 把 W 的状态与 aria/大纲同步跟上，避免两套状态打架。──
+function wsInitTranscriptObserver() {
+  const observer = new MutationObserver(() => {
+    const hidden = document.body.classList.contains('cet-hide-text');
+    if (hidden === wsTranscriptHidden) return;
+    wsTranscriptHidden = hidden;
+    wsSyncTranscriptAria(hidden);
+    renderOutline();
+    if (hidden) wsStartOutlineCountRefresh();
+    else wsStopOutlineCountRefresh();
+  });
+  observer.observe(document.body, {attributes: true, attributeFilter: ['class']});
+}
+
+// W2：K 的步骤变化事件。监听在脚本求值期注册，确保 K 在 DOMContentLoaded
+// 完成初始化/恢复后补发的首帧事件不会漏（裁决 5）。
+document.addEventListener('cet:step-change', event => {
+  const detail = event && event.detail ? event.detail : {};
+  wsSetCurrentStep(detail.step, detail);
+});
+
 // ── P5 接入契约：把工作区真实状态暴露给独立模块 ─────────────────────
 // cet-listening.js（队友卡点模块）与 cet-player.js / cet-favorites.js（底座适配层）
 // 都通过 window.__ws 读取，不直接摸页面私有变量。字段只增不改，见
@@ -5727,6 +6152,20 @@ window.__ws = {
   },
   getRate: () => (localMedia ? localMedia.playbackRate : Number(document.getElementById('playback-rate')?.value || 1)),
   jumpSentence: delta => jumpSentence(delta),
+  // ── W1–W5：卡点融合新增接口（只增不改，见任务书 §2）──────────
+  // 原文隐藏状态（只读）
+  get transcriptHidden() { return document.body.classList.contains('cet-hide-text'); },
+  // §2：播放第 index 句 → Promise<'ended' | 'interrupted'>
+  playSentence: (index, options) => wsPlaySentence(index, options),
+  stopSentence: () => wsStopSentence(),
+  setTranscriptHidden: hidden => wsSetTranscriptHidden(hidden),
+  // §2：K 的三步面板 / 主按钮与提示
+  mountStepPanel: (stepKey, element) => wsMountStepPanel(stepKey, element),
+  setStepActions: element => wsSetStepActions(element),
+  // §2：K 注册快捷键帮助（M），只影响帮助面板展示
+  registerHotkeyHelp: entry => wsRegisterHotkeyHelp(entry),
+  // 调试/内部使用：当前已注册的快捷键说明快照
+  get hotkeyHelp() { return [...wsHotkeyHelpEntries.values()]; },
   // 进度（学习位置恢复）
   refreshLesson: () => refreshLesson(),
 };

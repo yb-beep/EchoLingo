@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -566,3 +567,31 @@ def find_by_material_id(material_id_value: str) -> dict[str, Any] | None:
         if business_id(lesson) == raw:
             return material_item(lesson)
     return None
+
+
+def sentence_translation(text: str) -> str:
+    """只读：取 `v2_sentences` 里该句**已有**的中文译文；没有则返回空串。
+
+    供无模型 key 的离线释义兜底使用（D2）：有现成翻译就给，没有就省略，
+    绝不现编。直接开只读连接查询，避免 `db.get_v2_sentence()` 在空库上
+    顺手初始化 schema 的写副作用。
+    """
+    normalized = " ".join(str(text or "").strip().lower().split())
+    if not normalized:
+        return ""
+    try:
+        conn = sqlite3.connect(
+            f"file:{db.current_db_path()}?mode=ro", uri=True, timeout=2
+        )
+    except Exception:  # noqa: BLE001
+        return ""
+    try:
+        row = conn.execute(
+            "SELECT translation FROM v2_sentences WHERE normalized_text=?",
+            (normalized,),
+        ).fetchone()
+    except Exception:  # noqa: BLE001
+        return ""
+    finally:
+        conn.close()
+    return str(row[0]).strip() if row and row[0] else ""

@@ -24,8 +24,50 @@ def _word_count(text: str) -> int:
     return len(_WORD_RE.findall(text))
 
 
+def _offline_explain(sentence_text: str) -> dict[str, Any]:
+    """D2：无模型 key 时的本地释义兜底。
+
+    返回契约固定为 `{mode, words, translation?, hint}`：
+    - `words`：句子里每个词一条 `{word, ipa, meaning}`，词义取原版离线 ECDICT，
+      查不到也给空字符串（不抛错、不编造）；
+    - `translation`：仅当 `v2_sentences` 里已有该句译文时才给，没有就省略；
+    - `hint`：固定文案「配置模型后可获得讲解」。
+    """
+    from webapp.services import cet_materials
+    from webapp.services import dicts as dict_service
+
+    words = []
+    for token in _WORD_RE.findall(sentence_text):
+        key = token.lower()
+        ipa = dict_service.lookup_ecdict_phonetic(key) or dict_service.eng_ipa(key)
+        words.append(
+            {
+                "word": token,
+                "ipa": ipa or "",
+                "meaning": dict_service.lookup_ecdict_translation(key) or "",
+            }
+        )
+    payload: dict[str, Any] = {
+        "mode": "offline",
+        "words": words,
+        "hint": "配置模型后可获得讲解",
+    }
+    translation = cet_materials.sentence_translation(sentence_text)
+    if translation:
+        payload["translation"] = translation
+    return payload
+
+
 def _call(action: str, sentence: str, feedback: str, candidate: dict[str, Any] | None) -> tuple[dict[str, Any], str]:
     if not ai_config.AI_API_KEY:
+        # D2/D3：无模型 key 时不再一律 503。
+        #   feedback=meaning → action=explain：返回离线释义（200，本地词库）
+        #   feedback=heard   → action=transfer：返回中性「未检验」本地结果（200）
+        # 其余动作保持原行为（AI_NOT_CONFIGURED 503）。
+        if action == "explain":
+            return _offline_explain(sentence), "offline"
+        if action == "transfer":
+            return {"noCandidate": True, "reason": "offline"}, "offline"
         raise CETAIError("AI_NOT_CONFIGURED", "模型尚未配置；仍可使用本地回听、慢放、原文和保存。", 503)
     if action == "explain":
         task = (
@@ -108,6 +150,9 @@ def generate(
 ) -> tuple[dict[str, Any], str]:
     source_text = str(sentence["text"])
     raw, model = _call(action, source_text, feedback, candidate)
+    # 无 key 的离线兜底结果已在 _call 内按契约组装好，无需再走模型输出校验。
+    if model == "offline" and not ai_config.AI_API_KEY:
+        return raw, model
     if action == "explain":
         explanation = str(raw.get("explanation") or "").strip()
         phrases = raw.get("keyPhrases") or []

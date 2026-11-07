@@ -1,0 +1,27 @@
+=== 导入日志（ELT_USER_DB=/tmp/cet-d-run-vqMg/vocab.db）===
+  · 清洗 1 处说话人标记（/ W:）
+  · 跳过 1 道（样例占位）题（answer 未确认，仅夹具保留）
+新建 cet6-202512-conv2 → v2-1｜32 句｜105.5s｜跳过 1 道（样例占位）题（answer 未确认）
+  · 跳过 1 道（样例占位）题（answer 未确认，仅夹具保留）
+新建 cet4-sample-hope-wish → v2-2｜32 句｜80.5s｜跳过 1 道（样例占位）题（answer 未确认）
+
+完成。启动后用 GET /api/cet/materials 确认。
+
+=== GET /api/cet/materials（节选）===
+cet6-202512-conv2 questionCount= 4
+cet4-sample-hope-wish questionCount= 4
+
+=== GET questions 列表 ===
+-- cet6-202512-conv2
+numbers= [5, 6, 7, 8]
+placeholders= []
+-- cet4-sample-hope-wish
+numbers= [1, 2, 3, 4]
+placeholders= []
+
+=== 夹具完整性（应为空 diff）===
+exit=0 (0=无改动)
+
+=== 原始夹具题数（脚本 _questions 读取）===
+cet6-202512-conv2 raw_question_count= 5 placeholder_numbers= [9]
+cet4-sample-hope-wish raw_question_count= 5 placeholder_numbers= [5]

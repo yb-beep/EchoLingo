@@ -71,6 +71,16 @@
     loopRaf: null,
     // R 重听的落点 {index, start}（调试与精确断言用）
     lastReplay: null,
+    // ── W1：统一句播放会话（playSentence / stopSentence 与 L / R 共用播放原语）──
+    // 同一时间只允许一条程序化句播放；新调用 / stopSentence / 用户手动操作都会
+    // 让旧会话以 'interrupted' 结束。source='hotkey-loop' 的 L 循环不因暂停而中断。
+    sentenceSession: null,
+    sentenceSessionSeq: 0,
+    // 内部 seek / pause 的静默窗口：避免把自己的操作误判成「用户手动操作」
+    suppressPauseUntil: 0,
+    suppressSeekUntil: 0,
+    // playSentence 设置临时倍速时置 true，避免 onPlaybackRateChange 误判为用户改速
+    rateApplyInProgress: false,
   };
 
   const $ = sel => document.querySelector(sel);
@@ -408,10 +418,14 @@
       const time = readTime();
       if (time != null && time > 0) saveProgress(time, currentSegmentIndex(), {force: true});
     };
-    window.addEventListener('pagehide', flush);
-    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', () => { interruptSentencePlayback('pagehide'); flush(); });
+    window.addEventListener('beforeunload', () => { interruptSentencePlayback('beforeunload'); flush(); });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') flush();
+      if (document.visibilityState === 'hidden') {
+        // §2 裁决：页面隐藏属于「用户手动操作」，程序化句播放立即 interrupted。
+        interruptSentencePlayback('visibility-hidden');
+        flush();
+      }
     });
 
     // 句段变化时刷新状态条（不改任何播放行为）
@@ -456,6 +470,36 @@
     ['R', '重听本句'],
     ['L', '本句循环开关'],
   ];
+  // W1 / §2：K 通过 window.__ws.registerHotkeyHelp({key,label}) 注册的键位说明。
+  // 与底座固定的 Space/←→/R/L 合并展示；只影响帮助面板，不绑定按键（M 的监听在 K）。
+  const REGISTERED_HOTKEY_HINTS = new Map();
+
+  function hotkeyHintRows() {
+    const rows = HOTKEY_HINTS.slice();
+    for (const item of REGISTERED_HOTKEY_HINTS.values()) rows.push([item.key, item.label]);
+    return rows;
+  }
+
+  function renderHotkeyPanel(panel) {
+    if (!panel) return;
+    panel.innerHTML = hotkeyHintRows().map(([keys, desc]) => (
+      '<span style="display:flex;gap:10px;justify-content:space-between;white-space:nowrap">'
+      + `<kbd style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;`
+      + 'padding:0 5px;border-radius:5px;border:1px solid var(--line,#dfe4dc);background:#f4f6f2">'
+      + `${keys}</kbd>`
+      + `<span style="color:var(--muted,#6b7a68)">${desc}</span></span>`
+    )).join('');
+  }
+
+  function registerHotkeyHelp(entry) {
+    if (!entry || typeof entry !== 'object') return false;
+    const key = String(entry.key || '').trim();
+    const label = String(entry.label || '').trim();
+    if (!key || !label) return false;
+    REGISTERED_HOTKEY_HINTS.set(key, {key, label});
+    document.querySelectorAll('#cet-hotkey-panel').forEach(renderHotkeyPanel);
+    return true;
+  }
   // 句尾判定容差：timeupdate 粒度约 250ms，用 0.02s 容差避免「刚好卡在句尾」
   // 漏判（任务书要求 currentTime >= 句尾即回跳）。
   const LOOP_EPSILON = 0.02;
@@ -532,6 +576,14 @@
   }
 
   function toggleLoop() {
+    // W1：playSentence(loop=true) 的循环与 L 共用同一开关语义 —— 再按 L = 停止循环。
+    if (S.sentenceSession && S.sentenceSession.loop) {
+      stopSentence();
+      return;
+    }
+    if (S.sentenceSession && S.sentenceSession.source === 'playSentence') {
+      interruptSentencePlayback('toggle-loop');
+    }
     S.loopEnabled = !S.loopEnabled;
     if (!S.loopEnabled) {
       S.loopAnchor = null;
@@ -605,6 +657,10 @@
   function stepSentence(delta) {
     const list = sentences();
     if (!list.length) return;
+    // W1：用户按 ←/→ 属于「手动操作」，程序化句播放必须按 interrupted 结束。
+    if (S.sentenceSession && S.sentenceSession.source === 'playSentence') {
+      interruptSentencePlayback('jumpSentence');
+    }
     const idx = sentenceIndexAt(readTime());
     let next;
     if (delta > 0) next = idx < 0 ? 0 : Math.min(idx + 1, list.length - 1);
@@ -617,6 +673,10 @@
   function replaySentence() {
     const list = sentences();
     if (!list.length) return;
+    // W1：R 重听和 playSentence 共用播放原语；若当前有程序化句播放，先按打断处理。
+    if (S.sentenceSession && S.sentenceSession.source === 'playSentence') {
+      interruptSentencePlayback('replay');
+    }
     let idx = sentenceIndexAt(readTime());
     if (idx < 0) idx = 0;
     if (S.loopEnabled) setLoopAnchor(idx);
@@ -627,6 +687,282 @@
     seekToSeconds(start);
     const el = audioEl();
     if (el && el.paused) togglePlay();   // 暂停时按 R = 直接重听这一句
+  }
+
+  // ── W1：统一句播放会话（playSentence / stopSentence）──────────────
+  // 设计原则：L（句循环）、R（重听）、playSentence 都复用同一组
+  // seekToSeconds / sentenceIndexAt / togglePlay 原语，不建立第二套播放状态。
+  // 会话只负责「播到句尾停 / 循环 / 被打断时恢复倍速并 resolve」。
+  const SENTENCE_END_EPSILON = 0.03;
+
+  function currentRateValue() {
+    const api = ws();
+    if (api && typeof api.getRate === 'function') {
+      const value = Number(api.getRate());
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+    const el = audioEl();
+    const value = el ? Number(el.playbackRate) : 1;
+    return Number.isFinite(value) && value > 0 ? value : 1;
+  }
+
+  function applyPlaybackRate(rate) {
+    const value = Number(rate);
+    if (!Number.isFinite(value) || value <= 0) return;
+    const api = ws();
+    S.rateApplyInProgress = true;
+    try {
+      if (api && typeof api.setRate === 'function') {
+        api.setRate(value);
+      } else {
+        const el = audioEl();
+        if (el) el.playbackRate = value;
+        const select = document.getElementById('playback-rate');
+        if (select) select.value = String(value);
+      }
+    } finally {
+      S.rateApplyInProgress = false;
+    }
+  }
+
+  function mediaPaused() {
+    const el = audioEl();
+    if (el) return Boolean(el.paused);
+    const api = ws();
+    const player = api && api.player;
+    if (player && typeof player.getPlayerState === 'function') {
+      try { return Number(player.getPlayerState()) !== 1; } catch (_) { /* ignore */ }
+    }
+    return true;
+  }
+
+  function pauseForSession() {
+    const api = ws();
+    S.suppressPauseUntil = Date.now() + 300;
+    if (api && typeof api.pause === 'function') {
+      try { api.pause(); } catch (_) { /* ignore */ }
+      return;
+    }
+    const el = audioEl();
+    if (el && typeof el.pause === 'function') {
+      try { el.pause(); } catch (_) { /* ignore */ }
+    }
+  }
+
+  function cleanupSentenceSession(session) {
+    if (!session) return;
+    if (session.raf) {
+      window.cancelAnimationFrame(session.raf);
+      session.raf = null;
+    }
+    const bound = session.listeners;
+    if (bound && bound.el) {
+      try {
+        bound.el.removeEventListener('timeupdate', bound.onTime);
+        bound.el.removeEventListener('ended', bound.onEnded);
+        bound.el.removeEventListener('seeking', bound.onSeeking);
+        bound.el.removeEventListener('pause', bound.onPause);
+      } catch (_) { /* ignore */ }
+    }
+    session.listeners = null;
+  }
+
+  function finishSentenceSession(session, result) {
+    if (!session || session.finished) return;
+    session.finished = true;
+    cleanupSentenceSession(session);
+    if (S.sentenceSession === session) S.sentenceSession = null;
+    pauseForSession();
+    // 契约：结束或被打断都要恢复调用前的倍速；rate 未传则不碰倍速。
+    if (session.rateProvided) applyPlaybackRate(session.previousRate);
+    try {
+      session.resolve(result);
+    } catch (_) { /* ignore */ }
+  }
+
+  function interruptSentencePlayback(reason) {
+    const session = S.sentenceSession;
+    if (!session) return false;
+    if (window.__CET_DEBUG__) console.info('[cet-player] 句播放打断：', reason || '');
+    finishSentenceSession(session, 'interrupted');
+    return true;
+  }
+
+  function checkSentenceProgress(session) {
+    if (!session || session.finished || S.sentenceSession !== session) return;
+    if (mediaPaused()) return;
+    const now = readTime();
+    if (now == null) return;
+    if (Number(now) < Number(session.end) - SENTENCE_END_EPSILON) return;
+    if (session.loop) {
+      // 循环：回到本句句首继续，不 resolve（直到 stopSentence / 用户操作）
+      internalSeekTo(session, session.start);
+      return;
+    }
+    finishSentenceSession(session, 'ended');
+  }
+
+  /** 内部 seek：记下目标，onSeeking 用它区分「自己回跳」与「用户拖动」。 */
+  function internalSeekTo(session, seconds) {
+    if (session) session.expectedSeekTime = Number(seconds);
+    S.suppressSeekUntil = Date.now() + 120;
+    seekToSeconds(seconds);
+  }
+
+  function bindSentenceSessionEvents(session) {
+    const el = audioEl();
+    if (!el) return;
+    const onTime = () => checkSentenceProgress(session);
+    const onEnded = () => {
+      if (session.finished) return;
+      if (session.loop) {
+        internalSeekTo(session, session.start);
+        try { el.play().catch(() => {}); } catch (_) { /* ignore */ }
+        return;
+      }
+      finishSentenceSession(session, 'ended');
+    };
+    const onSeeking = () => {
+      const target = Number(el.currentTime);
+      const expected = Number(session.expectedSeekTime);
+      // 自己回跳的目标就是句首：位置一致 → 不是用户拖动。
+      if (Number.isFinite(expected) && Math.abs(target - expected) < 0.08) return;
+      if (Date.now() < S.suppressSeekUntil) return;      // 极短的内部静默窗
+      if (session.source === 'hotkey-loop') return;      // L 循环允许用户拖动，不关循环
+      interruptSentencePlayback('user-seek');
+    };
+    const onPause = () => {
+      if (Date.now() < S.suppressPauseUntil) return;     // 自己暂停的静默窗
+      if (session.source === 'hotkey-loop') return;      // L 循环：暂停不清循环开关
+      interruptSentencePlayback('user-pause');
+    };
+    el.addEventListener('timeupdate', onTime);
+    el.addEventListener('ended', onEnded);
+    el.addEventListener('seeking', onSeeking);
+    el.addEventListener('pause', onPause);
+    session.listeners = {el, onTime, onEnded, onSeeking, onPause};
+  }
+
+  function startSentenceWatcher(session) {
+    const tick = () => {
+      if (!session || session.finished || S.sentenceSession !== session) {
+        session.raf = null;
+        return;
+      }
+      checkSentenceProgress(session);
+      if (session.finished) return;
+      session.raf = window.requestAnimationFrame(tick);
+    };
+    session.raf = window.requestAnimationFrame(tick);
+  }
+
+  /**
+   * §2 契约：播放 __ws.sentences[index] 这一句。
+   * - 返回 Promise<'ended' | 'interrupted'>；越界 / 无播放器 / play() 被拒绝 →
+   *   resolve('interrupted')（不 reject，warn 留痕）。
+   * - rate 传入则临时设置并同步倍速下拉框，结束/打断后恢复调用前的值；
+   *   不传则用当前倍速、不改。
+   * - loop=true 时循环播放，永不 'ended'，直到 stopSentence()/用户操作。
+   * - 同一时间只允许一条句播放：新调用会让旧 Promise 立即 'interrupted'。
+   */
+  function playSentence(index, options) {
+    const opts = options || {};
+    const list = sentences();
+    const idx = Number(index);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= list.length) {
+      console.warn('[cet-player] playSentence 下标越界：', index, '（句数', list.length, '）');
+      return Promise.resolve('interrupted');
+    }
+    if (!hasPlayer()) {
+      console.warn('[cet-player] playSentence 没有可用的播放器');
+      return Promise.resolve('interrupted');
+    }
+    const unit = list[idx];
+    const start = Number(unit.start || 0);
+    const end = Number(unit.end != null ? unit.end : unit.start || 0);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      console.warn('[cet-player] playSentence 句子时间轴无效：', idx, start, end);
+      return Promise.resolve('interrupted');
+    }
+
+    // 同一时间只允许一条：先让旧会话按 interrupted 结束。
+    if (S.sentenceSession) interruptSentencePlayback('replaced-by-new-play');
+    // playSentence 接管句播放：关掉用户此前开的 L 循环，避免两套回跳互相抢 seek。
+    if (S.loopEnabled) {
+      S.loopEnabled = false;
+      S.loopAnchor = null;
+      stopLoopWatcher();
+      syncLoopIndicator();
+    }
+
+    const rateProvided = opts.rate != null
+      && Number.isFinite(Number(opts.rate))
+      && Number(opts.rate) > 0;
+    const session = {
+      token: ++S.sentenceSessionSeq,
+      index: idx,
+      start,
+      end,
+      loop: Boolean(opts.loop),
+      rateProvided,
+      previousRate: currentRateValue(),
+      source: 'playSentence',
+      finished: false,
+      raf: null,
+      listeners: null,
+      resolve: null,
+      expectedSeekTime: null,
+    };
+    const promise = new Promise(resolve => { session.resolve = resolve; });
+    S.sentenceSession = session;
+    if (rateProvided) applyPlaybackRate(Number(opts.rate));
+    // 自己 seek 到句首：记下目标，跳过随后的 seeking 事件（别当成用户拖动）。
+    internalSeekTo(session, start);
+    bindSentenceSessionEvents(session);
+    startSentenceWatcher(session);
+
+    try {
+      const api = ws();
+      const playResult = api && typeof api.play === 'function' ? api.play() : null;
+      if (playResult && typeof playResult.then === 'function') {
+        playResult.catch(() => {
+          if (S.sentenceSession === session && !session.finished) {
+            console.warn('[cet-player] playSentence play() 被浏览器拒绝');
+            finishSentenceSession(session, 'interrupted');
+          }
+        });
+      } else {
+        // 兼容 __ws.play() 不返回 Promise 的实现：短延时检查是否真的开始播放。
+        window.setTimeout(() => {
+          if (S.sentenceSession !== session || session.finished) return;
+          if (mediaPaused()) {
+            console.warn('[cet-player] playSentence 未能开始播放');
+            finishSentenceSession(session, 'interrupted');
+          }
+        }, 260);
+      }
+    } catch (_) {
+      finishSentenceSession(session, 'interrupted');
+    }
+    return promise;
+  }
+
+  function stopSentence() {
+    if (S.sentenceSession) {
+      interruptSentencePlayback('stopSentence');
+      return true;
+    }
+    // 没有程序化会话时，stopSentence 也把底座自己的 L 循环停掉（语义一致）。
+    if (S.loopEnabled) {
+      S.loopEnabled = false;
+      S.loopAnchor = null;
+      S.loopGuardUntil = 0;
+      stopLoopWatcher();
+      syncLoopIndicator();
+      pauseForSession();
+      return true;
+    }
+    return false;
   }
 
   function isTypingTarget(target) {
@@ -721,7 +1057,7 @@
   }
 
   function buildHotkeyHint(bar) {
-    if (!bar || bar.querySelector('#cet-hotkey-hint')) return;
+    if (!bar || document.getElementById('cet-hotkey-hint')) return;
     const wrap = document.createElement('span');
     wrap.className = 'cet-study-item cet-hotkey-hint';
     wrap.id = 'cet-hotkey-hint';
@@ -749,13 +1085,7 @@
       + 'padding:8px 10px;border-radius:9px;border:1px solid var(--line,#dfe4dc);'
       + 'background:var(--surface,#fff);box-shadow:0 8px 22px rgba(0,0,0,.14);'
       + 'font-size:12px;line-height:1.7;color:var(--ink,#22301f);text-align:left;';
-    panel.innerHTML = HOTKEY_HINTS.map(([keys, desc]) => (
-      '<span style="display:flex;gap:10px;justify-content:space-between;white-space:nowrap">'
-      + `<kbd style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;`
-      + 'padding:0 5px;border-radius:5px;border:1px solid var(--line,#dfe4dc);background:#f4f6f2">'
-      + `${keys}</kbd>`
-      + `<span style="color:var(--muted,#6b7a68)">${desc}</span></span>`
-    )).join('');
+    renderHotkeyPanel(panel);
 
     const setOpen = open => {
       setShown(panel, open);
@@ -788,10 +1118,15 @@
 
     wrap.appendChild(btn);
     wrap.appendChild(panel);
-    // 放在「从头开始」按钮之前，和状态项同一行
-    const actions = bar.querySelector('.cet-study-actions');
-    if (actions) actions.insertAdjacentElement('beforebegin', wrap);
-    else bar.appendChild(wrap);
+    // W3：优先放进工具栏第一行的「⌨ 快捷键」槽位；旧结构（无槽位）回落到状态条。
+    const slot = document.getElementById('ws-hotkey-slot');
+    if (slot) {
+      slot.appendChild(wrap);
+    } else {
+      const actions = bar.querySelector('.cet-study-actions');
+      if (actions) actions.insertAdjacentElement('beforebegin', wrap);
+      else bar.appendChild(wrap);
+    }
   }
 
   function syncHotkeyHint() {
@@ -876,7 +1211,7 @@
 
   // 暴露给测试与其它模块（只读为主）
   window.__cetPlayer = {
-    version: '20261106-p2',
+    version: '20261107-drill-w',
     lessonId: LESSON_ID,
     cetOn: CET_ON,
     features: FEATURES,
@@ -906,6 +1241,12 @@
     replaySentence,
     toggleLoop,
     sentenceIndexAt,
+    // ── W1：§2 句播放接口（workspace.html 的 window.__ws 转发到这里）──
+    playSentence,
+    stopSentence,
+    interruptSentencePlayback,
+    // ── W1：快捷键帮助注册（只展示，不绑键）──
+    registerHotkeyHelp,
     _state: S,
   };
 })();

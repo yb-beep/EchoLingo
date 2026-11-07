@@ -261,3 +261,289 @@ body[data-cet-mode="on"] .video-card:has(#youtube-player:empty) {
     width: 100%;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+ * 卡点融合 · 包 W（20261107-drill-w）
+ * 顶部步骤条 / 两行工具栏 / 右栏「本步骤」/ 原文隐藏的收藏与大纲补全 / 移动端
+ * ══════════════════════════════════════════════════════════════ */
+
+/* ── W2：顶部步骤条：① 盲听做题 ② 对答案·找卡点 ③ 精练·复习 ── */
+.ws-step-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.ws-step-bar[hidden] { display: none; }
+.ws-step-list {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: max-content;
+}
+.ws-step-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.ws-step-item + .ws-step-item::before {
+  content: "";
+  width: 18px;
+  height: 1px;
+  margin-left: -4px;
+  background: var(--line);
+}
+.ws-step-item.active {
+  border-color: #a7e7cc;
+  background: var(--brand-light);
+  color: var(--brand-dark);
+}
+.ws-step-no { font-size: 15px; line-height: 1; }
+.ws-step-label { line-height: 1.2; }
+
+/* ── W3：工具栏两行固定结构 ──────────────────────────────── */
+body[data-cet-mode="on"] .learning-controls[data-ws-controls="cet"] {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 9px 12px;
+}
+.ws-control-row--primary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.ws-control-row--actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 40px;
+  padding-top: 7px;
+  border-top: 1px dashed var(--line);
+}
+.ws-step-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  min-height: 32px;
+  overflow: hidden;
+}
+.ws-step-actions > * { flex: 0 0 auto; }
+.ws-step-actions .cet-hint,
+.ws-step-actions .ws-step-hint,
+.ws-step-actions [data-ws-step-hint] {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-hotkey-slot {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.ws-hotkey-slot .cet-hotkey-hint { display: inline-flex; }
+
+/* ── W4：右栏「本步骤」单面板 ───────────────────────────── */
+.ws-step-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px 14px;
+}
+.ws-step-panel-body.ws-step-panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ws-step-empty {
+  padding: 18px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+/* ── W5：原文隐藏时，大纲只显示时间段 + 卡点数 ───────────── */
+.outline-section.ws-outline-hidden-mode {
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+}
+.ws-outline-mark-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: #eef2ed;
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* W5：原文隐藏时的收藏面板（K 的 cet-listening.css 隐藏字幕/大纲/阅读；
+   这里补齐收藏面板，避免从收藏列表读到原句）。 */
+body.cet-hide-text #cet-favorites .cet-fav-text,
+body.cet-hide-text #cet-favorites .cet-fav-meta,
+body.cet-hide-text #reading-saved-items .reading-saved-item {
+  color: transparent !important;
+  user-select: none;
+}
+body.cet-hide-text #cet-favorites .cet-fav-text,
+body.cet-hide-text #reading-saved-items .reading-saved-item {
+  position: relative;
+}
+body.cet-hide-text #cet-favorites .cet-fav-text::after,
+body.cet-hide-text #reading-saved-items .reading-saved-item::after {
+  content: "（原文已隐藏）";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+}
+body.cet-hide-text #cet-favorites .cet-fav-actions button,
+body.cet-hide-text #cet-favorites .cet-fav-jump,
+body.cet-hide-text #cet-favorites .cet-fav-remove {
+  color: var(--muted);
+}
+
+/* ── W7：当前句卡片收紧，卡点列表紧跟当前句 ──────────────── */
+body[data-cet-mode="on"]:has(#ws-step-panel) .subtitle-card {
+  min-height: 0;
+  padding-bottom: 10px;
+}
+body[data-cet-mode="on"]:has(#ws-step-panel) #current-subtitle { min-height: 54px; }
+body[data-cet-mode="on"]:has(#ws-step-panel) .sentence-tools { min-height: 0; margin-top: 6px; }
+body[data-cet-mode="on"]:has(#ws-step-panel) .subtitle-card .cet-marks { margin-top: 8px; }
+
+/* ── W6：手机（≤768）步骤条横向滚动 / 工具栏网格 / 右栏下移 ── */
+@media (max-width: 768px) {
+  body[data-cet-mode="on"] .main-grid {
+    padding: 10px;
+    gap: 10px;
+  }
+  .ws-step-bar {
+    padding: 7px 8px;
+    border-radius: 10px;
+  }
+  .ws-step-item {
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+  body[data-cet-mode="on"] .learning-controls[data-ws-controls="cet"] .ws-control-row--primary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+  .ws-control-row--primary .control-group {
+    min-width: 0;
+  }
+  .ws-control-row--primary .control-group select {
+    width: 100%;
+  }
+  .ws-control-row--primary .intensive-entry-group {
+    grid-column: 1 / -1;
+  }
+  .ws-hotkey-slot {
+    grid-column: 1 / -1;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+  .ws-control-row--actions {
+    min-height: 44px;
+  }
+  .ws-step-actions {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+  .ws-step-actions .cet-hint,
+  .ws-step-actions .ws-step-hint,
+  .ws-step-actions [data-ws-step-hint] {
+    flex-basis: 100%;
+  }
+  body[data-cet-mode="on"] .side-column {
+    height: auto;
+    min-height: 420px;
+  }
+}
+
+@media (max-width: 420px) {
+  .ws-step-no { font-size: 13px; }
+  .ws-step-label { font-size: 11px; }
+}
+
+/* W3：单选项「精听」按钮必须真的消失（作者样式 .study-mode-switch{display:inline-flex}
+   会盖掉 UA 的 [hidden]{display:none}，实测截图里仍出现一个孤立的「精听」按钮）。 */
+body[data-cet-mode="on"]:has(#ws-step-panel) .study-mode-switch[hidden] { display: none !important; }
+
+/* W2：步骤条只占内容高度，不被 main-grid 的剩余高度拉伸（截图实测会拉成 117px 高）。 */
+body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+@media (max-width: 1100px) {
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) {
+    grid-template-rows: auto auto auto;
+  }
+}
+
+/* W6：移动端工具格里「字幕 / 倍速」标签不得竖排换行（截图实测 768/375 会一字一行）。 */
+@media (max-width: 768px) {
+  .ws-control-row--primary .control-group {
+    white-space: nowrap;
+  }
+  .ws-control-row--primary .control-group select {
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 auto;
+  }
+}
+
+/* W4：非当前步骤的 K 面板藏在文档里，K 渲染时仍能按 id 找到节点。 */
+.ws-step-panel-store[hidden] { display: none !important; }
+
+/* W7：原文隐藏时不再重复显示多行「原文已隐藏」占位（当前句区只留一条） */
+body[data-cet-mode="on"]:has(#ws-step-panel).cet-hide-text #vocab-chips,
+body[data-cet-mode="on"]:has(#ws-step-panel).cet-hide-text #subtitle-meta {
+  display: none !important;
+}
+
+/* W4 过渡兼容：卡点融合 UI 启用时，旧版 K（尚未改用 mountStepPanel）会把自己
+   直接插到 .side-column / .learning-controls 的旧面板与工具栏留在页面上，
+   形成「题目、带练、复习竖着堆叠」。新版 K 不再创建这些节点；这里对残留的
+   旧直系节点做隐藏，保证 W 单独运行也符合单面板 + tab 的结构。 */
+body[data-cet-mode="on"]:has(#ws-step-panel) .side-column > .cet-panel,
+body[data-cet-mode="on"]:has(#ws-step-panel) .learning-controls > .cet-toolbar {
+  display: none !important;
+}

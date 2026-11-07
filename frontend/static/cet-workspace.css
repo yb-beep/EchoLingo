@@ -460,17 +460,55 @@ body[data-cet-mode="on"]:has(#ws-step-panel) .subtitle-card {
 body[data-cet-mode="on"]:has(#ws-step-panel) #current-subtitle { min-height: 54px; }
 body[data-cet-mode="on"]:has(#ws-step-panel) .sentence-tools { min-height: 0; margin-top: 6px; }
 body[data-cet-mode="on"]:has(#ws-step-panel) .subtitle-card .cet-marks { margin-top: 8px; }
+@media (min-width: 1101px) {
+  body[data-cet-mode="on"]:has(#ws-step-panel) .watch-column .subtitle-card {
+    flex: 1 1 auto;
+  }
+}
 
 /* ── W6：手机（≤768）步骤条横向滚动 / 工具栏网格 / 右栏下移 ── */
 @media (max-width: 768px) {
   body[data-cet-mode="on"] .main-grid {
+    width: 100%;
+    min-width: 0;
     padding: 10px;
     gap: 10px;
   }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) {
+    display: flex;
+    flex-direction: column;
+    grid-template-rows: none;
+  }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) > .watch-column,
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) > .side-column {
+    display: contents;
+  }
+  body[data-cet-mode="on"] .main-grid > .ws-step-bar { order: 0; }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) .video-card { order: 1; }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) .learning-controls { order: 2; }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) .cet-study-bar { order: 3; }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) .sidebar-workspace-tabs { order: 4; }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) #ws-step-panel {
+    order: 5;
+    flex: 0 0 auto;
+  }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) .subtitle-card { order: 6; }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) #reading-phase-a { order: 7; }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) #content-outline-panel { order: 8; }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) #reading-phase-b { order: 9; }
+  body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) #ai-companion-panel { order: 10; }
+  /* A1 对接类名：.cet-mark-btn；在主控行或步骤动作行都独占一行。 */
+  body[data-cet-mode="on"] .learning-controls[data-ws-controls="cet"] .cet-mark-btn {
+    order: -1;
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 44px;
+  }
+  body[data-cet-mode="on"] .ws-control-row--primary .cet-mark-btn {
+    grid-column: 1 / -1;
+  }
   .ws-step-bar {
     padding: 7px 8px;
-    width: 100%;
-    min-width: 0;
     border-radius: 10px;
   }
   .ws-step-item {
@@ -500,6 +538,7 @@ body[data-cet-mode="on"]:has(#ws-step-panel) .subtitle-card .cet-marks { margin-
     min-height: 44px;
   }
   .ws-step-actions {
+    width: 100%;
     flex-wrap: wrap;
     white-space: normal;
   }
@@ -538,7 +577,6 @@ body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) {
   .ws-control-row--primary .control-group {
     white-space: nowrap;
   }
-    width: 100%;
   .ws-control-row--primary .control-group select {
     width: auto;
     min-width: 0;

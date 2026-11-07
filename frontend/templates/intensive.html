@@ -4,6 +4,8 @@
 {%- set cet_on = cet_on | default(false) -%}
 {%- set cet_features = cet_features | default({}) -%}
 {%- set cet_copy = cet_copy | default({}) -%}
+{#- 包 I：卡点标记只在 CET 模式且卡点模块开启时渲染；关闭态不出现筛选、不发 /api/cet/marks。-#}
+{%- set cet_marks_on = cet_on and cet_features.cet_listening_agent -%}
 <html lang="zh-CN">
 <head>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎧</text></svg>">
@@ -336,6 +338,32 @@
     }
     .saved-chip { background: #e4f0e8; color: var(--brand-dark); font-weight: 700; }
     .planning-chip { border: 1px solid #b9cec0; background: #eef6f0; color: var(--brand-dark); font-weight: 750; }
+{% if cet_marks_on %}
+    /* 包 I · 卡点标记：颜色与文案对齐 cet-listening.css 的 .cet-mark / .cet-mark-badge 三态，
+       不改 cet-listening.css，只把同一视觉口径复制到精听页的内联样式。 */
+    .sentence-cet-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 22px;
+      padding: 2px 9px 2px 7px;
+      border-left: 3px solid transparent;
+      border-radius: 999px;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 11px;
+      font-weight: 750;
+      line-height: 1.3;
+      white-space: nowrap;
+    }
+    .sentence-cet-mark--pending { border-left-color: #e08e0b; background: #fdebc8; color: #8a5a00; }
+    .sentence-cet-mark--ready   { border-left-color: #276fbf; background: #d8e6f8; color: #17457a; }
+    .sentence-cet-mark--done    { border-left-color: #2f8f4e; background: #d6eedd; color: #1c5c33; }
+    .sentence-cet-mark-count {
+      padding-left: 5px;
+      border-left: 1px solid currentColor;
+      opacity: .85;
+    }
+{% endif %}
     .expand-mark { padding-top: 6px; color: var(--muted); font-size: 18px; }
     .sentence-detail { display: none; padding: 0 18px 18px 70px; }
     .sentence-card.open .sentence-detail { display: block; animation: reveal .18s ease-out; }
@@ -593,7 +621,7 @@
     <div id="study-progress" class="study-progress">正在载入文档…</div>
   </header>
 
-  <main id="intensive-app" class="layout" data-lesson-id="{{ lesson_id }}">
+  <main id="intensive-app" class="layout" data-lesson-id="{{ lesson_id }}"{% if cet_marks_on %} data-cet-marks-on="1"{% endif %}>
     <aside class="filter-panel" aria-label="精读筛选">
       <h2>学习视图</h2>
       <p class="filter-note">整篇逐句浏览；收藏与标签继续写回当前 v2 课程。</p>
@@ -601,6 +629,9 @@
         <button class="mode-filter active" type="button" data-filter="all">全部 <span id="count-all">0</span></button>
         <button class="mode-filter" type="button" data-filter="vocabulary">重点词汇 <span id="count-vocabulary">0</span></button>
         <button class="mode-filter" type="button" data-filter="saved">已收藏 <span id="count-saved">0</span></button>
+        {% if cet_marks_on %}
+        <button class="mode-filter" type="button" data-filter="marks">我的卡点 <span id="count-marks">0</span></button>
+        {% endif %}
         <button class="mode-filter" type="button" data-filter="ai-recommended">AI 推荐 <span id="count-ai-recommended">0</span></button>
         <button class="mode-filter" type="button" data-filter="untagged">未标记 <span id="count-untagged">0</span></button>
       </div>
@@ -679,6 +710,11 @@
     const CET_FEATURES = window.__CET_BOOT__.features || {};
     const CET_COPY = window.__CET_BOOT__.copy || {};
     function cetFeature(key) { return Boolean(CET_FEATURES[key]); }
+    // 包 I：卡点模块总开关。必须同时满足「CET 模式」与「cet_listening_agent 功能开启」：
+    //   - ELT_CET_FEATURE_CET_LISTENING_AGENT=0 → 关闭（I3：筛选/标记/请求都不出现）
+    //   - ELT_CET_MODE=0（通用模式）→ CET_ON=false，行为与基线 c4a480d 一致
+    const CET_MARKS_ON = CET_ON && cetFeature('cet_listening_agent');
+    const CET_MARKS_SESSION_KEY = 'cet.session.v1';   // 与 cet-listening.js 的 CFG.storageKey 完全一致
     const targetSentenceParam = new URLSearchParams(window.location.search).get('sentence_key');
     const targetSentenceKey = targetSentenceParam === null ? null : Number(targetSentenceParam);
     let intensiveDocument = {lesson: {}, sentences: []};
@@ -721,6 +757,10 @@
     let intensiveYouTubeReady = false;
     let intensiveYouTubeApiLoading = false;
     let pendingYouTubeRange = null;
+    // 包 I：卡点数据。cetMarksBySentenceKey 按精听句归类，
+    // key 为精听句的 sentence.key（与 CET sentenceId 的尾号是同一套 segment index）。
+    let cetMarksMaterial = null;
+    const cetMarksBySentenceKey = new Map();
     const CUSTOM_TAG_VALUE = '__custom__';
     const FOCUS_WORD_STOPWORDS = new Set([
       'a', 'an', 'the', 'and', 'or', 'but', 'if', 'then', 'than', 'to', 'of', 'in', 'on', 'at', 'for',
@@ -742,6 +782,146 @@
 
     function sentenceByKey(key) {
       return intensiveDocument.sentences.find(item => Number(item.key) === Number(key));
+    }
+
+    // ── 包 I · 卡点数据（GET /api/cet/marks）──────────────────
+    function cetListeningSessionId() {
+      // 生成规则与 frontend/static/cet-listening.js 的 sessionId() 完全一致：
+      // localStorage['cet.session.v1']，缺省 uid('cet-session')
+      // = `cet-session-<Date.now().toString(36)>-<Math.random().toString(36).slice(2, 7)>`
+      let sessionId = '';
+      try { sessionId = localStorage.getItem(CET_MARKS_SESSION_KEY) || ''; } catch (_) {}
+      if (!sessionId) {
+        sessionId = `cet-session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+        try { localStorage.setItem(CET_MARKS_SESSION_KEY, sessionId); } catch (_) {}
+      }
+      return sessionId;
+    }
+
+    function cetMarkState(mark) {
+      // 与 cet-listening.js 的 markState() 同口径：有 confirmedSentenceId 即「待练」(ready)，
+      // 否则「待确认」(pending)。done 需要带练完成态，/api/cet/marks 列表不返回 practice 状态，
+      // 这里不臆造第三态；颜色/文案沿用工作区 .cet-mark-badge 的 pending/ready 两档。
+      return mark && mark.confirmedSentenceId ? 'ready' : 'pending';
+    }
+
+    function cetMarkLabel(state) {
+      return state === 'ready' ? '待练' : '待确认';
+    }
+
+    function cetRangeOverlap(startA, endA, startB, endB) {
+      if (![startA, endA, startB, endB].every(value => Number.isFinite(Number(value)))) return 0;
+      return Math.max(0, Math.min(Number(endA), Number(endB)) - Math.max(Number(startA), Number(startB)));
+    }
+
+    function cetSentenceKeyByRange(startSeconds, endSeconds) {
+      let bestKey = null;
+      let bestOverlap = 0;
+      for (const sentence of intensiveDocument.sentences || []) {
+        const overlap = cetRangeOverlap(startSeconds, endSeconds, sentence.start_seconds, sentence.end_seconds);
+        if (overlap > bestOverlap) {
+          bestOverlap = overlap;
+          bestKey = Number(sentence.key);
+        }
+      }
+      return bestKey;
+    }
+
+    function cetSentenceKeyAtSeconds(seconds) {
+      const value = Number(seconds);
+      if (!Number.isFinite(value)) return null;
+      const containing = (intensiveDocument.sentences || []).find(sentence => {
+        const start = Number(sentence.start_seconds) || 0;
+        const end = Number(sentence.end_seconds) || 0;
+        return value >= start - 0.05 && value <= end + 0.05;
+      });
+      if (containing) return Number(containing.key);
+      let nearestKey = null;
+      let nearestDistance = Infinity;
+      for (const sentence of intensiveDocument.sentences || []) {
+        const start = Number(sentence.start_seconds) || 0;
+        const end = Number(sentence.end_seconds) || 0;
+        const distance = Math.min(Math.abs(value - start), Math.abs(value - end));
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestKey = Number(sentence.key);
+        }
+      }
+      return nearestKey;
+    }
+
+    function applyCetMarks(payload) {
+      cetMarksBySentenceKey.clear();
+      cetMarksMaterial = payload && payload.material ? payload.material : null;
+      const marks = payload && Array.isArray(payload.marks) ? payload.marks : [];
+      if (!marks.length || !(intensiveDocument.sentences || []).length) return;
+      const sentenceById = new Map();
+      for (const item of (cetMarksMaterial && cetMarksMaterial.sentences) || []) {
+        if (item && item.sentenceId) sentenceById.set(item.sentenceId, item);
+      }
+      for (const mark of marks) {
+        let key = null;
+        const targetId = String(mark.confirmedSentenceId || mark.suggestedSentenceId || '');
+        if (targetId) {
+          // 1) 优先按 sentenceId。CET sentenceId 形如 `v2-<lessonId>-<segmentIndex>`，
+          //    尾号与精听句的 sentence.key（字幕段 index）是同一套编号，直接对上最稳。
+          const matched = targetId.match(/-(\d+)$/);
+          if (matched && sentenceByKey(Number(matched[1]))) key = Number(matched[1]);
+        }
+        if (key === null) {
+          // 2) 其次按时间重叠：用 CET 材料明细里该句的 startSec/endSec 与精听句区间求交。
+          const ref = sentenceById.get(targetId);
+          if (ref) {
+            key = cetSentenceKeyByRange(
+              ref.startSec ?? ref.startSeconds,
+              ref.endSec ?? ref.endSeconds,
+            );
+          }
+        }
+        if (key === null) {
+          // 3) 最后按 adjustedSeconds / pressedAtSec 落在哪一句兜底（句子被重切时仍能对上）。
+          key = cetSentenceKeyAtSeconds(mark.adjustedSeconds ?? mark.pressedAtSec);
+        }
+        if (key === null) continue;   // 定位不到的标记不硬塞给某一句
+        const state = cetMarkState(mark);
+        const existing = cetMarksBySentenceKey.get(key);
+        if (!existing) {
+          cetMarksBySentenceKey.set(key, {state, count: 1});
+        } else {
+          existing.count += 1;
+          if (state === 'pending') existing.state = 'pending';
+        }
+      }
+    }
+
+    async function loadCetMarks() {
+      try {
+        const materialResponse = await fetch(`/api/cet/materials/by-lesson/${LESSON_ID}`, {cache: 'no-store'});
+        if (!materialResponse.ok) return null;
+        const material = await materialResponse.json();
+        const query = new URLSearchParams({
+          materialId: material.materialId || `v2-${LESSON_ID}`,
+          listeningSessionId: cetListeningSessionId(),
+        });
+        const response = await fetch(`/api/cet/marks?${query.toString()}`, {cache: 'no-store'});
+        if (!response.ok) return null;
+        const data = await response.json();
+        const marks = Array.isArray(data.items) ? data.items : (Array.isArray(data.marks) ? data.marks : []);
+        return {material, marks};
+      } catch (_) {
+        // 卡点模块永远不能阻断精听主流程：失败就当作没有卡点。
+        return null;
+      }
+    }
+
+    function cetMarkForSentence(sentence) {
+      return cetMarksBySentenceKey.get(Number(sentence.key)) || null;
+    }
+
+    function setCetMarksAvailable(available) {
+      const button = document.querySelector('[data-filter="marks"]');
+      if (button) button.hidden = !available;
+      if (!available && activeMode === 'marks') activeMode = 'all';
     }
 
     function sentenceTags(sentence) {
@@ -770,6 +950,7 @@
         if (activeMode === 'ai-recommended' && !planning.sentenceRecommended && !planning.wordRecommended) return false;
         if (activeMode === 'untagged' && sentenceTags(sentence).length) return false;
         if (activeMode === 'vocabulary' && !sentenceFocusWords(sentence).length) return false;
+        if (activeMode === 'marks' && !cetMarksBySentenceKey.has(Number(sentence.key))) return false;
         if (query && !sentence.text.toLowerCase().includes(query)) return false;
         if (selectedTags.size) {
           const names = new Set(sentenceTags(sentence).map(tag => tag.name));
@@ -858,6 +1039,12 @@
     function renderSentenceCard(sentence, documentIndex) {
       const tags = sentenceTags(sentence);
       const tagHtml = tags.map(tag => `<span class="tag-chip">${escapeHtml(tag.name)}</span>`).join('');
+      // 包 I：卡点句标记。文案/配色与工作区卡点列表一致（待确认 / 待练），同句多条时显示 ×N。
+      const cetMark = cetMarkForSentence(sentence);
+      const cetMarkLabelText = cetMark ? cetMarkLabel(cetMark.state) : '';
+      const cetMarkHtml = cetMark
+        ? `<span class="sentence-cet-mark sentence-cet-mark--${cetMark.state}" title="卡点 · ${escapeHtml(cetMarkLabelText)}">卡点 · ${escapeHtml(cetMarkLabelText)}${cetMark.count > 1 ? `<span class="sentence-cet-mark-count">×${cetMark.count}</span>` : ''}</span>`
+        : '';
       const planning = sentencePlanningState(sentence);
       const aiPattern = aiPatternByKey.get(Number(sentence.key));
       const planningHtml = [
@@ -885,7 +1072,7 @@
             <span class="sentence-number">${documentIndex + 1}</span>
             <span class="sentence-copy">${renderSentenceSummary(sentence)}
               ${sentence.translation ? `<span class="sentence-zh">${escapeHtml(sentence.translation)}</span>` : ''}
-              <span class="sentence-meta">${planningHtml}${alignmentHtml}${tagHtml}</span>
+              <span class="sentence-meta">${cetMarkHtml}${planningHtml}${alignmentHtml}${tagHtml}</span>
             </span>
             <span class="expand-mark">${open ? '−' : '+'}</span>
           </button>
@@ -1048,6 +1235,8 @@
       document.getElementById('count-all').textContent = intensiveDocument.sentences.length;
       document.getElementById('count-vocabulary').textContent = intensiveDocument.sentences.filter(item => sentenceFocusWords(item).length).length;
       document.getElementById('count-saved').textContent = intensiveDocument.sentences.filter(item => item.saved).length;
+      const countMarks = document.getElementById('count-marks');
+      if (countMarks) countMarks.textContent = cetMarksBySentenceKey.size;
       document.getElementById('count-ai-recommended').textContent = intensiveDocument.sentences.filter(item => { const state = sentencePlanningState(item); return state.sentenceRecommended || state.wordRecommended; }).length;
       document.getElementById('count-untagged').textContent = intensiveDocument.sentences.filter(item => !sentenceTags(item).length).length;
       document.getElementById('study-progress').textContent = intensiveViewMode === 'card' && visible.length
@@ -2404,13 +2593,17 @@
 
     async function loadIntensiveStudy() {
       await syncIntensiveHighlightedWords();
-      const [documentResponse, tagResponse, knownResponse, vocabResponse, recommendationResponse, savedSentencesResponse] = await Promise.all([
+      // 包 I：卡点模块关闭（ELT_CET_FEATURE_CET_LISTENING_AGENT=0）时完全不发 /api/cet/marks；
+      // 通用模式 CET_MARKS_ON 亦为 false，与基线 c4a480d 行为一致。
+      const cetMarksPromise = CET_MARKS_ON ? loadCetMarks() : Promise.resolve(null);
+      const [documentResponse, tagResponse, knownResponse, vocabResponse, recommendationResponse, savedSentencesResponse, cetMarksPayload] = await Promise.all([
         fetch(`/api/v2/lessons/${LESSON_ID}/intensive${_wordlistsQuery()}`),
         fetch('/api/v2/lessons/sentence-tags'),
         fetch('/api/known-words'),
         fetch('/vocab-log'),
         fetch(`/api/v2/lessons/${LESSON_ID}/ai-recommendations`, {cache: 'no-store'}),
         fetch('/api/v2/lessons/sentence-review'),
+        cetMarksPromise,
       ]);
       if (!documentResponse.ok) throw new Error('无法加载整篇精读数据');
       if (savedSentencesResponse.ok) {
@@ -2421,6 +2614,9 @@
         }
       }
       intensiveDocument = await documentResponse.json();
+      // 包 I：精听句数据就绪后再把卡点按 sentenceId / 时间重叠映射到句子。
+      applyCetMarks(cetMarksPayload);
+      setCetMarksAvailable(Boolean(cetMarksPayload));
       savedLessonWords.clear();
       for (const word of intensiveDocument.lesson_words || []) savedLessonWords.add(String(word).toLowerCase());
       for (const sentence of intensiveDocument.sentences || []) {

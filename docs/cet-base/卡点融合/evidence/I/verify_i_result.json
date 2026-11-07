@@ -1,0 +1,134 @@
+{
+  "base": "http://127.0.0.1:5304",
+  "sessionId": "cet-session-i-test",
+  "steps": [
+    {
+      "step": "I2 筛选按钮存在且名称正确",
+      "pass": true,
+      "actual": "我的卡点\n2"
+    },
+    {
+      "step": "I2 筛选样式复用 .mode-filter",
+      "pass": true,
+      "actual": true
+    },
+    {
+      "step": "I1 卡点句出现「卡点」标记",
+      "pass": true,
+      "actual": "[{\"key\": 0, \"text\": \"卡点 · 待确认\", \"backgroundColor\": \"rgb(253, 235, 200)\", \"color\": \"rgb(138, 90, 0)\", \"borderLeftColor\": \"rgb(224, 142, 11)\", \"sentence\": \"It's getting late and we're both displaying signs of wearine\"}, {\"key\": 10, \"text\": \"卡点 · 待练\", \"backgroundColor\": \"rgb(216, 230, 248)\", \"color\": \"rgb(23, 69, 122)\", \"borderLeftColor\": \"rgb(39, 111, 191)\", \"sentence\": \"Don't get me wrong.\\n              \\n              卡点 · 待练\"}]"
+    },
+    {
+      "step": "I1 待确认态颜色/文案与工作区一致",
+      "pass": true,
+      "actual": "[{\"key\": 0, \"text\": \"卡点 · 待确认\", \"backgroundColor\": \"rgb(253, 235, 200)\", \"color\": \"rgb(138, 90, 0)\", \"borderLeftColor\": \"rgb(224, 142, 11)\", \"sentence\": \"It's getting late and we're both displaying signs of wearine\"}]"
+    },
+    {
+      "step": "I1 待练态颜色/文案与工作区一致",
+      "pass": true,
+      "actual": "[{\"key\": 10, \"text\": \"卡点 · 待练\", \"backgroundColor\": \"rgb(216, 230, 248)\", \"color\": \"rgb(23, 69, 122)\", \"borderLeftColor\": \"rgb(39, 111, 191)\", \"sentence\": \"Don't get me wrong.\\n              \\n              卡点 · 待练\"}]"
+    },
+    {
+      "step": "I2 点击「我的卡点」只显示卡点句",
+      "pass": true,
+      "actual": [
+        0,
+        10
+      ]
+    },
+    {
+      "step": "I2 我的卡点计数",
+      "pass": true,
+      "actual": "2"
+    },
+    {
+      "step": "I2 结果统计同步",
+      "pass": true,
+      "actual": "显示 2 / 32 句"
+    },
+    {
+      "step": "真实媒体播放（原声整句）",
+      "pass": true,
+      "actual": "{\"currentTime\": 0.629, \"paused\": false, \"playbackRate\": 1, \"src\": \"cet/cet6-202512-conv2.mp3\", \"duration\": 105.49}"
+    },
+    {
+      "step": "真实媒体倍速（1.25×）",
+      "pass": true,
+      "actual": "{\"playbackRate\": 1.25, \"paused\": false, \"currentTime\": 0.659}"
+    },
+    {
+      "step": "页面无 JS 错误",
+      "pass": true,
+      "actual": []
+    },
+    {
+      "step": "375 宽度筛选按钮可见",
+      "pass": true,
+      "actual": "我的卡点\n2"
+    },
+    {
+      "step": "375 宽度卡点筛选结果",
+      "pass": true,
+      "actual": 2
+    },
+    {
+      "step": "工作区卡点面板可对照（待确认/待练）",
+      "pass": true,
+      "actual": "卡点标记（2）\n标记于 0:05.00\n待确认\n→\n候选句 0:00.01–0:03.49\nIt's getting late and we're both displaying signs of weariness.\n回听\n前一句\n后一句\n确认这句\n删除\n标记于 0:32.00\n待练\n→\n确认句 0:28.64–0:29.34\nDon't get me wrong.\n回听\n开始带练\n改一下\n删除"
+    }
+  ],
+  "fixture": {
+    "materialId": "cet6-202512-conv2",
+    "marks": [
+      {
+        "markId": "mark-8f4d7e4f09a7",
+        "pressedAtSec": 5.0,
+        "suggestedSentenceId": "v2-1-0",
+        "confirmedSentenceId": null
+      },
+      {
+        "markId": "mark-e6e0ccb6b884",
+        "pressedAtSec": 32.0,
+        "suggestedSentenceId": "v2-1-10",
+        "confirmedSentenceId": "v2-1-10"
+      }
+    ]
+  },
+  "desktop": {
+    "chips": [
+      {
+        "key": 0,
+        "text": "卡点 · 待确认",
+        "backgroundColor": "rgb(253, 235, 200)",
+        "color": "rgb(138, 90, 0)",
+        "borderLeftColor": "rgb(224, 142, 11)",
+        "sentence": "It's getting late and we're both displaying signs of wearine"
+      },
+      {
+        "key": 10,
+        "text": "卡点 · 待练",
+        "backgroundColor": "rgb(216, 230, 248)",
+        "color": "rgb(23, 69, 122)",
+        "borderLeftColor": "rgb(39, 111, 191)",
+        "sentence": "Don't get me wrong.\n              \n              卡点 · 待练"
+      }
+    ],
+    "media": {
+      "currentTime": 0.629,
+      "paused": false,
+      "playbackRate": 1,
+      "src": "cet/cet6-202512-conv2.mp3",
+      "duration": 105.49
+    },
+    "rate": {
+      "playbackRate": 1.25,
+      "paused": false,
+      "currentTime": 0.659
+    },
+    "errors": []
+  },
+  "summary": {
+    "passed": 14,
+    "total": 14,
+    "allPass": true
+  }
+}

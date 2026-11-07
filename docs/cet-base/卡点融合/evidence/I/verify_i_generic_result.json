@@ -1,0 +1,47 @@
+{
+  "base": "http://127.0.0.1:5304",
+  "baseline": "http://127.0.0.1:5319",
+  "steps": [
+    {
+      "step": "通用模式无卡点 UI / 无 CET 请求（本分支）",
+      "pass": true,
+      "actual": "{\"title\": \"逐句精读 - EchoLingo\", \"marksFilter\": 0, \"marksChips\": 0, \"cetRequests\": [], \"cards\": 32, \"heading\": \"句子精学工坊\"}"
+    },
+    {
+      "step": "通用模式与基线 c4a480d 像素级一致",
+      "pass": true,
+      "actual": {
+        "mineSize": [
+          1440,
+          3137
+        ],
+        "baselineSize": [
+          1440,
+          3137
+        ],
+        "diffBBox": null
+      }
+    }
+  ],
+  "summary": {
+    "passed": 2,
+    "total": 2,
+    "allPass": true,
+    "mine": {
+      "title": "逐句精读 - EchoLingo",
+      "marksFilter": 0,
+      "marksChips": 0,
+      "cetRequests": [],
+      "cards": 32,
+      "heading": "句子精学工坊"
+    },
+    "baseline": {
+      "title": "逐句精读 - EchoLingo",
+      "marksFilter": 0,
+      "marksChips": 0,
+      "cetRequests": [],
+      "cards": 32,
+      "heading": "句子精学工坊"
+    }
+  }
+}

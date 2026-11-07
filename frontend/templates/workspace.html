@@ -3041,7 +3041,7 @@ function startPolling() {
   timePoll = setInterval(() => {
     if (Date.now() < suppressTimeSyncUntil) return;
     const time = readPlayerTime();
-    if (time !== null) updateActiveByTime(time);
+    if (time !== null) updateActiveByTime(time, true);   // 播放推进：允许大纲跟随
   }, 500);
 }
 
@@ -3148,12 +3148,13 @@ function bindLocalMediaEvents(el) {
   el.dataset.wsBound = '1';
   el.addEventListener('timeupdate', () => {
     if (Date.now() < suppressTimeSyncUntil) return;
-    updateActiveByTime(el.currentTime || 0);
+    updateActiveByTime(el.currentTime || 0, true);      // 播放推进：允许大纲跟随
   });
   el.addEventListener('loadedmetadata', () => {
     if (Number.isFinite(el.duration) && el.duration > 0) {
       currentTime = el.currentTime || 0;
-      updateActiveByTime(currentTime);
+      // 初始化定位：允许滚一次，让大纲对齐到恢复的播放位置
+      updateActiveByTime(currentTime, true);
     }
     onPlaybackRateChange();
     // 元数据前挂起的跳转（进度恢复 / 收藏跳原句）在这里落地
@@ -3197,12 +3198,12 @@ function createYouTubePlayer(videoId) {
       onReady: () => {
         onPlaybackRateChange();
         const time = readPlayerTime();
-        if (time !== null) updateActiveByTime(time);
+        if (time !== null) updateActiveByTime(time, true);   // 初始化定位
         startPendingYouTubeReadingRange();
       },
       onStateChange: () => {
         const time = readPlayerTime();
-        if (time !== null) updateActiveByTime(time);
+        if (time !== null) updateActiveByTime(time, true);   // 播放状态变化 = 推进
       },
     },
   });
@@ -4414,7 +4415,13 @@ function isInSelectedRange(idx) {
   return idx >= start && idx <= end;
 }
 
-function updateActiveByTime(time) {
+// `allowOutlineScroll`：是否允许「内容大纲」跟着滚动。
+//   播放自然推进（timeupdate / 500ms 轮询）→ true，用户能看出播到哪
+//   **跳转类**（seekTo / 上一句 / 下一句 / M 标记后的候选句预览）→ false，
+//   因为用户此刻的注意力在操作目标上，把侧栏拽走只会打断他。
+// 返修 2.1：这个参数就是为修「按 M / 按 → 后侧栏被拽到底部」加的
+// （基线 6f07433 的既有行为，M 键让它更显眼）。
+function updateActiveByTime(time, allowOutlineScroll) {
   const sentenceIdx = findUnitByTime(sentenceUnits, time);
   const sectionIdx = findUnitByTime(outlineSections, time);
   if (sentenceIdx === activeSentenceIdx && sectionIdx === activeSectionIdx) return;
@@ -4430,7 +4437,7 @@ function updateActiveByTime(time) {
   }
   updateCurrentSubtitle();
   renderOutline();
-  scrollActiveOutlineIntoView();
+  if (allowOutlineScroll) scrollActiveOutlineIntoView();
 }
 
 function findUnitByTime(items, time) {
@@ -4573,10 +4580,51 @@ function updateContextSummary() {
   el.textContent = 'Context: current playback point.';
 }
 
+// 「内容大纲」跟随播放位置高亮。
+//
+// 返修 2.1：只在**用户没在操作侧栏**时才滚动，避免抢走用户的滚动位置。
+//
+// 缺陷现象：原来无条件 scrollIntoView，而 `.outline-section.active` 位于
+// `.side-column` 这个可滚动容器内 —— block:'nearest' 滚动的是**侧栏容器**，
+// 于是任何导致 currentTime 变化的操作（按 M 打标记后的候选句预览、← / → 切句、
+// R 重听、L 句循环回跳、点时间线）都会把侧栏猛地拽到底部，
+// 用户正在读候选句/选项时被打断。
+//
+// 注意：这是基线 6f07433 就有的既有行为（不是返修2 引入），只是 M 键让它更显眼。
+// 处理原则：**保留大纲跟随的价值**（长材料里能看出播到哪），
+// 但用户正在侧栏里操作时不打扰 —— 判定见 outlineScrollShouldYield()。
+function outlineScrollShouldYield() {
+  const side = document.querySelector('.side-column');
+  if (!side) return false;
+  // 1) 焦点/选中的元素在侧栏内（用户正在点选项、读词卡、编辑标签）
+  const active = document.activeElement;
+  if (active && active !== document.body && side.contains(active)) return true;
+  // 2) 用户刚刚手动滚动过侧栏（2.5s 内）—— 尊重用户的滚动意图
+  const lastUserScroll = Number(window.__sideColumnUserScrollAt || 0);
+  if (lastUserScroll && Date.now() - lastUserScroll < 2500) return true;
+  // 3) 有打开的词卡浮层/弹窗（用户正在看释义）
+  if (document.querySelector('#word-popover.open')) return true;
+  return false;
+}
+
 function scrollActiveOutlineIntoView() {
+  if (outlineScrollShouldYield()) return;
   const active = document.querySelector('.outline-section.active');
   if (active) active.scrollIntoView({block: 'nearest'});
 }
+
+// 记录「用户主动滚动侧栏」的时刻，供 outlineScrollShouldYield() 判断。
+// 用 wheel/touchmove/keydown 而非 scroll 事件 —— scroll 事件无法区分
+// 「用户滚动」和「scrollIntoView 造成的滚动」，会导致自己把自己锁死。
+(function bindSideColumnUserScroll() {
+  const mark = () => { window.__sideColumnUserScrollAt = Date.now(); };
+  const onWheel = (e) => {
+    const side = document.querySelector('.side-column');
+    if (side && e.target && side.contains(e.target)) mark();
+  };
+  document.addEventListener('wheel', onWheel, {passive: true});
+  document.addEventListener('touchmove', onWheel, {passive: true});
+})();
 
 function onSubtitleModeChange() {
   renderOutline();

@@ -437,15 +437,19 @@
     }, CFG.playerPollMs);
   }
 
-  // ── 快捷键（返修2 P2-1…P2-4）────────────────────────────────
-  // 归属契约（三态，返修2 起生效）：
-  //   CET 模式 + 队友模块**关闭** → 底座接管 Space/←/→/R/L，ownsSpaceKey = true
-  //   CET 模式 + 队友模块**开启** → 底座一个都不管，   ownsSpaceKey = false
+  // ── 快捷键（返修2 P2-1…P2-4，返修2.1 修订归属）────────────────
+  // 归属契约（返修 2.1 起）：
+  //   CET 模式（无论队友模块开关）→ 底座接管 Space/←/→/R/L，ownsSpaceKey = true
   //   通用模式（ELT_CET_MODE=0）  → 不注册（原版没有快捷键），ownsSpaceKey = false
-  // 为什么关闭态要接管：队友模块默认不挂载（cet_mode.cet_listening_agent kept=False），
-  // 旧契约「空格一律让给队友」在默认配置下等于工作区**没有任何播放快捷键**。
-  // 为什么开启态必须让出：队友模块的 onKeyDown 在 capture 阶段抢 Space 做卡点标记，
-  // 两边同时处理会出现「空格既标记又暂停」的双响应。
+  //
+  // 返修 2.1 为什么改：返修 2 的契约是「队友模块一挂载底座就整体让出 Space」，
+  // 但队友的 onKeyDown 在未进入卡点练习模式时会直接 return（不处理也不阻止），
+  // 两边都不管 → **空格彻底失效**（实测：队友挂载但未点「开始卡点练习」时，
+  // 按 Space 的 paused 完全不变、无任何提示）。这是返修 2 契约与队友实现的空档。
+  //
+  // 现在 Space 归底座**独占**（播放/暂停，听力训练最高频操作），
+  // 队友的卡点标记改用 **M** 键（见 cet-listening.js onKeyDown），两者不再抢同一个键。
+  // 所以底座在队友开启时也接管，不需要让出。
   const HOTKEY_HINTS = [
     ['Space', '播放 / 暂停'],
     ['← / →', '上一句 / 下一句'],
@@ -463,9 +467,14 @@
     return document.body.classList.contains('cet-listening') || Boolean(document.getElementById('cet-toolbar'));
   }
 
-  /** 底座此刻是否接管播放快捷键。**实时判定**，不是挂载时的快照。 */
+  /** 底座此刻是否接管播放快捷键。**实时判定**，不是挂载时的快照。
+   *
+   * 返修 2.1：不再因队友模块挂载而让出 —— Space 归底座独占（播放/暂停），
+   * 队友的卡点标记已改用 M 键，两者不抢同一个键。
+   * 仍保留 cetListeningEnabled() 供队友模块/测试判断队友是否在运行。
+   */
   function hotkeyActive() {
-    return CET_ON && !cetListeningEnabled();
+    return CET_ON;
   }
 
   function sentences() {

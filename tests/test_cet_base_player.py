@@ -152,23 +152,26 @@ def test_teammate_module_references_are_preserved():
 
 
 def test_base_player_space_key_ownership_is_three_state():
-    """返修2 P2：空格归属改为三态，不再是「一律不碰」。
+    """返修2.1：Space 归底座独占，队友开启时**不再让出**。
 
-    权威契约（主代理定，包2/包5/审核方共用）：
+    权威契约（返修 2.1 起）：
 
-        CET 模式 + 队友关闭 → 底座注册 Space/←/→/R/L，ownsSpaceKey = true
-        CET 模式 + 队友开启 → 底座一个都不注册，          ownsSpaceKey = false
+        CET 模式（队友开或关）→ 底座注册 Space/←/→/R/L，ownsSpaceKey = true
         通用模式(ELT_CET_MODE=0) → 不注册（原版无快捷键）， ownsSpaceKey = false
 
-    旧用例（test_base_player_does_not_own_space_key）锁的是「一律让出」的旧契约，
-    与 P2-1「队友不在时工作区没有任何播放快捷键」直接冲突，已随契约演进改写。
+    为什么改：返修 2 的契约是「队友一挂载底座就整体让出 Space」，但队友的
+    onKeyDown 在未进入卡点练习模式时直接 return（不处理也不阻止）——两边都不管，
+    **空格彻底失效**（实测：队友挂载但未点「开始卡点练习」时按 Space 的 paused 完全不变）。
+    现在 Space 归底座独占，队友的卡点标记改用 M 键（见 cet-listening.js onKeyDown）。
     行为验证见 tests/test_cet_fix2_p2_hotkeys.py（真实浏览器 + HTMLMediaElement）。
     """
     js = _text(CET_PLAYER)
 
-    # 1. 归属判定必须同时看 CET 模式与队友模块状态，不能是常量
+    # 1. 归属判定只看 CET 模式，不再受队友模块影响
     assert "function hotkeyActive()" in js, "缺少快捷键归属判定函数"
-    assert "return CET_ON && !cetListeningEnabled();" in js, "归属判定未同时考虑 CET_ON 与队友模块"
+    assert "return CET_ON;" in js, "归属判定仍受队友模块影响（返修2.1 起 Space 归底座独占）"
+    assert "return CET_ON && !cetListeningEnabled();" not in js, \
+        "hotkeyActive 仍带队友让出条件 —— 返修2.1 已改为底座独占 Space"
 
     # 2. ownsSpaceKey 必须是 getter（反映当前实际状态），不是对外暴露的字面量
     assert "get ownsSpaceKey()" in js, "ownsSpaceKey 仍是常量，无法反映三态"
@@ -367,8 +370,8 @@ def test_p2_ownership_syncs_when_teammate_mounts_late():
 def test_p2_generic_mode_does_not_register_hotkeys():
     """§0.6 通用模式回归：ELT_CET_MODE=0 时行为不变（原版没有这些快捷键）。"""
     js = _text(CET_PLAYER)
-    # 归属判定的第一项就是 CET_ON，通用模式直接短路
-    assert "return CET_ON && !cetListeningEnabled();" in js
+    # 归属判定只看 CET_ON（返修2.1 起不再带队友让出条件），通用模式直接短路
+    assert "return CET_ON;" in js
     assert "if (!hotkeyActive()) return;" in js
 
 

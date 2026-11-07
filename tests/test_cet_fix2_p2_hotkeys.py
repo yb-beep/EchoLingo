@@ -282,42 +282,86 @@ def test_p2_1_typing_target_is_ignored(page):
     assert _audio(page, "a.paused") is True, "输入框里按空格把播放打开了"
 
 
-# ── P2-2：队友模块开启后必须让出 ─────────────────────────────
+# ── P2-2（返修2.1 反转）：队友模块开启后 Space 仍归底座 ────────────
 
 
 @pytest.mark.skipif(not _up(AGENT_ON_BASE), reason="未设置 CET_AGENT_ON_BASE_URL（队友模块开启态服务）")
-def test_p2_2_base_yields_all_hotkeys_when_agent_on(page):
-    """P2-2：ELT_CET_FEATURE_CET_LISTENING_AGENT=1 时底座 handler 一次都不触发。"""
+def test_p2_2_base_keeps_space_even_when_agent_on(page):
+    """返修2.1：队友开启时底座**不再让出** Space —— 空格永远是播放/暂停。
+
+    历史：返修 2 的 P2-2 要求「队友开启后底座让出全部快捷键」。但队友的
+    onKeyDown 在未进入卡点练习模式时直接 return（不处理也不阻止），
+    两边都不管 → **空格彻底失效**（实测 paused 完全不变）。
+    返修2.1 改为：Space 归底座独占，队友的卡点标记改用 M 键。
+    """
     _open(page, AGENT_ON_BASE, expect_agent=True)
 
-    # 队友模块真的在（不是「因为没加载所以让出」）
+    # 队友模块真的在
     assert page.evaluate("() => window.__cetPlayer.cetListeningEnabled()") is True
     assert page.locator("#cet-toolbar").count() == 1
 
-    # 底座已让出：声明与实现一致
-    assert page.evaluate("() => window.__cetPlayer.ownsSpaceKey") is False
-    assert page.evaluate("() => window.__cetPlayer._state.keydownBound") is False
+    # 底座仍接管：声明与实现一致
+    assert page.evaluate("() => window.__cetPlayer.ownsSpaceKey") is True
+    assert page.evaluate("() => window.__cetPlayer._state.keydownBound") is True
 
     _pause(page)
     assert _audio(page, "a.paused") is True
-    before_time = _audio(page, "a.currentTime")
     before_handled = page.evaluate("() => window.__cetPlayer._state.keyHandled")
 
     page.keyboard.press("Space")
-    page.keyboard.press("ArrowRight")
-    page.keyboard.press("ArrowLeft")
-    page.keyboard.press("R")
-    page.keyboard.press("L")
-    page.wait_for_timeout(900)
+    page.wait_for_timeout(700)
 
-    assert page.evaluate("() => window.__cetPlayer._state.keyHandled") == before_handled == 0, (
-        "队友开启态底座仍处理了按键（计数器不为 0）"
+    # 空格真实翻转了播放状态
+    assert _audio(page, "a.paused") is False, "队友开启态按 Space 没有开始播放"
+    assert page.evaluate("() => window.__cetPlayer._state.keyHandled") > before_handled, (
+        "队友开启态底座没有处理 Space（计数器未增加）"
     )
-    # 底座没碰：暂停态保持暂停，时间没被 seek
-    assert _audio(page, "a.paused") is True, "队友开启态底座仍抢了 Space"
-    assert abs(_audio(page, "a.currentTime") - before_time) < 0.4, "队友开启态底座仍抢了方向键"
-    assert page.evaluate("() => window.__cetPlayer._state.loopEnabled") is False, "队友开启态底座仍开了句循环"
 
+    # 方向键仍归底座
+    page.keyboard.press("Space")
+    page.wait_for_timeout(400)
+    idx0 = page.evaluate("() => window.__cetPlayer.currentSegmentIndex()")
+    page.keyboard.press("ArrowRight")
+    page.wait_for_timeout(700)
+    idx1 = page.evaluate("() => window.__cetPlayer.currentSegmentIndex()")
+    assert idx1 == idx0 + 1, f"队友开启态 → 未切句：{idx0} → {idx1}"
+
+
+@pytest.mark.skipif(not _up(AGENT_ON_BASE), reason="未设置 CET_AGENT_ON_BASE_URL（队友模块开启态服务）")
+def test_p2_2_agent_marks_with_m_key_not_space(page):
+    """返修2.1：队友的卡点标记键从 Space 改为 M。
+
+    验证：进入卡点练习模式后，按 Space 是播放/暂停（不打标记），
+    按 M 才创建标记。
+    """
+    _open(page, AGENT_ON_BASE, expect_agent=True)
+
+    # 进入卡点练习模式
+    toggle = page.locator("#cet-toggle-mode")
+    assert toggle.count() == 1, "找不到队友的「开始卡点练习」按钮"
+    toggle.click()
+    page.wait_for_timeout(1500)
+
+    mark_posts = []
+    page.on("request", lambda r: mark_posts.append(r.url)
+            if r.method == "POST" and "/api/cet/marks" in r.url else None)
+
+    # 确保在播放（标记只在播放时创建）
+    page.evaluate("() => { const a=document.querySelector('audio'); a.play(); }")
+    page.wait_for_timeout(1200)
+
+    # 按 Space：应只暂停，不建标记
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1200)
+    assert not mark_posts, f"按 Space 仍创建了卡点标记（应改用 M）：{mark_posts}"
+    assert _audio(page, "a.paused") is True, "按 Space 没有暂停（Space 应归底座）"
+
+    # 恢复播放，按 M：应创建标记
+    page.evaluate("() => { const a=document.querySelector('audio'); a.play(); }")
+    page.wait_for_timeout(1200)
+    page.keyboard.press("KeyM")
+    page.wait_for_timeout(2000)
+    assert mark_posts, "按 M 没有创建卡点标记"
 
 # ── P2-3：「⌨ 快捷键」提示 ───────────────────────────────────
 

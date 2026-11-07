@@ -3,7 +3,8 @@
  * 设计原则（按施工计划 §1、§4）：
  *   - 只补新增功能必需的控件，不重做 UI、不改原导航与样式
  *   - 独立文件挂载，尽量少改 workspace.html（5080 行）
- *   - 空格只标记不暂停；输入框/按钮/弹窗里的空格不抢
+ *   - **M** 键标记「没听清」的位置（返修 2.1 起从空格改为 M）；Space 归底座做播放/暂停；
+ *     输入框/按钮/弹窗里的按键不抢
  *   - 标记颜色配文字，不只靠颜色识别
  *
  * 依赖：workspace.html 暴露的 window.__ws（本模块自己取）
@@ -148,7 +149,7 @@
 
   function setListening(on) {
     S.listening = on;
-    // 关键：点完按钮后焦点会留在按钮上，之后按空格会被浏览器当成「点击按钮」，
+    // 关键：点完按钮后焦点会留在按钮上，之后按键会被浏览器当成「激活按钮」，
     // 我们的标记就永远收不到。进入练习模式时主动把焦点移走。
     if (on && document.activeElement && document.activeElement.blur) {
       document.activeElement.blur();
@@ -159,7 +160,7 @@
     if (btn) btn.classList.toggle('active', on);
     if (hint) {
       hint.textContent = on
-        ? '播放时按空格标记「没听清」的位置（不会暂停）'
+        ? '播放时按 M 标记「没听清」的位置（Space 是暂停/继续）'
         : '';
     }
     document.body.classList.toggle('cet-listening', on);
@@ -177,7 +178,7 @@
     }
   }
 
-  // ── 空格标记 ────────────────────────────────────────────
+  // ── M 键标记（返修 2.1：原为空格）──────────────────────────
   function isTypingTarget(t) {
     if (!t) return false;
     const tag = (t.tagName || '').toLowerCase();
@@ -189,10 +190,17 @@
   }
 
   function onKeyDown(e) {
-    if (e.code !== 'Space') return;
+    // 返修 2.1：卡点标记键从 Space 改为 **M**。
+    //
+    // 为什么改：Space 在听力训练里是最高频的「暂停/继续」，底座 cet-player.js
+    // 也把它当播放开关。两边都想要 Space 时，无论谁让出都会出问题 ——
+    // 实测（队友挂载但未进练习模式）Space 彻底失效：底座认为队友接管了、
+    // 队友 onKeyDown 又因 !S.listening 直接 return，两边都没处理。
+    // 现在 Space 归底座独占（暂停/播放），标记用 M（Mnemonic: Mark）。
+    if (e.code !== 'KeyM') return;
     if (!S.listening) return;
     if (isTypingTarget(e.target)) return;
-    // 按钮聚焦时空格是「点击」，不抢 —— 但练习模式下用户可能刚点过按钮，
+    // 按钮聚焦时按键是「激活」，不抢 —— 但练习模式下用户可能刚点过按钮，
     // 此时按钮仍在聚焦状态。已在 setListening 里 blur，这里再兜一层：
     // 只要不是 cet 自己的按钮，就不抢。
     const onButton = (e.target.tagName || '').toLowerCase() === 'button';
@@ -202,14 +210,6 @@
 
     const m = media();
     if (!m) return;
-
-    // 暂停状态下空格恢复播放，不新增标记（计划 §4）
-    if (m.paused) {
-      e.preventDefault();
-      m.play();
-      flashHint('继续播放');
-      return;
-    }
 
     e.preventDefault();
     // 防连发：300ms 内只认一次
@@ -255,7 +255,7 @@
     hint.classList.toggle('error', !!isError);
     clearTimeout(flashHint._t);
     flashHint._t = setTimeout(() => {
-      hint.textContent = S.listening ? '播放时按空格标记「没听清」的位置（不会暂停）' : '';
+      hint.textContent = S.listening ? '播放时按 M 标记「没听清」的位置（Space 是暂停/继续）' : '';
       hint.classList.remove('error');
     }, 2600);
   }
@@ -510,7 +510,7 @@
     track.setAttribute('data-cet-duration-sec', String(Number(dur.toFixed(3))));
 
     if (!S.marks.length) {
-      track.appendChild(el('div', 'cet-timeline-empty', '暂无卡点标记（播放时按空格标记）'));
+      track.appendChild(el('div', 'cet-timeline-empty', '暂无卡点标记（播放时按 M 标记）'));
       return;
     }
 

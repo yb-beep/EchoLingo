@@ -1,0 +1,74 @@
+{
+ "d2_meaning": {
+  "http_status": 200,
+  "currentStep_action": "explain",
+  "data": {
+   "mode": "offline",
+   "words": [
+    {
+     "word": "It's",
+     "ipa": "its",
+     "meaning": "it is的缩写, it has的缩写"
+    },
+    {
+     "word": "getting",
+     "ipa": "'^etiŋ",
+     "meaning": "n. 采煤, 采掘；获得"
+    },
+    {
+     "word": "late",
+     "ipa": "leit",
+     "meaning": "a. 迟的, 晚的, 已故的"
+    },
+    {
+     "word": "and",
+     "ipa": "ænd",
+     "meaning": "conj. 和, 与"
+    },
+    {
+     "word": "we're",
+     "ipa": "wɪə(r)",
+     "meaning": "(we are 的常用口语形式)"
+    },
+    {
+     "word": "both",
+     "ipa": "bәuθ",
+     "meaning": "a. 两者的"
+    },
+    {
+     "word": "displaying",
+     "ipa": "dɪˈspleɪɪŋ",
+     "meaning": "v. 展出；使展现；显示（display的现在分词形式）"
+    },
+    {
+     "word": "signs",
+     "ipa": "sain",
+     "meaning": "n. 标志；符号（sign的复数）"
+    },
+    {
+     "word": "of",
+     "ipa": "ɒv",
+     "meaning": "prep. 的, 属于"
+    },
+    {
+     "word": "weariness",
+     "ipa": "'wiәrinis",
+     "meaning": "n. 疲倦, 厌倦, 疲劳"
+    }
+   ],
+   "hint": "配置模型后可获得讲解",
+   "translation": "天色渐晚，我们都显出疲惫的迹象。"
+  },
+  "aiRequest": {
+   "requestId": "req-5d7a843163a4",
+   "stepId": "0f97195044b64b63bce8d18401075a0d",
+   "revision": 5,
+   "action": "explain",
+   "status": "succeeded",
+   "errorCode": "",
+   "model": "offline",
+   "createdAt": "2026-11-07T12:52:00.104919+00:00",
+   "completedAt": "2026-11-07T12:52:00.117914+00:00"
+  }
+ }
+}

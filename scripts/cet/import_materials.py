@@ -37,6 +37,7 @@ import os
 import pathlib
 import shutil
 import sys
+from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -118,6 +119,32 @@ def _questions(material_id: str) -> list[dict]:
         return []
     doc = json.loads(path.read_text(encoding="utf-8"))
     return doc.get("questions") or []
+
+
+# D1：（样例占位）题只保留在 tests/fixtures/cet/source/*.questions.json 里，
+# 用来覆盖「未知答案」判题路径；用户实际导入的演示材料不显示这类题。
+# 判定必须窄：题干含「样例占位」**且** answer 未确认，二者缺一不可。
+_PLACEHOLDER_MARKER = "样例占位"
+_UNCONFIRMED_ANSWER_VALUES = {"", "unconfirmed", "unknown", "tbd", "n/a", "na", "none", "null"}
+
+
+def _answer_is_unconfirmed(value: Any) -> bool:
+    """answer 缺失 / 空 / 显式未确认（unknown、unconfirmed 等）才算未确认。
+
+    注意 0 是合法答案（选项 A），不能按 falsy 判。
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in _UNCONFIRMED_ANSWER_VALUES
+    return False
+
+
+def _is_sample_placeholder(question: dict) -> bool:
+    """是否为「答案未确认」的（样例占位）题。规则保持窄，避免误删真实题。"""
+    if _PLACEHOLDER_MARKER not in str(question.get("stem") or ""):
+        return False
+    return _answer_is_unconfirmed(question.get("answer"))
 
 
 def _has_attempts(storage_id: str) -> bool:
@@ -225,6 +252,17 @@ def import_one(material_id: str, force: bool = False) -> str:
 
     # 3) 题目：证据句从 sNN 形式转成 v2-<id>-<0based>
     #
+    # D1：先剔除「答案未确认 + 题干含（样例占位）」的题。测试夹具文件不改
+    # （未知答案路径仍由 tests/test_cet_contract.py 的 mock 覆盖）。
+    raw_questions = questions
+    questions = [q for q in raw_questions if not _is_sample_placeholder(q)]
+    placeholder_skipped = len(raw_questions) - len(questions)
+    if placeholder_skipped:
+        print(
+            f"  · 跳过 {placeholder_skipped} 道（样例占位）题（answer 未确认，仅夹具保留）",
+            flush=True,
+        )
+
     # 注意：cet_attempt_answers.question_id 有外键指向 cet_questions，
     # 一旦有人交过卷，题目就不能删了（重建会 FK 失败）。
     # 这不是 bug，是「历史作答必须保留」的正确约束。
@@ -262,8 +300,12 @@ def import_one(material_id: str, force: bool = False) -> str:
     qnote = ""
     if skipped_questions:
         qnote = "｜题目已保留（已有交卷记录，不重建以免破坏历史作答）"
+    elif not questions and placeholder_skipped:
+        qnote = f"｜跳过 {placeholder_skipped} 道（样例占位）题（answer 未确认）"
     elif not questions:
         qnote = "｜无题目"
+    elif placeholder_skipped:
+        qnote = f"｜跳过 {placeholder_skipped} 道（样例占位）题（answer 未确认）"
     return (
         f"{action} {material_id} → {storage_id}"
         f"｜{len(sentences)} 句｜{meta['duration']:.1f}s{qnote}"

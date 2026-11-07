@@ -1,0 +1,56 @@
+{
+ "1440": {
+  "status": 200,
+  "mode": "offline",
+  "hint": "配置模型后可获得讲解",
+  "words": 10,
+  "translation": null,
+  "offline_dom": true,
+  "word_rows": 10,
+  "before": {
+   "t": 3.78,
+   "paused": false,
+   "rate": 1
+  },
+  "after": {
+   "t": 1.34,
+   "paused": false,
+   "rate": 1
+  },
+  "step_after": "drill",
+  "errors": [],
+  "screenshot": "d2-meaning-offline-1440.png",
+  "viewport": {
+   "w": 1440,
+   "h": 900,
+   "sw": 1440
+  }
+ },
+ "375": {
+  "status": 200,
+  "mode": "offline",
+  "hint": "配置模型后可获得讲解",
+  "words": 10,
+  "translation": null,
+  "offline_dom": true,
+  "word_rows": 10,
+  "before": {
+   "t": 2.35,
+   "paused": false,
+   "rate": 1
+  },
+  "after": {
+   "t": 1.35,
+   "paused": false,
+   "rate": 1
+  },
+  "step_after": "drill",
+  "errors": [],
+  "screenshot": "d2-meaning-offline-375.png",
+  "viewport": {
+   "w": 375,
+   "h": 812,
+   "sw": 375
+  }
+ }
+}

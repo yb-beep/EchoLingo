@@ -1,0 +1,62 @@
+{
+ "1440": {
+  "status": 200,
+  "step_action": "finish",
+  "step_source": "local",
+  "step_data": {
+   "noCandidate": true,
+   "reason": "offline"
+  },
+  "transferStatus": "no_candidate",
+  "bad_words": [],
+  "transfer_box": true,
+  "transfer_state": "no_candidate",
+  "before": {
+   "t": 2.28,
+   "paused": false,
+   "rate": 1
+  },
+  "after": {
+   "t": 4.15,
+   "paused": true,
+   "rate": 1
+  },
+  "errors": [],
+  "screenshot": "d3-heard-offline-1440.png",
+  "viewport": {
+   "w": 1440,
+   "h": 900,
+   "sw": 1440
+  }
+ },
+ "375": {
+  "status": 200,
+  "step_action": "finish",
+  "step_source": "local",
+  "step_data": {
+   "noCandidate": true,
+   "reason": "offline"
+  },
+  "transferStatus": "no_candidate",
+  "bad_words": [],
+  "transfer_box": true,
+  "transfer_state": "no_candidate",
+  "before": {
+   "t": 4.99,
+   "paused": false,
+   "rate": 1
+  },
+  "after": {
+   "t": 4.14,
+   "paused": true,
+   "rate": 1
+  },
+  "errors": [],
+  "screenshot": "d3-heard-offline-375.png",
+  "viewport": {
+   "w": 375,
+   "h": 812,
+   "sw": 375
+  }
+ }
+}

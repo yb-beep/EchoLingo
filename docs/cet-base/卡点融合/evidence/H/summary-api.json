@@ -1,0 +1,25 @@
+{
+    "materials": {
+        "1": {
+            "submitted": true,
+            "score": 4,
+            "total": 5,
+            "unscored": 1,
+            "marks": 1,
+            "pendingReview": 1
+        },
+        "2": {
+            "submitted": false,
+            "score": 0,
+            "total": 5,
+            "unscored": 0,
+            "marks": 0,
+            "pendingReview": 0
+        }
+    },
+    "reviewDue": {
+        "marks": 1,
+        "sentences": 1,
+        "words": 1
+    }
+}

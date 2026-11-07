@@ -1,14 +1,212 @@
 """CET listening black-box HTTP API."""
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
+
+import db
 from webapp import cet_mode
 from webapp.services import cet_service
 
 router = APIRouter(prefix="/api/cet", tags=["cet"])
+
+
+# ══════════════════════════════════════════════════════════════
+# 首页汇总（卡点融合 · 包 H / H1）：**只读**统计
+#
+# 契约：GET /api/cet/summary
+#   {
+#     "materials": {
+#       "<lessonId>": {submitted, score, total, unscored, marks, pendingReview}
+#     },
+#     "reviewDue": {marks, sentences, words}
+#   }
+#
+# 口径说明（全部来自现有表，不写库、不改 cet_service 的业务规则）：
+#   - materials 键是底座课程 lessonId 的字符串形式（材料卡片直接用）。
+#   - submitted 是布尔「是否交过卷」；score/total 是最近一次交卷的得分/题目数，
+#     前端拼出「已交卷 4/4」；unscored 是「题库没有可靠答案」的题数（unknownCount）。
+#   - marks 是该材料的卡点（cet_marks）总数；pendingReview 是该材料待复习的
+#     卡点条目（cet_review_items.status='pending'）。
+#   - reviewDue.marks/sentences/words 是「今天值得复习」的数量：
+#     待复习卡点条目 / 到期收藏句 / 到期收藏词。全部为 0 时前端显示空态。
+#   - 表不存在或查询失败一律按 0 返回，不向调用方报错（空库可安全打开首页）。
+# ══════════════════════════════════════════════════════════════
+
+# 收藏词复习间隔与前端 reviewStatus() 的 INTERVALS 保持一致（1/3/7/14/30/60 天）。
+_WORD_REVIEW_INTERVALS = (1, 3, 7, 14, 30, 60)
+
+
+def _summary_lesson_material_ids(lesson: dict[str, Any]) -> tuple[str, ...]:
+    """同一份材料在存量表里有两种可能的 ID：`v2-<lessonId>` 与业务稳定 ID。"""
+    lesson_id = int(lesson["id"])
+    ids = [f"v2-{lesson_id}"]
+    source_url = str(lesson.get("source_url") or "")
+    # 与 cet_service._business_id 同一规则：fixture:// / upload: 不派生业务 ID。
+    if source_url and not source_url.startswith(("fixture://", "upload:")):
+        name = source_url.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        if name and name not in ids:
+            ids.append(name)
+    return tuple(ids)
+
+
+def _summary_placeholders(values: tuple[str, ...]) -> str:
+    return ",".join("?" for _ in values)
+
+
+def _summary_count(conn: Any, sql: str, params: tuple[Any, ...] = ()) -> int:
+    """只读 COUNT；表缺失/查询失败按 0 处理（空库不报错）。"""
+    try:
+        row = conn.execute(sql, params).fetchone()
+    except Exception:  # noqa: BLE001
+        return 0
+    return int(row[0] if row else 0)
+
+
+def _summary_row(conn: Any, sql: str, params: tuple[Any, ...] = ()) -> Any:
+    try:
+        return conn.execute(sql, params).fetchone()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _summary_rows(conn: Any, sql: str, params: tuple[Any, ...] = ()) -> list[Any]:
+    try:
+        return conn.execute(sql, params).fetchall()
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _empty_material_summary(total: int = 0) -> dict[str, Any]:
+    return {
+        "submitted": False,
+        "score": 0,
+        "total": total,
+        "unscored": 0,
+        "marks": 0,
+        "pendingReview": 0,
+    }
+
+
+def _word_is_due(row: Any, today: date) -> bool:
+    """与前端 `reviewStatus()` 同一套「到期」判断（next_review 优先，否则按间隔）。"""
+    next_review = str(row["next_review"] or "")[:10]
+    if next_review:
+        return next_review <= today.isoformat()
+    last_studied = str(row["last_studied"] or "")[:10]
+    if not last_studied:
+        return True
+    try:
+        days_since = (today - date.fromisoformat(last_studied)).days
+    except ValueError:
+        return True
+    try:
+        count = max(1, int(row["count"] or 1))
+    except (TypeError, ValueError):
+        count = 1
+    interval_days = _WORD_REVIEW_INTERVALS[min(count - 1, len(_WORD_REVIEW_INTERVALS) - 1)]
+    return interval_days - days_since <= 0
+
+
+def _cet_home_summary() -> dict[str, Any]:
+    try:
+        lessons = db.list_v2_lessons(include_archived=True)
+    except Exception:  # noqa: BLE001
+        lessons = []
+
+    materials: dict[str, dict[str, Any]] = {}
+    review_due = {"marks": 0, "sentences": 0, "words": 0}
+    today = date.today()
+
+    try:
+        with db._db() as conn:  # noqa: SLF001 — 只读 SELECT，不写业务表
+            for lesson in lessons:
+                lesson_id = int(lesson["id"])
+                ids = _summary_lesson_material_ids(lesson)
+                marks = _summary_placeholders(ids)
+                total = _summary_count(
+                    conn,
+                    f"SELECT COUNT(*) FROM cet_questions WHERE material_id IN ({marks})",
+                    ids,
+                )
+                entry = _empty_material_summary(total)
+                attempt = _summary_row(
+                    conn,
+                    f"SELECT * FROM cet_attempts WHERE material_id IN ({marks}) "
+                    "ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                    ids,
+                )
+                if attempt is not None:
+                    entry["submitted"] = True
+                    entry["score"] = int(attempt["score"] or 0)
+                    entry["unscored"] = int(attempt["unknown_count"] or 0)
+                entry["marks"] = _summary_count(
+                    conn,
+                    f"SELECT COUNT(*) FROM cet_marks WHERE material_id IN ({marks})",
+                    ids,
+                )
+                entry["pendingReview"] = _summary_count(
+                    conn,
+                    f"SELECT COUNT(*) FROM cet_review_items "
+                    f"WHERE status='pending' AND material_id IN ({marks})",
+                    ids,
+                )
+                materials[str(lesson_id)] = entry
+
+            review_due["marks"] = _summary_count(
+                conn,
+                "SELECT COUNT(*) FROM cet_review_items WHERE status='pending'",
+            )
+            review_due["sentences"] = _summary_count(
+                conn,
+                """
+                SELECT COUNT(*) FROM v2_sentences AS sentence
+                WHERE COALESCE(sentence.archived, 0) = 0
+                  AND (
+                    sentence.next_review IS NULL
+                    OR sentence.next_review = ''
+                    OR substr(sentence.next_review, 1, 10) <= ?
+                  )
+                  AND (
+                    COALESCE(sentence.saved_manually, 0) = 1
+                    OR EXISTS (
+                      SELECT 1 FROM v2_phase_b_sentences AS saved
+                      WHERE saved.sentence_id = sentence.id
+                    )
+                    OR EXISTS (
+                      SELECT 1 FROM v2_sentence_review_items AS review
+                      WHERE review.sentence_id = sentence.id
+                    )
+                  )
+                """,
+                (today.isoformat(),),
+            )
+            word_rows = _summary_rows(
+                conn,
+                """
+                SELECT words.count, words.next_review, words.last_studied
+                FROM word_review_items AS review
+                JOIN words ON words.word = review.word
+                WHERE COALESCE(review.archived, 0) = 0
+                  AND COALESCE(review.mastered, 0) = 0
+                """,
+            )
+            review_due["words"] = sum(1 for row in word_rows if _word_is_due(row, today))
+    except Exception:  # noqa: BLE001
+        # 数据库不可用时不阻断首页：返回全 0（契约要求「查不到数据返回 0」）。
+        materials = {}
+        review_due = {"marks": 0, "sentences": 0, "words": 0}
+
+    return {"materials": materials, "reviewDue": review_due}
+
+
+@router.get("/summary")
+def get_cet_summary():
+    """首页汇总（只读）：材料卡片摘要 + 今日复习数量。"""
+    return _cet_home_summary()
 
 
 @router.get("/mode")

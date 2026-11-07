@@ -1,0 +1,28 @@
+{
+  "mine": {
+    "title": "逐句精听 - EchoLingo",
+    "filter": 0,
+    "chips": 0,
+    "cetreqs": [],
+    "cards": 32
+  },
+  "baseline": {
+    "title": "逐句精听 - EchoLingo",
+    "filter": 0,
+    "chips": 0,
+    "cetreqs": [],
+    "cards": 32
+  },
+  "pixel": {
+    "mineSize": [
+      1440,
+      3137
+    ],
+    "baselineSize": [
+      1440,
+      3137
+    ],
+    "diffBBox": null
+  },
+  "pass": true
+}

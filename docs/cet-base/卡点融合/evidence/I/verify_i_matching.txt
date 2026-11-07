@@ -1,0 +1,2 @@
+range-fallback: [{'key': '1', 'text': '卡点 · 待确认'}]
+time-fallback: [{'key': '10', 'text': '卡点 · 待确认'}]

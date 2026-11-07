@@ -1,0 +1,50 @@
+{
+  "base": "http://127.0.0.1:5304",
+  "steps": [
+    {
+      "step": "1440 无「我的卡点」筛选",
+      "pass": true,
+      "actual": 0
+    },
+    {
+      "step": "1440 无卡点标记",
+      "pass": true,
+      "actual": 0
+    },
+    {
+      "step": "1440 不发 /api/cet/* 请求",
+      "pass": true,
+      "actual": []
+    },
+    {
+      "step": "1440 精听正文正常",
+      "pass": true,
+      "actual": 32
+    },
+    {
+      "step": "375 无「我的卡点」筛选",
+      "pass": true,
+      "actual": 0
+    },
+    {
+      "step": "375 无卡点标记",
+      "pass": true,
+      "actual": 0
+    },
+    {
+      "step": "375 不发 /api/cet/* 请求",
+      "pass": true,
+      "actual": []
+    },
+    {
+      "step": "375 精听正文正常",
+      "pass": true,
+      "actual": 32
+    }
+  ],
+  "summary": {
+    "passed": 8,
+    "total": 8,
+    "allPass": true
+  }
+}

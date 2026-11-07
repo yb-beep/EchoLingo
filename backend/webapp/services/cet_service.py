@@ -1038,13 +1038,18 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
     return _attempt_payload_with_conflict(attempt_id, material_id, session_id)
 
 
-def _mark_payload(row: Any, *, deduplicated: bool = False) -> dict[str, Any]:
+def _mark_payload(row: Any, *, deduplicated: bool = False, in_practice: bool | None = None) -> dict[str, Any]:
     # 字段对齐契约：
     #   id → markId、rawSeconds → pressedAtSec（契约要求保留「原始按键秒数」这一语义）
     # adjustedSeconds / speed / reactionDelaySeconds 仍保留（B 自己的诊断信息，契约不禁止）
     # `deduplicated`（卡点修复 B-1）：1.5s 内同位置重复按键时服务端返回**已有**标记而非新建。
     # 原来两种情况响应体完全一致，调用方无法区分，前端会把同一 markId 重复 push（UI 显示 2 个、库里 1 条）。
     # 现在显式带该字段；HTTP 状态码保持 201 不变，避免破坏既有契约与测试。
+    # `in_practice`（卡点修复 B-5）：该标记是否已被带练占用 —— 决定前端能否删。
+    # 后端 delete_mark() 的拒绝条件是「cet_practices 里有没有对应行」，与 status 无关；
+    # 而前端 markState() 只把 status='complete' 认作 done，active 态下仍会渲染可点按钮，
+    # 用户点下去才收到 409。把真实占用状态透出，前端才能提前禁用。
+    # None = 调用方未查（列表场景批量查更划算，见 list_marks）
     return {
         "markId": row["id"],
         "listeningSessionId": row["listening_session_id"],
@@ -1060,6 +1065,7 @@ def _mark_payload(row: Any, *, deduplicated: bool = False) -> dict[str, Any]:
         "suggestedSentenceId": row["suggested_sentence_id"],
         "suggestionSource": "estimated_alignment",
         "deduplicated": bool(deduplicated),
+        "inPractice": bool(in_practice) if in_practice is not None else None,
         "confirmedSentenceId": row["confirmed_sentence_id"],
         # 表里没有独立 confirmed_at 列；确认动作会刷新 updated_at，用它表示确认时间
         "confirmedAtSec": row["updated_at"] if row["confirmed_sentence_id"] else None,
@@ -1098,7 +1104,11 @@ def create_mark(body: dict[str, Any]) -> dict[str, Any]:
     if existing:
         if existing["material_id"] != material_id:
             _error(409, "IDEMPOTENCY_CONFLICT", "markId 已用于另一份材料。")
-        return _mark_payload(existing)
+        with _db() as conn2:
+            occupied = conn2.execute(
+                "SELECT 1 FROM cet_practices WHERE mark_id=?", (existing["id"],)
+            ).fetchone() is not None
+        return _mark_payload(existing, in_practice=occupied)
     try:
         # 契约字段 pressedAtSec 优先；rawSeconds 保留兼容
         raw = body.get("pressedAtSec")
@@ -1132,8 +1142,13 @@ def create_mark(body: dict[str, Any]) -> dict[str, Any]:
             (session_id, material_id, material["materialVersion"], seconds, seconds),
         ).fetchone()
         if nearby:
-            # 卡点修复 B-1：显式标记「命中已有」而非新建，供前端去重
-            return _mark_payload(nearby, deduplicated=True)
+            # 卡点修复 B-1：显式标记「命中已有」而非新建，供前端去重。
+            # inPractice 也要查 —— 两次响应除 deduplicated 外应完全一致，
+            # 否则「同一标记」在不同调用路径上字段不稳定（既有测试正是断言这一点）。
+            occupied = conn.execute(
+                "SELECT 1 FROM cet_practices WHERE mark_id=?", (nearby["id"],)
+            ).fetchone() is not None
+            return _mark_payload(nearby, deduplicated=True, in_practice=occupied)
         count = conn.execute(
             "SELECT COUNT(*) AS count FROM cet_marks WHERE listening_session_id=?", (session_id,)
         ).fetchone()["count"]
@@ -1146,7 +1161,11 @@ def create_mark(body: dict[str, Any]) -> dict[str, Any]:
              suggested["sentenceId"], now, now),
         )
         row = conn.execute("SELECT * FROM cet_marks WHERE id=?", (mark_id,)).fetchone()
-    return _mark_payload(row)
+        # 新建的标记不可能已在带练中，但保持字段口径一致（前端统一读 inPractice）
+        occupied = conn.execute(
+            "SELECT 1 FROM cet_practices WHERE mark_id=?", (row["id"],)
+        ).fetchone() is not None
+    return _mark_payload(row, in_practice=occupied)
 
 
 def list_marks(material_id: str, listening_session_id: str | None = None) -> list[dict[str, Any]]:
@@ -1159,7 +1178,15 @@ def list_marks(material_id: str, listening_session_id: str | None = None) -> lis
     query += " ORDER BY raw_seconds, created_at, id"
     with _db() as conn:
         rows = conn.execute(query, params).fetchall()
-    return [_mark_payload(row) for row in rows]
+        # 卡点修复 B-5：批量查哪些标记已被带练占用，一次查询而不是逐条查。
+        occupied = {
+            r["mark_id"]
+            for r in conn.execute("SELECT mark_id FROM cet_practices").fetchall()
+        }
+    return [
+        _mark_payload(row, in_practice=row["id"] in occupied)
+        for row in rows
+    ]
 
 
 def confirm_mark(mark_id: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -1191,7 +1218,10 @@ def confirm_mark(mark_id: str, body: dict[str, Any]) -> dict[str, Any]:
             (sentence["sentenceId"], _now(), mark_id),
         )
         updated = conn.execute("SELECT * FROM cet_marks WHERE id=?", (mark_id,)).fetchone()
-    return _mark_payload(updated)
+        occupied = conn.execute(
+            "SELECT 1 FROM cet_practices WHERE mark_id=?", (mark_id,)
+        ).fetchone() is not None
+    return _mark_payload(updated, in_practice=occupied)
 
 
 def delete_mark(mark_id: str) -> dict[str, Any]:

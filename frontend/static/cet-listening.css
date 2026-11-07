@@ -574,3 +574,327 @@ body.cet-hide-text #reading-passage {
   cursor: not-allowed;
   border-style: dashed;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   卡点融合 · K1–K12 新增样式
+   ═══════════════════════════════════════════════════════════ */
+
+/* 三步面板：由 W 的「本步骤」tab 承载，自身不再画外框 */
+.cet-step-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+.cet-step-panel-body {
+  min-width: 0;
+}
+.cet-step-lead {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--muted, #687069);
+  margin-bottom: 10px;
+}
+.cet-inline-link {
+  margin-top: 10px;
+  background: #fff;
+  color: var(--brand, #2f6f5e);
+  border-color: var(--line, #d9ded8);
+}
+.cet-blind-count {
+  font-size: 12px;
+  color: var(--muted, #687069);
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: #f6f7f4;
+}
+
+/* 工具栏第二行（W 的 #ws-step-actions） */
+.cet-step-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 34px;
+}
+.cet-step-actions .cet-hint {
+  flex: 1 1 220px;
+  min-width: 120px;
+}
+.cet-step-primary { min-height: 32px; }
+.cet-step-review-btn { white-space: nowrap; }
+
+/* 卡点行「⋯」菜单：前一句/后一句/改一下/删除收进去 */
+.cet-mark-menu {
+  position: relative;
+  display: inline-block;
+}
+.cet-mark-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.cet-mark-menu > summary::-webkit-details-marker { display: none; }
+.cet-mark-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--muted, #687069);
+  font-size: 15px;
+  line-height: 1;
+}
+.cet-mark-menu[open] .cet-mark-menu-btn {
+  border-color: var(--brand, #2f6f5e);
+  color: var(--brand, #2f6f5e);
+}
+.cet-mark-menu-list {
+  position: absolute;
+  right: 0;
+  top: 30px;
+  z-index: 20;
+  min-width: 112px;
+  padding: 4px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(22, 35, 27, .14);
+}
+.cet-mark-menu-item {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink, #202421);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cet-mark-menu-item:hover { background: #f2f6f3; }
+.cet-mark-menu-item:disabled { color: #aaa; cursor: not-allowed; }
+
+/* K5：时间条小圆点 / 合并计数气泡 / 点开列表 */
+.cet-timeline { position: relative; }
+.cet-timeline-dotmark,
+.cet-timeline-bubble {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 0;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.cet-timeline-dotmark {
+  width: 11px;
+  height: 11px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: #e08e0b;
+  box-shadow: 0 0 0 2px #fff;
+}
+.cet-timeline-dotmark[data-cet-mark-state="ready"] { background: #276fbf; }
+.cet-timeline-dotmark[data-cet-mark-state="done"] { background: #2f8f4e; }
+.cet-timeline-dotmark:hover { transform: translate(-50%, -50%) scale(1.25); }
+.cet-timeline-bubble {
+  min-width: 20px;
+  height: 18px;
+  min-height: 0;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #e08e0b;
+  color: #fff;
+  font-weight: 650;
+  box-shadow: 0 0 0 2px #fff;
+}
+.cet-timeline-bubble[data-cet-mark-state="ready"] { background: #276fbf; }
+.cet-timeline-bubble[data-cet-mark-state="done"] { background: #2f8f4e; }
+.cet-timeline-bubble:hover { transform: translate(-50%, -50%) scale(1.08); }
+.cet-timeline-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  z-index: 30;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(22, 35, 27, .18);
+}
+.cet-timeline-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.cet-timeline-popover-row:hover { background: #f6f8f4; }
+.cet-timeline-popover-time { color: var(--muted, #687069); font-variant-numeric: tabular-nums; }
+.cet-timeline-popover-state { color: #8a5a00; }
+.cet-timeline-popover-ready .cet-timeline-popover-state { color: #17457a; }
+.cet-timeline-popover-done .cet-timeline-popover-state { color: #1c5c33; }
+.cet-timeline-popover-play {
+  margin-left: auto;
+  min-height: 0;
+  padding: 2px 7px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--brand, #2f6f5e);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* K3：成绩卡与「▶ 听原声证据」 */
+.cet-score-card {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 9px;
+  background: #eef6f3;
+  border: 1px solid #cfe4d9;
+}
+.cet-score-label { font-size: 12px; color: var(--muted, #687069); }
+.cet-score-value { font-size: 24px; line-height: 1; color: var(--brand-dark, #214f42); }
+.cet-review-note {
+  font-size: 12px;
+  color: var(--muted, #687069);
+  margin: 4px 0 8px;
+  line-height: 1.5;
+}
+.cet-unknown-note { color: #8a5a00; }
+.cet-evidence-btn { margin-top: 7px; }
+.cet-review-results { margin-top: 4px; }
+
+/* K6：带练面板 */
+.cet-drill-card {
+  padding: 11px 12px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 9px;
+  background: #fbfcfb;
+  margin-bottom: 9px;
+}
+.cet-drill-kicker {
+  font-size: 11px;
+  color: var(--muted, #687069);
+  margin-bottom: 5px;
+}
+.cet-drill-sentence {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--ink, #202421);
+  margin-bottom: 8px;
+}
+.cet-drill-word {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed #9bb9aa;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+.cet-drill-word:hover { color: var(--brand, #2f6f5e); border-bottom-color: var(--brand, #2f6f5e); }
+.cet-drill-play { margin-top: 2px; }
+.cet-drill-quick {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+.cet-drill-complete-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink, #202421);
+  margin-bottom: 6px;
+}
+.cet-favorite-ask {
+  padding: 10px;
+  border: 1px solid #e7d6a8;
+  border-radius: 8px;
+  background: #fffaf0;
+}
+.cet-favorite-ask-text { font-size: 13px; margin-bottom: 5px; }
+.cet-favorite-ask-sentence {
+  font-size: 12px;
+  color: var(--muted, #687069);
+  line-height: 1.55;
+  margin-bottom: 9px;
+}
+.cet-favorite-ask-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+
+/* K7：包 D 离线释义兜底 */
+.cet-offline-explain {
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #f6f7f4;
+  border: 1px solid #e5e9e2;
+}
+.cet-offline-translation {
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+.cet-offline-words { display: flex; flex-direction: column; gap: 4px; }
+.cet-offline-word {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.cet-offline-word-text { font-weight: 600; color: var(--ink, #202421); }
+.cet-offline-word-ipa { color: var(--muted, #687069); font-family: ui-monospace, monospace; }
+.cet-offline-word-meaning { color: var(--muted, #687069); }
+
+/* K10：今日复习 */
+.cet-review-status {
+  font-size: 12px;
+  color: var(--muted, #687069);
+  margin-bottom: 8px;
+}
+.cet-review-kicker { font-size: 11px; color: var(--muted, #687069); margin-bottom: 6px; }
+.cet-review-hidden {
+  font-size: 12.5px;
+  color: var(--muted, #687069);
+  padding: 8px 9px;
+  border-radius: 7px;
+  background: #f6f7f4;
+  margin-bottom: 8px;
+  font-style: italic;
+}
+.cet-review-complete { font-size: 13px; margin-bottom: 8px; }
+
+/* 窄屏（375px 验收）不横向溢出 */
+@media (max-width: 720px) {
+  .cet-step-actions { align-items: flex-start; }
+  .cet-step-actions .cet-hint { flex-basis: 100%; }
+  .cet-step-primary { width: 100%; }
+  .cet-review-card,
+  .cet-drill-card,
+  .cet-score-card { padding: 9px; }
+  .cet-mark-menu-list { right: auto; left: 0; }
+  .cet-timeline-popover { min-width: 160px; max-width: calc(100vw - 40px); }
+}

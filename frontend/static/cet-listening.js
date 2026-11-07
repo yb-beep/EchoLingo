@@ -352,6 +352,11 @@
         acts.appendChild(amend);
       }
 
+      // 删除标记：已开始带练的标记后端会拒（MARK_IN_PRACTICE），前端给明确提示。
+      const del = el('button', 'cet-btn-sm cet-btn-danger', '删除');
+      del.onclick = () => deleteMark(m);
+      acts.appendChild(del);
+
       row.appendChild(acts);
       box.appendChild(row);
     });
@@ -400,6 +405,21 @@
         flashHint('请先交卷，再确认卡点句子', true);
       } else {
         flashHint(`确认失败：${err.message}`, true);
+      }
+    }
+  }
+
+  async function deleteMark(m) {
+    try {
+      await api('DELETE', `/marks/${encodeURIComponent(m.markId)}`);
+      S.marks = S.marks.filter((x) => x.markId !== m.markId);
+      renderMarks();
+      flashHint('已删除该标记');
+    } catch (err) {
+      if (err.code === 'MARK_IN_PRACTICE') {
+        flashHint('该标记已开始带练，不能删除', true);
+      } else {
+        flashHint(`删除失败：${err.message}`, true);
       }
     }
   }

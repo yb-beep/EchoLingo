@@ -182,6 +182,30 @@ def test_mark_confirm_restore_and_validation(client: TestClient):
     assert stale.json()["detail"]["code"] == "MATERIAL_VERSION_CHANGED"
 
 
+def test_mark_delete(client: TestClient):
+    body = {
+        "markId": "mark-delete", "listeningSessionId": "listen-1",
+        "materialId": client.material_id, "materialVersion": client.material_version,
+        "rawSeconds": 3.2,
+    }
+    assert client.post("/api/cet/marks", json=body).status_code == 201
+    deleted = client.delete("/api/cet/marks/mark-delete")
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json() == {"deleted": True, "markId": "mark-delete"}
+    assert client.get("/api/cet/marks", params={"materialId": client.material_id}).json()["marks"] == []
+
+    missing = client.delete("/api/cet/marks/mark-delete")
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "MARK_NOT_FOUND"
+
+
+def test_mark_in_practice_cannot_be_deleted(client: TestClient):
+    create_practice(client, "delete-busy")
+    rejected = client.delete("/api/cet/marks/mark-delete-busy")
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"]["code"] == "MARK_IN_PRACTICE"
+
+
 def test_empty_and_missing_resources(client: TestClient):
     # 契约要求顶层为 {items, count}，同时保留 materials 别名兼容旧调用；
     # 原断言写死全等 {"materials": []}，在契约字段存在时必然不等，已放宽为检查空列表。

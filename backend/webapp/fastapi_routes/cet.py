@@ -106,6 +106,11 @@ def confirm_cet_mark(mark_id: str, body: dict[str, Any] = Body(...)):
     return cet_service.confirm_mark(mark_id, body)
 
 
+@router.delete("/marks/{mark_id}")
+def delete_cet_mark(mark_id: str):
+    return cet_service.delete_mark(mark_id)
+
+
 @router.post("/practices", status_code=201)
 def create_cet_practice(body: dict[str, Any] = Body(...)):
     return cet_service.create_practice(body)

@@ -1,0 +1,75 @@
+{
+  "allPass": true,
+  "modes": {
+    "FEATURE_OFF": {
+      "/": {
+        "pass": true,
+        "same_text": true,
+        "same_controls": true,
+        "baseline_controls": 29,
+        "final_controls": 29,
+        "baseline_len": 868,
+        "final_len": 868,
+        "final_errors": [],
+        "diff_head": null
+      },
+      "/workspace/1": {
+        "pass": true,
+        "same_text": true,
+        "same_controls": true,
+        "baseline_controls": 22,
+        "final_controls": 22,
+        "baseline_len": 987,
+        "final_len": 987,
+        "final_errors": [],
+        "diff_head": null
+      },
+      "/workspace/1/intensive": {
+        "pass": true,
+        "same_text": true,
+        "same_controls": true,
+        "baseline_controls": 142,
+        "final_controls": 142,
+        "baseline_len": 2708,
+        "final_len": 2708,
+        "final_errors": [],
+        "diff_head": null
+      }
+    },
+    "GENERIC": {
+      "/": {
+        "pass": true,
+        "same_text": true,
+        "same_controls": true,
+        "baseline_controls": 30,
+        "final_controls": 30,
+        "baseline_len": 1052,
+        "final_len": 1052,
+        "final_errors": [],
+        "diff_head": null
+      },
+      "/workspace/1": {
+        "pass": true,
+        "same_text": true,
+        "same_controls": true,
+        "baseline_controls": 53,
+        "final_controls": 53,
+        "baseline_len": 1966,
+        "final_len": 1966,
+        "final_errors": [],
+        "diff_head": null
+      },
+      "/workspace/1/intensive": {
+        "pass": true,
+        "same_text": true,
+        "same_controls": true,
+        "baseline_controls": 142,
+        "final_controls": 142,
+        "baseline_len": 2707,
+        "final_len": 2707,
+        "final_errors": [],
+        "diff_head": null
+      }
+    }
+  }
+}

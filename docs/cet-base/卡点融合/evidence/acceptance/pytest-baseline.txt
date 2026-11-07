@@ -1,0 +1,4 @@
+# 基线 c4a480d（用户给定口径）：2 failed / 1054 passed / 104 skipped
+# 两项失败为环境基线：tests/test_baidu_pan.py::test_download_file_verifies_artifact（bdpan 未安装）、
+# tests/test_health_planning_enabled.py::test_health_reports_planning_enabled_when_module_present（公开库无 planning.py）
+# 主代理复跑同口径：failed 同为上述 2 项；媒体就绪后通过数由 1051 恢复为 1054（差异仅 .cet-qa/media 缺失导致的 3 个 skip）

@@ -1,0 +1,9 @@
+# 集成分支全量回归（主代理，2026-11-07）
+# 命令：
+cd /tmp/wt-drill-int
+ELT_CONFIG_DIR=$(mktemp -d) .venv/bin/python -m pytest -q \
+  --ignore=tests/test_cet_listening_ui.py --ignore=tests/test_cet_contract.py
+# 输出原文末段：
+2 failed, 1069 passed, 104 skipped in 1051.04s (0:17:31)
+FAILED tests/test_baidu_pan.py::test_download_file_verifies_artifact - AssertionError: Regex pattern did not match（bdpan 未安装）
+FAILED tests/test_health_planning_enabled.py::test_health_reports_planning_enabled_when_module_present - assert False is True（公开库无 planning.py）

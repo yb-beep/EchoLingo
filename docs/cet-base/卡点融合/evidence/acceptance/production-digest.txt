@@ -1,0 +1,10 @@
+# 正式库逻辑快照（只读，`/tmp/db_snapshot.py resources/vocab.db`）
+{
+  "digest": "92b86dbaceb711b0a244d6e0b447d8fdb042c9c905dfae0894c095f24a3f9dc4",
+  "tables": {
+    "story_history": {"rows": 1},
+    "v2_media_uploads": {"rows": 5},
+    "v2_tags": {"rows": 30}
+  }
+}
+# 期望基线：92b86dbaceb711b0a244d6e0b447d8fdb042c9c905dfae0894c095f24a3f9dc4

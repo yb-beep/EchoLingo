@@ -1,0 +1,355 @@
+{
+  "passed": 42,
+  "total": 42,
+  "allPass": true,
+  "results": [
+    {
+      "name": "V1-1 默认步骤为 blind",
+      "pass": true,
+      "detail": "blind"
+    },
+    {
+      "name": "V1-2 三步步骤条可见",
+      "pass": true,
+      "detail": {
+        "hidden": false,
+        "text": "①\n盲听做题\n②\n对答案·找卡点\n③\n精练·复习"
+      }
+    },
+    {
+      "name": "V1-3 blind 原文隐藏",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "V1-4 当前句视觉不可读且有隐藏提示",
+      "pass": true,
+      "detail": {
+        "color": "rgba(0, 0, 0, 0)",
+        "after": "\"原文已隐藏（听力模式）\""
+      }
+    },
+    {
+      "name": "V1-5 大纲不泄露原句、只显示时间与卡点数",
+      "pass": true,
+      "detail": "\n        0:00 – 0:28\n        0 个卡点\n      \n        0:28 – 1:05\n        0 个卡点\n      \n        1:05 – 1:37\n        0 个卡点\n   "
+    },
+    {
+      "name": "V1-6 M 能打卡点",
+      "pass": true,
+      "detail": [
+        {
+          "id": "mark-2894127fa5d6",
+          "pressed": 5,
+          "conf": null
+        }
+      ]
+    },
+    {
+      "name": "V1-7 blind 卡点行只显示标记时间与回听、无候选原文/确认",
+      "pass": true,
+      "detail": "卡点标记（1）\n标记于 0:05\n回听"
+    },
+    {
+      "name": "V1-8 快捷键面板包含 M/标记没听清",
+      "pass": true,
+      "detail": "Space\n播放 / 暂停\n← / →\n上一句 / 下一句\nR\n重听本句\nL\n本句循环开关\nM\n标记没听清"
+    },
+    {
+      "name": "V2-1 演示材料为 4 题且无占位题",
+      "pass": true,
+      "detail": {
+        "qcount": 4
+      }
+    },
+    {
+      "name": "V2-2 成绩显示 4 / 4",
+      "pass": true,
+      "detail": "对答案·找卡点\n得分\n4 / 4\n第 5 题　你选 B · 正确 B · 答对\n▶ 听原声证据\n第 6 题　你选 B · 正确 B · 答对\n▶ 听原声证据\n第 7 题　你选 D · 正确 D · 答对\n▶ 听原声证据\n第 8 题　你选 C · 正确 C · 答对\n▶ 听原声证据\n点「▶ 听原声证据」可回听出处；卡点列表在下方。"
+    },
+    {
+      "name": "V2-3 交卷按钮已变为进入精练",
+      "pass": true,
+      "detail": "进入精练 →"
+    },
+    {
+      "name": "V2-4 每题有可点击的原声证据",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "V2-5 听原声证据真实播放",
+      "pass": true,
+      "detail": {
+        "t": 0.65481,
+        "paused": false,
+        "rate": 1
+      }
+    },
+    {
+      "name": "V2-6 页面无占位题文案",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "V3-1 交卷后出现确认这句",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "V3-2 确认成功落库到本地状态",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "name": "V3-3 卡点行有 ⋯ 菜单",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "V3-4 菜单含改一下/删除",
+      "pass": true,
+      "detail": "⋯\n前一句\n后一句\n改一下\n删除"
+    },
+    {
+      "name": "V3-5 已带练卡点的删除按钮被禁用",
+      "pass": true,
+      "detail": {
+        "disabled": true,
+        "title": "该标记已开始带练，不能删除"
+      }
+    },
+    {
+      "name": "V4-1 带练面板显示正在练的句子",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "V4-2 进入带练自动播放",
+      "pass": true,
+      "detail": {
+        "t": 1.153575,
+        "paused": false,
+        "rate": 1
+      }
+    },
+    {
+      "name": "V4-3 慢放真实 0.75x",
+      "pass": true,
+      "detail": {
+        "t": 0.383164,
+        "paused": false,
+        "rate": 0.75
+      }
+    },
+    {
+      "name": "V4-4 慢放结束后倍速恢复 1.25",
+      "pass": true,
+      "detail": {
+        "t": 3.46678,
+        "paused": true,
+        "rate": 1.25
+      }
+    },
+    {
+      "name": "V4-5 不懂意思无 key 显示离线词义",
+      "pass": true,
+      "detail": "反馈「不懂意思」→ 解释句意\nIt's\n/its/\nit is的缩写, it has的缩写\ngetting\n/'^etiŋ/\nn. 采煤, 采掘；获得\nlate\n/leit/\na. 迟的, 晚的, 已故的\nand\n/ænd/\nconj. 和, 与\nwe're\n/wɪə(r)/\n(we are 的常用口语形式)\nboth\n/bәuθ/\na. 两者的\ndisplaying\n/dɪˈspleɪɪŋ/\nv"
+    },
+    {
+      "name": "V4-6 不出现模型未配置提示",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "V4-7 带练句子点词可查询",
+      "pass": true,
+      "detail": {
+        "open": true,
+        "text": "It's\n🔊\n/ɪts/\n它\n☆ 收藏单词\n✓ 已掌握"
+      }
+    },
+    {
+      "name": "V5-1 保存本轮后询问收藏",
+      "pass": true,
+      "detail": "卡点带练\n本轮已保存。\n把这句收藏到「我的收藏」？\nIt's getting late and we're both displaying signs of weariness.\n收藏这句\n不用了"
+    },
+    {
+      "name": "V5-2 收藏句进入我的收藏接口",
+      "pass": true,
+      "detail": [
+        "It's getting late and we're both displaying signs of weariness."
+      ]
+    },
+    {
+      "name": "V5-3 我的收藏·句子出现该句",
+      "pass": true,
+      "detail": "四六级 · 句子收藏\n句子收藏\n\n在收藏句中直接播放、隐藏原文并记录是否听懂。\n\n1 个收藏句\n收藏单词\n收藏句子\n全部收藏句\n\n先设置播放方式，再按需要缩小句子范围。\n\n▶ 自动播放\n🔁 循环\n0.6×\n0.8×\n1×\n1.25×\n1.5×\n🙈 隐藏原文\n全部收藏\n今日收藏\n昨日收藏\n本周内收藏\n更早收藏\n全部听力结果\n从未练过\n上次听懂\n上次听不懂\n未归档\n已归档\n全部状态\nIt's gett"
+    },
+    {
+      "name": "V5-4 收藏句可回到原课程原句",
+      "pass": true,
+      "detail": {
+        "text": "← 返回原课程",
+        "href": "/workspace/1/intensive?sentence_key=0"
+      }
+    },
+    {
+      "name": "V6-1 首页今日复习三组数量与接口一致",
+      "pass": true,
+      "detail": {
+        "dom": {
+          "卡点": 1,
+          "收藏句": 1,
+          "收藏词": 0
+        },
+        "api": {
+          "marks": 1,
+          "sentences": 1,
+          "words": 0
+        }
+      }
+    },
+    {
+      "name": "V6-2 首页卡点组有进入复习的链接",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "V6-3 点卡点直接进入复习且先盲听",
+      "pass": true,
+      "detail": {
+        "active": true,
+        "hidden": true,
+        "text": "今日复习\n进行中 · 剩余约 10 分钟 · 第 1 处 / 共 1 处\n先盲听，再决定是否看原文\n原文已遮住。\n▶ 再听一遍显示原文\n这处练完了\n跳过\n1\n进行中\n暂停\n结束复习"
+      }
+    },
+    {
+      "name": "V6-4 复习条目有显示原文按钮",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "V6-5 点显示原文才出句子",
+      "pass": true,
+      "detail": {
+        "hidden": false,
+        "text": "It's getting late and we're both displaying signs of weariness."
+      }
+    },
+    {
+      "name": "V7-1 精听页有我的卡点筛选且数量>0",
+      "pass": true,
+      "detail": {
+        "filter": "我的卡点\n1",
+        "count": "1",
+        "badgeCount": 1,
+        "req": 1
+      }
+    },
+    {
+      "name": "V7-2 精听页卡点句有标记",
+      "pass": true,
+      "detail": {
+        "filter": "我的卡点\n1",
+        "count": "1",
+        "badgeCount": 1,
+        "req": 1
+      }
+    },
+    {
+      "name": "V8-1 四宽度无横向溢出且步骤条可滚动",
+      "pass": true,
+      "detail": {
+        "1440": {
+          "overflow": 0,
+          "stepBar": {
+            "w": 1408,
+            "scrollW": 1406
+          },
+          "visiblePanels": 1
+        },
+        "1280": {
+          "overflow": 0,
+          "stepBar": {
+            "w": 1248,
+            "scrollW": 1246
+          },
+          "visiblePanels": 1
+        },
+        "768": {
+          "overflow": 0,
+          "stepBar": {
+            "w": 748,
+            "scrollW": 746
+          },
+          "visiblePanels": 1
+        },
+        "375": {
+          "overflow": 0,
+          "stepBar": {
+            "w": 355,
+            "scrollW": 355
+          },
+          "visiblePanels": 1
+        }
+      }
+    },
+    {
+      "name": "V8-2 右栏同一时间只显示一个面板",
+      "pass": true,
+      "detail": {
+        "1440": {
+          "overflow": 0,
+          "stepBar": {
+            "w": 1408,
+            "scrollW": 1406
+          },
+          "visiblePanels": 1
+        },
+        "1280": {
+          "overflow": 0,
+          "stepBar": {
+            "w": 1248,
+            "scrollW": 1246
+          },
+          "visiblePanels": 1
+        },
+        "768": {
+          "overflow": 0,
+          "stepBar": {
+            "w": 748,
+            "scrollW": 746
+          },
+          "visiblePanels": 1
+        },
+        "375": {
+          "overflow": 0,
+          "stepBar": {
+            "w": 355,
+            "scrollW": 355
+          },
+          "visiblePanels": 1
+        }
+      }
+    },
+    {
+      "name": "V9-1 刷新后步骤一致",
+      "pass": true,
+      "detail": {
+        "before": "review",
+        "after": "review"
+      }
+    },
+    {
+      "name": "V9-2 刷新后按钮与步骤一致",
+      "pass": true,
+      "detail": "结束复习\n今日复习\n先盲听这一处，点「显示原文」后再核对。"
+    },
+    {
+      "name": "V9-3 页面无 JS 错误",
+      "pass": true,
+      "detail": []
+    }
+  ]
+}

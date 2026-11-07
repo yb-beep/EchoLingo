@@ -1,0 +1,31 @@
+{
+  "lesson3": {
+    "path": "/workspace/3",
+    "toolbar": true,
+    "toolbarText": "开始卡点练习 今日复习",
+    "questions": false,
+    "cetS": {
+      "mid": "v2-3",
+      "sent": 0,
+      "qs": 0
+    }
+  },
+  "lesson3_after_click": {
+    "listening": true,
+    "bodyClass": "cet-listening cet-hide-text",
+    "hint": "播放时按 M 标记「没听清」的位置（Space 是暂停/继续）"
+  },
+  "lesson3_after_M": {
+    "hint": "标记失败：该材料没有可用句子时间轴。（可重试）",
+    "marks": 0
+  },
+  "lesson1_control": {
+    "toolbar": true,
+    "toolbarText": "开始卡点练习 今日复习",
+    "cetS": {
+      "mid": "cet6-202512-conv2",
+      "sent": 32
+    }
+  },
+  "pageerrors": []
+}

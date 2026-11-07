@@ -23,6 +23,11 @@
     apiBase: '/api/cet',
     // 轮询恢复用
     storageKey: 'cet.session.v1',
+    // 卡点修复 A-1：标记后是否**自动回听候选句**。
+    // 默认 **关闭**：原先无条件自动回听会把播放位置 seek 回候选句起点，
+    // 用户按完 M 立刻被拽走，连按几次全落在同一点（实测 3.74s → 0.058s）。
+    // 能力保留 —— 想要「标记即回听」的用户可以把这个开关打开。
+    autoplayKey: 'cet.marks.autoplay.v1',
   };
 
   // ── 状态 ────────────────────────────────────────────────
@@ -45,6 +50,8 @@
     transferPlayed: false,   // 候选原声是否已完整播过（后端要求先有 playedToEnd）
     transferDone: false,     // 本轮换句是否已作答
     transferCandidate: null, // 当前候选（含跨材料音频地址）
+    // 卡点修复 A-1：标记后自动回听。默认 false（关闭），状态持久化到 localStorage。
+    autoplayOnMark: false,
   };
 
   // ── 工具 ────────────────────────────────────────────────
@@ -71,6 +78,41 @@
       localStorage.setItem(CFG.storageKey, S.sessionId);
     }
     return S.sessionId;
+  }
+
+  // ── 卡点修复 A-1：标记后自动回听开关 ──────────────────────
+  // 默认关闭。开关状态存 localStorage（键 cet.marks.autoplay.v1，值为 '1'/'0'）。
+  // 为什么单独一个键而不是塞进 cet.state.v2.<materialId>：
+  // 这是**跨材料的使用习惯**（用户偏好），不是某份材料的练习进度；
+  // 塞进按材料分键的状态里会导致换个材料又要重设一次。
+  function loadAutoplayPref() {
+    try {
+      return localStorage.getItem(CFG.autoplayKey) === '1';
+    } catch (_) { return false; }        // 隐私模式读不到 = 用默认值（关闭）
+  }
+
+  function saveAutoplayPref(on) {
+    try {
+      localStorage.setItem(CFG.autoplayKey, on ? '1' : '0');
+    } catch (_) { /* 隐私模式可能失败，不阻塞 */ }
+  }
+
+  function setAutoplayOnMark(on, opts) {
+    S.autoplayOnMark = !!on;
+    saveAutoplayPref(S.autoplayOnMark);
+    const box = $('#cet-autoplay-mark');
+    if (box) box.checked = S.autoplayOnMark;
+    // 关键：勾完开关后焦点会留在复选框上，而 isTypingTarget() 把 input 一律当成
+    // 输入目标 → 之后按 M 全被吞掉（实测：勾完开关按 M 不产生标记）。
+    // 和 setListening() 里 blur 按钮是同一个道理：点完控件就把焦点移走。
+    if (opts && opts.blur && document.activeElement && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
+    if (!(opts && opts.silent)) {
+      flashHint(S.autoplayOnMark
+        ? '已开启「标记后自动回听」：按 M 会跳到候选句播放'
+        : '已关闭「标记后自动回听」：按 M 只记标记，不打断当前播放位置');
+    }
   }
 
   async function api(method, path, body) {
@@ -107,6 +149,9 @@
     const host = $('.learning-controls');
     if (!host || $('#cet-toolbar')) return;
 
+    // 卡点修复 A-1：先读回「标记后自动回听」偏好，再渲染开关，避免开关初始态与实际行为不一致
+    S.autoplayOnMark = loadAutoplayPref();
+
     const bar = el('div', 'cet-toolbar');
     bar.id = 'cet-toolbar';
 
@@ -140,6 +185,20 @@
     reviewBtn.id = 'cet-review-btn';
     reviewBtn.onclick = startReview;
     bar.appendChild(reviewBtn);
+
+    // 卡点修复 A-1：标记后自动回听开关（默认关闭）。
+    // 放在工具栏，和「开始卡点练习 / 今日复习」并列 —— 用户按 M 之后马上就知道
+    // 位置被拽走是哪个开关造成的，不用去别处找。
+    const autoWrap = el('label', 'cet-autoplay-switch');
+    autoWrap.setAttribute('title', '打开后：每按一次 M 会跳到候选句起点播放；关闭时只记标记，不打断播放位置');
+    const autoBox = document.createElement('input');
+    autoBox.type = 'checkbox';
+    autoBox.id = 'cet-autoplay-mark';
+    autoBox.checked = S.autoplayOnMark;
+    autoBox.onchange = () => setAutoplayOnMark(autoBox.checked, { blur: true });
+    autoWrap.appendChild(autoBox);
+    autoWrap.appendChild(el('span', null, '标记后自动回听'));
+    bar.appendChild(autoWrap);
 
     mountReviewPanel();
 
@@ -237,12 +296,32 @@
         reactionDelaySeconds: CFG.lookbackSec,     // 回溯窗口（秒）
         speed: Number(speed.toFixed(3)),           // 实际播放倍速
       });
-      S.marks.push(mark);
+      // 卡点修复 A-2：后端有 1.5s 去重（ABS(raw_seconds-?)<=1.5 时返回**已有**标记）。
+      // 原代码无条件 push —— 拿到同一个 markId 也照样入列，于是 UI 显示 5 个标记
+      // 而库里只有 2 条（实测：S.marks.length 5 / cet_marks 2 行）。
+      // 现在按 markId 先查：已存在就就地更新，不新增行。
+      const idx = S.marks.findIndex((x) => x.markId === mark.markId);
+      const isNew = idx < 0;
+      if (isNew) {
+        S.marks.push(mark);
+      } else {
+        // 用服务端最新值覆盖本地旧值（同一条标记，不是新标记）
+        Object.assign(S.marks[idx], mark);
+      }
       renderMarks();
-      // F08：标记一建立就自动进入「候选预览」——立刻回听候选句，
-      // 用户听完再决定要不要确认，不需要先手动点「回听」。
-      previewMark(mark, mark.suggestedSentenceId, { autoplay: true });
-      flashHint(`已在 ${fmt(mark.pressedAtSec)} 标记（回看 ${CFG.lookbackSec}s / ${speed}x）`);
+      // 卡点修复 A-1：**默认不再自动回听**。
+      // 原代码无条件 previewMark(..., {autoplay:true})，会把播放位置 seek 回候选句起点：
+      // 实测按 M 时 3.74s，120ms 后变成 0.058s，连按 3 次全落在同一句。
+      // 能力保留 —— 开关打开时行为与原来完全一致。
+      if (S.autoplayOnMark) {
+        previewMark(mark, mark.suggestedSentenceId, { autoplay: true });
+      }
+      if (isNew) {
+        flashHint(`已在 ${fmt(mark.pressedAtSec)} 标记（回看 ${CFG.lookbackSec}s / ${speed}x）`);
+      } else {
+        // 去重命中：明确告诉用户没有新增，避免「按了没反应 / 按了出两条」的困惑
+        flashHint(`与 ${fmt(mark.pressedAtSec)} 的标记是同一处（1.5s 内重复），未新增`);
+      }
     } catch (err) {
       flashHint(`标记失败：${err.message}（可重试）`, true);
     }
@@ -298,7 +377,11 @@
       const st = markState(m);
       const row = el('div', `cet-mark cet-mark-${st}`);
 
-      const when = el('span', 'cet-mark-time', fmt(m.pressedAtSec));
+      // 卡点修复 A-4：原来把「按键时刻 0:05.60」和「候选句 0:00.01–0:03.49」
+      // 并排摆在一行里，两个不同口径混在一起，用户以为标错了。
+      // 现在拆成两段并显式标注关系：`标记于 X → 候选句 A–B`。
+      const when = el('span', 'cet-mark-time', `标记于 ${fmt(m.pressedAtSec)}`);
+      when.title = '按 M 那一刻的播放位置（不是候选句位置）';
       row.appendChild(when);
 
       const label = { pending: '待确认', ready: '待练', done: '本轮已练' }[st];
@@ -309,13 +392,24 @@
       const shownId = st === 'pending' ? previewSentenceId(m) : m.confirmedSentenceId;
       const sent = findSentence(shownId);
       if (sent) {
+        // 箭头 + 文字标签：让人一眼看出「标记时刻」与「候选句区间」是两件事，
+        // 候选句是系统按回溯窗口吸附出来的建议，不是按键位置的换算。
+        const arrow = el('span', 'cet-mark-arrow', '→');
+        arrow.setAttribute('aria-hidden', 'true');
+        row.appendChild(arrow);
+
+        const tag = el('span', 'cet-mark-preview-tag',
+          `${st === 'pending' ? '候选句' : '确认句'} ${fmt(sent.startSeconds)}–${fmt(sent.endSeconds)}`);
+        tag.title = st === 'pending'
+          ? '按回溯窗口吸附出来的候选句，还没确认'
+          : '已确认的句子';
+        row.appendChild(tag);
+
         const q = el('span', 'cet-mark-sentence', sent.text);
         row.appendChild(q);
-        if (st === 'pending') {
-          const tag = el('span', 'cet-mark-preview-tag',
-            `预览 ${fmt(sent.startSeconds)}–${fmt(sent.endSeconds)}`);
-          row.appendChild(tag);
-        }
+      } else {
+        // 无候选句（例如句子数据缺失）：不要让用户以为「标记没生效」
+        row.appendChild(el('span', 'cet-mark-sentence cet-mark-sentence-none', '（无可用候选句）'));
       }
 
       const acts = el('span', 'cet-mark-actions');
@@ -352,8 +446,27 @@
         acts.appendChild(amend);
       }
 
-      // 删除标记：已开始带练的标记后端会拒（MARK_IN_PRACTICE），前端给明确提示。
+      // 删除标记：已开始带练的标记后端会拒（MARK_IN_PRACTICE）。
+      // 卡点修复 A-5：**提前反馈**，不再「点了才弹错」。
+      //
+      // 判定用后端透出的 `inPractice`，**不用** markState()：
+      //   markState() 只在 status==='complete' 时返回 'done'，而 cet_practices
+      //   默认 status 是 'active'（cet_service.py）。后端 delete_mark() 的拒绝条件是
+      //   「cet_practices 里有没有对应行」，与 status 无关 —— 所以「已开始带练但没练完」
+      //   这个最常见状态下，markState() 返回 'ready'，按钮仍可点，用户点下去才收到 409。
+      //   inPractice 与后端 409 的判定条件完全一致（见 list_marks / create_mark）。
+      //
+      // 兼容：inPractice 可能是 null（旧接口 / 未查场景）——只有**明确 true** 才禁用，
+      // null / false 都按「可点」处理，由后端兜底校验。
       const del = el('button', 'cet-btn-sm cet-btn-danger', '删除');
+      if (m.inPractice === true) {
+        del.disabled = true;
+        del.title = '该标记已开始带练，不能删除';
+        del.setAttribute('aria-disabled', 'true');
+        del.setAttribute('data-cet-mark-delete-blocked', '1');
+      } else {
+        del.title = '删除这个标记';
+      }
       del.onclick = () => deleteMark(m);
       acts.appendChild(del);
 
@@ -516,9 +629,18 @@
 
     S.marks.forEach((m) => {
       const st = markState(m);
-      const sec = Number(m.pressedAtSec) || 0;
+      // 卡点修复 A-6：刻度改用**候选句起点**，与列表口径一致。
+      // 原来用 m.pressedAtSec（按键时刻），而列表显示的是候选句区间：
+      // 同一个标记在时间线上画在 5.084s、列表里说「第 0 句（0:00.01–0:03.49）」，
+      // 点时间线跳的又是候选句 —— 三处两个位置，用户以为标错。
+      // 现在：画在哪 = 列表说的是哪句 = 点了跳到哪。
+      // 候选句缺失时才退回按键时刻（并保留 data-cet-mark-sec 供测试）。
+      const sentId = st === 'pending' ? previewSentenceId(m) : m.confirmedSentenceId;
+      const sent = findSentence(sentId);
+      const sec = sent ? Number(sent.startSeconds) : (Number(m.pressedAtSec) || 0);
       const pct = Math.min(100, Math.max(0, (sec / dur) * 100));
       const meta = TIMELINE_STATE[st];
+      const range = sent ? `${fmt(sent.startSeconds)}–${fmt(sent.endSeconds)}` : '';
 
       const tick = el('button', `cet-timeline-mark cet-timeline-mark-${st}`);
       tick.type = 'button';
@@ -527,13 +649,18 @@
       tick.setAttribute('data-cet-mark', '1');
       tick.setAttribute('data-cet-mark-sec', String(Number(sec.toFixed(3))));
       tick.setAttribute('data-cet-mark-state', st);
-      tick.setAttribute('title', `${fmt(sec)} · ${meta.label}`);
+      // 让用户能对上「这个刻度 = 列表里的哪一句」：带上区间与按键时刻
+      tick.setAttribute('data-cet-mark-sentence', sentId || '');
+      tick.setAttribute('data-cet-mark-pressed', String(Number((Number(m.pressedAtSec) || 0).toFixed(3))));
+      const title = sent
+        ? `${fmt(sec)} 候选句 · ${meta.label}（${range}｜标记于 ${fmt(m.pressedAtSec)}）`
+        : `${fmt(sec)} · ${meta.label}（无候选句｜标记于 ${fmt(m.pressedAtSec)}）`;
+      tick.setAttribute('title', title);
       tick.setAttribute('aria-label', `卡点 ${fmt(sec)}，状态：${meta.label}`);
       tick.appendChild(el('span', 'cet-timeline-mark-text', meta.short));
       tick.onclick = () => {
-        // 点时间线标记 = 跳到该位置并进入预览/回听
-        const sentId = st === 'pending' ? previewSentenceId(m) : m.confirmedSentenceId;
-        const sent = findSentence(sentId);
+        // 点时间线标记 = 跳到该刻度对应处并回听。
+        // 刻度现在就是候选句起点，所以「跳到的位置」与「刻度画的位置」一致。
         const md = media();
         if (sent) {
           replayRange(sent.startSeconds, sent.endSeconds);
@@ -640,6 +767,11 @@
     try {
       const pr = await api('POST', '/practices', { markId: m.markId });
       S.practice = pr;
+      // 卡点修复 A-5（补充）：带练一建立，这个标记就被 cet_practices 占用了 ——
+      // 后端此后必定拒绝删除（MARK_IN_PRACTICE）。本地 m.inPractice 还停在建立标记时的
+      // false，必须立刻同步，否则要等下一次刷新列表才会禁用删除按钮。
+      // 这里只改本地对象，不发请求：占用状态由「刚建的带练」唯一确定，不需要再问后端。
+      m.inPractice = true;
       renderPractice();
       renderMarks();
       bindPlaybackEvents();
@@ -1774,6 +1906,22 @@
       S.materialVersion = detail.materialVersion;
       S.sentences = detail.sentences || [];
 
+      // 卡点修复 A-3：**材料是否适用**这一层。
+      // 与模板里的 {% if cet_features.cet_listening_agent %} 是两层不同的事：
+      //   - 模板那层管「模块是否加载」（功能开关 / 有没有接入）
+      //   - 这里管「这份材料能不能用」（有没有逐句时间轴）
+      // 无时间轴材料（sentenceCount=0，如只导了音频）原来照样挂出
+      // 「开始卡点练习 / 今日复习」，点进去按 M 才报「该材料没有可用句子时间轴」——
+      // 实测：toolbar=true、能进入 listening 模式、按 M 才失败，就是假入口。
+      // 现在直接不 mount，用户看到的仍是原页面（不多出点了没反应的按钮）。
+      if (!S.sentences.length) {
+        console.info(
+          `[cet] 材料 ${S.materialId} 没有逐句时间轴（sentences=0），`
+          + '不挂载卡点工具栏：标记功能依赖句子时间轴，挂出来也是点了报错的假入口。'
+        );
+        return;
+      }
+
       const q = await api('GET', `/materials/${encodeURIComponent(S.materialId)}/questions`
         + `?version=${encodeURIComponent(S.materialVersion)}`);
       S.questions = (q && (q.questions || q.items)) || [];
@@ -1836,5 +1984,10 @@
     applyTextVisibility, textIsHidden,
     // F10：时间线
     renderTimelineMarks,
+    // 卡点修复 A：标记列表重绘（自动化测试直接驱动，避免只能靠点按钮）
+    renderMarks,
+    // 卡点修复 A-1：标记后自动回听开关（默认关闭，状态持久化）
+    setAutoplayOnMark,
+    isAutoplayOnMark: () => S.autoplayOnMark,
   };
 })();

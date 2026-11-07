@@ -1,0 +1,36 @@
+{
+  "marks_created": [
+    {
+      "id": "mark-7fcbb006b121",
+      "inPractice": false
+    }
+  ],
+  "start_practice_clicked": true,
+  "practice_status": "active",
+  "markState_of_row": {
+    "badge": "待练",
+    "inPractice": true
+  },
+  "delete_button_in_active": {
+    "disabled": false,
+    "title": "删除这个标记",
+    "ariaDisabled": null,
+    "blocked": null
+  },
+  "click_delete_result": {
+    "delete_requests": [
+      "DELETE /api/cet/marks/mark-7fcbb006b121"
+    ],
+    "marks_before": 1,
+    "marks_after": 1,
+    "hint": "该标记已开始带练，不能删除"
+  },
+  "api_list_marks": [
+    {
+      "markId": "mark-7fcbb006b121",
+      "inPractice": true,
+      "hasField": true
+    }
+  ],
+  "pageerrors": []
+}

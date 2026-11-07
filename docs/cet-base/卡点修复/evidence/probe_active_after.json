@@ -1,0 +1,34 @@
+{
+  "marks_created": [
+    {
+      "id": "mark-602068139787",
+      "inPractice": false
+    }
+  ],
+  "start_practice_clicked": true,
+  "practice_status": "active",
+  "markState_of_row": {
+    "badge": "待练",
+    "inPractice": true
+  },
+  "delete_button_in_active": {
+    "disabled": true,
+    "title": "该标记已开始带练，不能删除",
+    "ariaDisabled": "true",
+    "blocked": "1"
+  },
+  "click_delete_result": {
+    "delete_requests": [],
+    "marks_before": 1,
+    "marks_after": 1,
+    "hint": "播放时按 M 标记「没听清」的位置（Space 是暂停/继续）"
+  },
+  "api_list_marks": [
+    {
+      "markId": "mark-602068139787",
+      "inPractice": true,
+      "hasField": true
+    }
+  ],
+  "pageerrors": []
+}

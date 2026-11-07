@@ -131,12 +131,19 @@ _FEATURES: dict[str, dict[str, Any]] = {
     # ── 队友模块挂载开关（BASE-05）──
     # 验收方指出：底座此前**无条件**加载 cet-listening.js/.css，导致新导入的无题
     # 材料仍出现「开始卡点练习/今日复习/交卷」等点了没反应的假入口。
-    # 这里给一个正式开关：底座独立运行默认不挂载；队友真正接入后置 kept=True
-    # 或设 ELT_CET_FEATURE_CET_LISTENING_AGENT=1 即可开启，无需改模板。
+    # 这里给一个正式开关。
+    #
+    # 返修 2.1 起：队友模块已真正接入（卡点标记增删改查、确认句、带练链路齐备，
+    # 见 origin/codex/cet-listening-marks），故 **kept=True 默认挂载**。
+    # 需要退回「底座独立运行、不挂载队友资产」时，设
+    # ELT_CET_FEATURE_CET_LISTENING_AGENT=0 即可（环境变量优先级最高，无需改代码）。
+    #
+    # 注意：`_FEATURES` 里 kept 的取值同时决定 `retired_keys`（见 config()），
+    # 所以本项为 True 时不再出现在 retired_keys 里 —— 这是预期行为。
     "cet_listening_agent": {
-        "kept": False,
+        "kept": True,
         "label": "卡点陪练模块（队友交付）",
-        "note": "队友卡点/智能复习模块；底座独立运行默认不挂载，真正接入后开启",
+        "note": "队友卡点/智能复习模块；返修 2.1 起默认挂载，ELT_CET_FEATURE_CET_LISTENING_AGENT=0 可关闭",
     },
 }
 

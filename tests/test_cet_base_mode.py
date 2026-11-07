@@ -31,14 +31,15 @@ KEPT_FEATURES = {
     "listening_library", "local_import", "player", "transcript", "dictionary",
     "word_favorites", "sentence_favorites", "progress_resume", "settings_core",
     "ai_word_sentence_explain",
+    # BASE-05：队友卡点模块挂载开关。
+    # 返修 2.1 起队友模块已真正接入，改为默认挂载（kept=True）；
+    # 需要「底座独立运行不挂载」时设 ELT_CET_FEATURE_CET_LISTENING_AGENT=0。
+    "cet_listening_agent",
 }
 RETIRED_FEATURES = {
     "link_import", "reading_course", "text_to_speech_course", "video_learning",
     "memory_story", "scenario_sentence", "ielts_reuse", "free_retell",
     "ai_chat_general", "outline_generation", "credits_account",
-    # BASE-05：队友卡点模块挂载开关。底座独立运行默认不挂载；
-    # 队友真正接入后置 kept=True 或设 ELT_CET_FEATURE_CET_LISTENING_AGENT=1 开启。
-    "cet_listening_agent",
 }
 
 
@@ -348,15 +349,20 @@ def test_cet_home_boot_payload_is_json_not_executable_script(monkeypatch):
 # ══════════════════════════════════════════════════════════════
 
 
-def test_base05_listening_agent_feature_defaults_off(monkeypatch):
-    """底座独立运行（默认 CET 模式）不挂载队友模块。"""
+def test_base05_listening_agent_feature_defaults_on(monkeypatch):
+    """返修 2.1 起：CET 模式默认**挂载**队友模块（队友功能已真正接入）。
+
+    历史：BASE-05 时底座无条件加载队友资产，导致无题材料出现假入口，
+    故当时默认关闭。返修 2.1 队友模块已具备完整卡点链路（增删改查/确认句/带练），
+    改为默认挂载。需要「底座独立运行不挂载」时用环境变量关闭（见下一条用例）。
+    """
     monkeypatch.delenv("ELT_CET_FEATURE_CET_LISTENING_AGENT", raising=False)
     monkeypatch.setenv("ELT_CET_MODE", "1")
     cfg = _cet_mode().config()
     item = cfg["features"]["cet_listening_agent"]
-    assert item["enabled"] is False, "底座独立运行默认必须不挂载队友模块"
-    assert item["kept"] is False
-    assert "cet_listening_agent" in cfg["retired_keys"]
+    assert item["enabled"] is True, "返修 2.1 起 CET 模式默认应挂载队友模块"
+    assert item["kept"] is True
+    assert "cet_listening_agent" not in cfg["retired_keys"]
 
 
 def test_base05_listening_agent_env_override_enables_it(monkeypatch):
@@ -404,14 +410,34 @@ def _render_workspace(monkeypatch, mode="1", agent="off"):
     return resp.text
 
 
-def test_base05_workspace_does_not_mount_assets_by_default(monkeypatch):
-    """核心回归：默认配置下 cet-listening.css/.js **不在页面里**。
+def test_base05_workspace_mounts_assets_by_default(monkeypatch):
+    """核心回归（返修 2.1 反转）：默认配置下 cet-listening.css/.js **在页面里**。
 
-    这是「正式配置驱动的关闭」，不是测试用 route.abort() 拦浏览器请求。
+    历史：BASE-05 时默认不挂载（底座独立运行）。返修 2.1 起队友模块已真正接入，
+    默认挂载；「不挂载」改为环境变量显式关闭（见 test_base05_workspace_does_not_mount_assets_when_disabled）。
     """
     html = _render_workspace(monkeypatch, "1", agent="off")
-    assert "/static/cet-listening.js" not in html, "默认仍加载队友卡点模块脚本"
-    assert "/static/cet-listening.css" not in html, "默认仍加载队友卡点模块样式"
+    assert "/static/cet-listening.js" in html, "返修 2.1 起默认应挂载队友卡点模块脚本"
+    assert "/static/cet-listening.css" in html, "返修 2.1 起默认应挂载队友卡点模块样式"
+
+
+def test_base05_workspace_does_not_mount_assets_when_disabled(monkeypatch):
+    """显式关闭时资产**不在页面里**（仍是 Jinja 条件渲染，不是 route.abort）。"""
+    from fastapi.testclient import TestClient
+    from fastapi_server import create_app
+    import db
+
+    monkeypatch.setenv("ELT_CET_MODE", "1")
+    monkeypatch.setenv("ELT_CET_FEATURE_CET_LISTENING_AGENT", "0")
+    lesson = db.create_v2_lesson(
+        source_type="uploaded_media",
+        source_url="upload:base05-off-fixture",
+        title="BASE-05 off fixture",
+        lesson_mode="listening",
+    )
+    html = TestClient(create_app()).get(f"/workspace/{lesson['id']}").text
+    assert "/static/cet-listening.js" not in html, "显式关闭后仍加载队友脚本"
+    assert "/static/cet-listening.css" not in html, "显式关闭后仍加载队友样式"
 
 
 def test_base05_workspace_mounts_assets_when_enabled(monkeypatch):

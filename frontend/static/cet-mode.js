@@ -31,7 +31,7 @@
     video_learning: false, memory_story: false, scenario_sentence: false,
     ielts_reuse: false, free_retell: false, ai_chat_general: false,
     outline_generation: false, credits_account: false,
-    cet_listening_agent: false
+    cet_listening_agent: true
   };
   var DEFAULT_NAV = [
     { key: 'lessons', label: '听力材料', hash: '', icon: '🎧' },

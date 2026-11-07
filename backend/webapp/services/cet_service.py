@@ -1038,10 +1038,13 @@ def submit_attempt(body: dict[str, Any]) -> dict[str, Any]:
     return _attempt_payload_with_conflict(attempt_id, material_id, session_id)
 
 
-def _mark_payload(row: Any) -> dict[str, Any]:
+def _mark_payload(row: Any, *, deduplicated: bool = False) -> dict[str, Any]:
     # 字段对齐契约：
     #   id → markId、rawSeconds → pressedAtSec（契约要求保留「原始按键秒数」这一语义）
     # adjustedSeconds / speed / reactionDelaySeconds 仍保留（B 自己的诊断信息，契约不禁止）
+    # `deduplicated`（卡点修复 B-1）：1.5s 内同位置重复按键时服务端返回**已有**标记而非新建。
+    # 原来两种情况响应体完全一致，调用方无法区分，前端会把同一 markId 重复 push（UI 显示 2 个、库里 1 条）。
+    # 现在显式带该字段；HTTP 状态码保持 201 不变，避免破坏既有契约与测试。
     return {
         "markId": row["id"],
         "listeningSessionId": row["listening_session_id"],
@@ -1056,6 +1059,7 @@ def _mark_payload(row: Any) -> dict[str, Any]:
         "reactionDelaySeconds": row["reaction_delay_seconds"],
         "suggestedSentenceId": row["suggested_sentence_id"],
         "suggestionSource": "estimated_alignment",
+        "deduplicated": bool(deduplicated),
         "confirmedSentenceId": row["confirmed_sentence_id"],
         # 表里没有独立 confirmed_at 列；确认动作会刷新 updated_at，用它表示确认时间
         "confirmedAtSec": row["updated_at"] if row["confirmed_sentence_id"] else None,
@@ -1128,7 +1132,8 @@ def create_mark(body: dict[str, Any]) -> dict[str, Any]:
             (session_id, material_id, material["materialVersion"], seconds, seconds),
         ).fetchone()
         if nearby:
-            return _mark_payload(nearby)
+            # 卡点修复 B-1：显式标记「命中已有」而非新建，供前端去重
+            return _mark_payload(nearby, deduplicated=True)
         count = conn.execute(
             "SELECT COUNT(*) AS count FROM cet_marks WHERE listening_session_id=?", (session_id,)
         ).fetchone()["count"]

@@ -352,6 +352,20 @@ body[data-cet-mode="on"] .learning-controls[data-ws-controls="cet"] {
   overflow: hidden;
 }
 .ws-step-actions > * { flex: 0 0 auto; }
+.ws-step-actions > .cet-step-actions {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.ws-step-actions .cet-step-actions > .cet-btn,
+.ws-step-actions .cet-step-actions > .cet-btn-sm {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
 .ws-step-actions .cet-hint,
 .ws-step-actions .ws-step-hint,
 .ws-step-actions [data-ws-step-hint] {
@@ -455,6 +469,8 @@ body[data-cet-mode="on"]:has(#ws-step-panel) .subtitle-card .cet-marks { margin-
   }
   .ws-step-bar {
     padding: 7px 8px;
+    width: 100%;
+    min-width: 0;
     border-radius: 10px;
   }
   .ws-step-item {
@@ -522,6 +538,7 @@ body[data-cet-mode="on"] .main-grid:has(> .ws-step-bar) {
   .ws-control-row--primary .control-group {
     white-space: nowrap;
   }
+    width: 100%;
   .ws-control-row--primary .control-group select {
     width: auto;
     min-width: 0;

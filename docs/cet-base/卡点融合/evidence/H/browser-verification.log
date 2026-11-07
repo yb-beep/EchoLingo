@@ -1,0 +1,22 @@
+PASS 材料卡数量 >= 2 | count=2
+PASS 材料卡摘要可见 | ["已交卷 4/5 · 卡点 1 · 待复习 1", "已交卷 4/5 · 卡点 1 · 待复习 1"]
+PASS 材料卡摘要含卡点 | ["已交卷 4/5 · 卡点 1 · 待复习 1", "已交卷 4/5 · 卡点 1 · 待复习 1"]
+PASS 材料卡摘要含待复习 | ["已交卷 4/5 · 卡点 1 · 待复习 1", "已交卷 4/5 · 卡点 1 · 待复习 1"]
+PASS 今日复习三组 | count=3
+PASS 今日复习数量 1/1/1 | ["1", "1", "1"]
+PASS 今日复习组名 | ["卡点", "收藏句", "收藏词"]
+PASS 今日复习卡在 CET 首页 | 
+PASS 卡点链接带 review=1 | /workspace/1?review=1
+PASS 卡点点击进入对应材料 | http://127.0.0.1:5303/workspace/1?review=1
+PASS 真实媒体开始播放（paused=false 且 currentTime>0） | {"paused": false, "currentTime": 3.565082, "playbackRate": 1, "readyState": 4, "src": "http://127.0.0.1:5303/output/v2_assets/cet/cet6-202512-conv2.mp3"}
+PASS 真实媒体暂停（paused=true） | {"paused": true, "currentTime": 3.586426, "playbackRate": 1}
+PASS 收藏句链接进入句子收藏 | 
+PASS 收藏句链接写 localStorage | 
+PASS 收藏句链接 hash=#favorites | #favorites
+PASS 收藏词链接进入词汇收藏 | 
+PASS 收藏词链接写 localStorage | 
+PASS 375 无横向溢出 | {"scrollWidth": 375, "innerWidth": 375}
+PASS 375 今日复习三组单列 | count=3
+
+RESULT_JSON=[{"name": "材料卡数量 >= 2", "ok": true, "detail": "count=2"}, {"name": "材料卡摘要可见", "ok": true, "detail": "[\"已交卷 4/5 · 卡点 1 · 待复习 1\", \"已交卷 4/5 · 卡点 1 · 待复习 1\"]"}, {"name": "材料卡摘要含卡点", "ok": true, "detail": "[\"已交卷 4/5 · 卡点 1 · 待复习 1\", \"已交卷 4/5 · 卡点 1 · 待复习 1\"]"}, {"name": "材料卡摘要含待复习", "ok": true, "detail": "[\"已交卷 4/5 · 卡点 1 · 待复习 1\", \"已交卷 4/5 · 卡点 1 · 待复习 1\"]"}, {"name": "今日复习三组", "ok": true, "detail": "count=3"}, {"name": "今日复习数量 1/1/1", "ok": true, "detail": "[\"1\", \"1\", \"1\"]"}, {"name": "今日复习组名", "ok": true, "detail": "[\"卡点\", \"收藏句\", \"收藏词\"]"}, {"name": "今日复习卡在 CET 首页", "ok": true, "detail": ""}, {"name": "卡点链接带 review=1", "ok": true, "detail": "/workspace/1?review=1"}, {"name": "卡点点击进入对应材料", "ok": true, "detail": "http://127.0.0.1:5303/workspace/1?review=1"}, {"name": "真实媒体开始播放（paused=false 且 currentTime>0）", "ok": true, "detail": "{\"paused\": false, \"currentTime\": 3.565082, \"playbackRate\": 1, \"readyState\": 4, \"src\": \"http://127.0.0.1:5303/output/v2_assets/cet/cet6-202512-conv2.mp3\"}"}, {"name": "真实媒体暂停（paused=true）", "ok": true, "detail": "{\"paused\": true, \"currentTime\": 3.586426, \"playbackRate\": 1}"}, {"name": "收藏句链接进入句子收藏", "ok": true, "detail": ""}, {"name": "收藏句链接写 localStorage", "ok": true, "detail": ""}, {"name": "收藏句链接 hash=#favorites", "ok": true, "detail": "#favorites"}, {"name": "收藏词链接进入词汇收藏", "ok": true, "detail": ""}, {"name": "收藏词链接写 localStorage", "ok": true, "detail": ""}, {"name": "375 无横向溢出", "ok": true, "detail": "{\"scrollWidth\": 375, \"innerWidth\": 375}"}, {"name": "375 今日复习三组单列", "ok": true, "detail": "count=3"}]
+FAILED: 0

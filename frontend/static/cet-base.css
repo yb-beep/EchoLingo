@@ -300,6 +300,159 @@
 #tab-lessons .recent-section .empty-state { padding: 28px 20px; }
 #tab-lessons .course-library-list .empty-state { padding: 32px 20px; }
 
+/* ── 首页：材料卡摘要（卡点融合 · 包 H / H2） ─────────────── */
+.cet-material-progress {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border: 1px solid #e0e9e1;
+  border-radius: 7px;
+  background: #f3f7f3;
+  color: #2f5b45;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* ── 首页：今日复习（卡点融合 · 包 H / H3） ───────────────── */
+.cet-today-review {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.cet-today-review-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.cet-today-review-head h3 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.cet-today-review-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cet-today-review-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cet-review-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfa;
+}
+
+.cet-review-group.is-zero { background: var(--surface); }
+
+.cet-review-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cet-review-group-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.cet-review-group-count {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--brand);
+}
+
+.cet-review-group.is-zero .cet-review-group-count { color: var(--muted); }
+
+.cet-review-group-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.cet-review-links {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.cet-review-links a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid #d7e3da;
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--brand);
+  font-size: 12px;
+  line-height: 1.45;
+  text-decoration: none;
+}
+
+.cet-review-links a:hover {
+  border-color: var(--brand);
+  text-decoration: underline;
+}
+
+.cet-review-links a span {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cet-review-group-action {
+  margin-top: auto;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-decoration: none;
+}
+
+.cet-review-group-action:hover { text-decoration: underline; }
+
+.cet-review-empty-hint {
+  display: block;
+  padding: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cet-today-review-empty {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 /* ── 窄窗口：主要操作必须可见可达、无横向溢出 ─────────────── */
 @media (max-width: 768px) {
   .cet-import-grid { grid-template-columns: 1fr; }
@@ -309,6 +462,8 @@
   .cet-library-summary:not(:empty) { padding-top: 8px; }
   .cet-level-switch { gap: 6px; }
   .cet-level-btn { flex: 1 1 calc(50% - 6px); padding: 6px 10px; }
+  .cet-today-review { padding: 14px 12px; }
+  .cet-today-review-groups { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 420px) {

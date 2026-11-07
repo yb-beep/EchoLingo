@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ cet_copy.site_title }}</title>
   {# 四六级专用底座：CET 增量样式（复用 --brand/--ink/--line 等既有变量，不重做视觉） #}
-  <link rel="stylesheet" href="/static/cet-base.css?v=20261105-1">
+  <link rel="stylesheet" href="/static/cet-base.css?v=20261107-drill-h">
   {# 首屏注入集中配置，避免「先渲染通用再收束」的闪烁。
      用 application/json 数据块而不是可执行内联脚本注入：既有测试取页面里第一个
      裸 script 开标签之后的内容做语法检查，这里不能出现那个开标签字面量。
@@ -1612,6 +1612,21 @@
       <span class="cet-continue-title" id="continue-lesson-note">还没有听力材料，先导入一份本地音频。</span>
       <span class="cet-continue-mark" aria-hidden="true">→</span>
     </a>
+
+    {# 卡点融合 · 包 H / H3：今日复习（卡点 / 收藏句 / 收藏词 三组，全部为 0 显示空态）。
+       数据来自只读接口 GET /api/cet/summary；卡点链接统一带 ?review=1（K10 读取后自动开复习）。
+       仅在卡点陪练模块启用时渲染：ELT_CET_FEATURE_CET_LISTENING_AGENT=0 时与 c4a480d 一致。 #}
+    {% if cet_features.cet_listening_agent %}
+    <section class="cet-today-review" id="cet-today-review" aria-labelledby="cet-today-review-title">
+      <div class="cet-today-review-head">
+        <h3 id="cet-today-review-title">今日复习</h3>
+        <span class="cet-today-review-note">卡点回到对应材料；收藏句 / 收藏词进入「我的收藏」。</span>
+      </div>
+      <div class="cet-today-review-groups" id="cet-today-review-groups" aria-live="polite">
+        <p class="cet-today-review-empty">正在读取今日复习…</p>
+      </div>
+    </section>
+    {% endif %}
 
     {# 空库时唯一的明确入口：导入听力材料（不出现满屏占位或虚构统计） #}
     <div class="cet-empty-library" id="cet-empty-library" hidden>
@@ -7927,6 +7942,8 @@ let _cetLibrary = [];
 let _cetPage = 1;
 let _cetLevel = 'all';
 let _cetSummary = null;
+// 卡点融合 · 包 H：GET /api/cet/summary（材料卡摘要 + 今日复习数量）。
+let _cetDrillSummary = null;
 let _cetImportBusy = false;
 
 function cetLevelLabel(level) {
@@ -8002,6 +8019,35 @@ function cetCardActions(item) {
   return `${open}${classify}${cetManageMenu(item)}`;
 }
 
+// ── 卡点融合 · 包 H / H2：材料卡摘要「已交卷 4/4 · 卡点 2 · 待复习 1」 ──
+// 数据来自 GET /api/cet/summary 的 materials[String(lessonId)]；没有数据就不渲染这一行。
+function cetMaterialDrillSummary(item) {
+  const entry = _cetDrillSummary?.materials?.[String(item.lessonId)];
+  if (!entry) return null;
+  return entry;
+}
+
+function cetMaterialSummaryHtml(item) {
+  if (!CET.feature('cet_listening_agent')) return '';
+  const summary = cetMaterialDrillSummary(item);
+  if (!summary) return '';
+  const parts = [];
+  const submitted = summary.submitted === true || Number(summary.submitted) > 0;
+  if (submitted) {
+    const total = Math.max(0, Number(summary.total || 0));
+    const score = Math.max(0, Number(summary.score || 0));
+    parts.push(total > 0 ? `已交卷 ${score}/${total}` : '已交卷');
+  }
+  const marks = Math.max(0, Number(summary.marks || 0));
+  if (marks > 0) parts.push(`卡点 ${marks}`);
+  const pending = Math.max(0, Number(summary.pendingReview || 0));
+  if (pending > 0) parts.push(`待复习 ${pending}`);
+  if (!parts.length) return '';
+  const unscored = Math.max(0, Number(summary.unscored || 0));
+  const title = unscored > 0 ? ` title="另有 ${unscored} 题因题库无可靠答案，未计分"` : '';
+  return `<div class="cet-material-progress"${title}>${esc(parts.join(' · '))}</div>`;
+}
+
 function cetBuildCard(item) {
   const availability = cetAvailability(item);
   const progress = Number(item.progress?.progressPercent || 0);
@@ -8015,6 +8061,7 @@ function cetBuildCard(item) {
       </div>
       <div class="card-title" title="${esc(cetItemTitle(item))}">${esc(cetItemTitle(item))}</div>
       <div class="card-stats"><span class="stat-chip">${esc(cetMetaLine(item))}</span></div>
+      ${cetMaterialSummaryHtml(item)}
       <div class="cet-undated">${esc(cetUndatedNote())}</div>
       ${progress > 0 ? `<div class="recent-progress" title="学习进度 ${progress}%"><span style="width:${progress}%"></span></div>` : ''}
     </div>
@@ -8144,26 +8191,98 @@ function cetRenderSummary() {
   el.textContent = parts.join(' · ');
 }
 
+// ── 卡点融合 · 包 H / H3：今日复习卡（卡点 / 收藏句 / 收藏词） ──
+function cetPendingReviewMaterials() {
+  return Object.entries(_cetDrillSummary?.materials || {})
+    .map(([lessonId, summary]) => ({
+      lessonId: Number(lessonId),
+      count: Math.max(0, Number(summary?.pendingReview || 0)),
+    }))
+    .filter(item => Number.isFinite(item.lessonId) && item.count > 0)
+    .sort((left, right) => right.count - left.count || left.lessonId - right.lessonId);
+}
+
+function cetSummaryLessonTitle(lessonId) {
+  const item = _cetLibrary.find(course => Number(course.lessonId) === Number(lessonId));
+  return item?.title || `听力材料 ${lessonId}`;
+}
+
+function cetRenderTodayReview() {
+  if (!CET.feature('cet_listening_agent')) return;
+  const mount = document.getElementById('cet-today-review-groups');
+  if (!mount) return;
+  const due = _cetDrillSummary?.reviewDue || {};
+  const marks = Math.max(0, Number(due.marks || 0));
+  const sentences = Math.max(0, Number(due.sentences || 0));
+  const words = Math.max(0, Number(due.words || 0));
+  if (!marks && !sentences && !words) {
+    mount.innerHTML = '<p class="cet-today-review-empty">今天没有待复习内容。完成一次听力带练后，卡点会自动出现在这里。</p>';
+    return;
+  }
+  const pendingMaterials = cetPendingReviewMaterials();
+  const shownMaterials = pendingMaterials.slice(0, 4);
+  const extraCount = pendingMaterials.length - shownMaterials.length;
+  const markLinks = shownMaterials.map(entry => `
+    <a href="/workspace/${entry.lessonId}?review=1">${esc(cetSummaryLessonTitle(entry.lessonId))}<span>${entry.count}</span></a>`).join('');
+  const markFallback = marks > 0 && !markLinks
+    ? `<span class="cet-review-empty-hint">共 ${marks} 处待复习卡点</span>` : '';
+  const markMore = extraCount > 0
+    ? `<span class="cet-review-empty-hint">另有 ${extraCount} 份材料</span>` : '';
+  mount.innerHTML = `
+    <article class="cet-review-group${marks ? '' : ' is-zero'}">
+      <div class="cet-review-group-head"><span class="cet-review-group-name">卡点</span><span class="cet-review-group-count">${marks}</span></div>
+      <p class="cet-review-group-desc">回到对应材料，直接打开工作区复习。</p>
+      <div class="cet-review-links">${markLinks || markFallback}${markMore}</div>
+    </article>
+    <article class="cet-review-group${sentences ? '' : ' is-zero'}">
+      <div class="cet-review-group-head"><span class="cet-review-group-name">收藏句</span><span class="cet-review-group-count">${sentences}</span></div>
+      <p class="cet-review-group-desc">${sentences ? '有到期的收藏句，去句子收藏复习。' : '暂无到期的收藏句。'}</p>
+      <a class="cet-review-group-action" href="/#favorites" onclick="cetSetFavoritesPane('sentences'); return false;">去我的收藏 · 句子 →</a>
+    </article>
+    <article class="cet-review-group${words ? '' : ' is-zero'}">
+      <div class="cet-review-group-head"><span class="cet-review-group-name">收藏词</span><span class="cet-review-group-count">${words}</span></div>
+      <p class="cet-review-group-desc">${words ? '有到期的收藏词，去词汇收藏复习。' : '暂无到期的收藏词。'}</p>
+      <a class="cet-review-group-action" href="/#favorites" onclick="cetSetFavoritesPane('vocab'); return false;">去我的收藏 · 词汇 →</a>
+    </article>`;
+}
+
+async function cetFetchJson(url) {
+  try {
+    const response = await fetch(url, {cache: 'no-store'});
+    return response.ok ? await response.json() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function cetLoadLibrary() {
   const list = document.getElementById('course-library-list');
   try {
-    const [listResp, summaryResp] = await Promise.all([
+    const drillSummaryPromise = CET.feature('cet_listening_agent')
+      ? cetFetchJson('/api/cet/summary')
+      : Promise.resolve(null);
+    const [listResp, summaryData, drillSummaryData] = await Promise.all([
       fetch('/api/cet/base/materials?include_archived=true', {cache: 'no-store'}),
-      fetch('/api/cet/base/materials/summary', {cache: 'no-store'}).catch(() => null),
+      cetFetchJson('/api/cet/base/materials/summary'),
+      drillSummaryPromise,
     ]);
     if (!listResp.ok) throw new Error(`材料库接口返回 ${listResp.status}`);
     const data = await listResp.json();
     _cetLibrary = Array.isArray(data.items) ? data.items : [];
-    _cetSummary = summaryResp && summaryResp.ok ? await summaryResp.json() : null;
+    _cetSummary = summaryData;
+    _cetDrillSummary = drillSummaryData;
     _cetPage = 1;
     cetRenderRecent();
     cetRenderLibrary();
     cetRenderSummary();
+    cetRenderTodayReview();
     updateHeaderStat('lessons');
   } catch (error) {
     // 端点不存在（Lead 尚未注册）时降级到现有课程库接口，保证首页可用
     const fallback = await cetLoadLibraryFallback();
     if (fallback) return;
+    _cetDrillSummary = null;
+    cetRenderTodayReview();
     if (list) {
       list.innerHTML = `<div class="empty-state"><p>材料库读取失败：${esc(error.message)}</p>`
         + '<button type="button" class="primary" onclick="cetLoadLibrary()">重试</button></div>';
@@ -8211,10 +8330,14 @@ async function cetLoadLibraryFallback() {
       };
     });
     _cetSummary = null;
+    _cetDrillSummary = CET.feature('cet_listening_agent')
+      ? await cetFetchJson('/api/cet/summary')
+      : null;
     _cetPage = 1;
     cetRenderRecent();
     cetRenderLibrary();
     cetRenderSummary();
+    cetRenderTodayReview();
     updateHeaderStat('lessons');
     return true;
   } catch (_) {

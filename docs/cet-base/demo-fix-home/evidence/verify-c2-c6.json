@@ -1,0 +1,147 @@
+[
+  {
+    "name": "C3-1 有材料时导入面板默认收起",
+    "pass": true,
+    "detail": {
+      "hidden": true,
+      "visible": false,
+      "toggleText": "展开 ▼",
+      "libTop": 1024.25
+    }
+  },
+  {
+    "name": "C3-2 点展开可见",
+    "pass": true,
+    "detail": {
+      "hidden": false,
+      "text": "收起 ▲"
+    }
+  },
+  {
+    "name": "C4-1 六级卡显示真实年份/套次/题型",
+    "pass": true,
+    "detail": {
+      "id": "1",
+      "undated": "年份 2025年12月 · 套次 第一套 · 题型 长对话",
+      "text": "六级\n真题\n可逐句精听\n2025年12月六级第一套 · Conversation Two\n级别 六级 · 时长 1分45秒 · 类别 真题 · 32 句 · 4 题\n已交卷 4/4 · 卡点 9 · 待复习 1\n年份 2025年12月 · 套次 第一套 · 题型 长对话\n打开\n⋯"
+    }
+  },
+  {
+    "name": "C4-2 无元数据材料不显示该行",
+    "pass": true,
+    "detail": {
+      "id": "2",
+      "undated": null,
+      "text": "四级\n样例\n可逐句精听\n四级样例 · Hope & Wish（Let's Learn English 节选）\n级别 四级 · 时长 1分21秒 · 类别 样例 · 32 句 · 4 题\n打开\n⋯"
+    }
+  },
+  {
+    "name": "C4-3 不再出现「未标注」占位行",
+    "pass": true,
+    "detail": "六级\n真题\n可逐句精听\n2025年12月六级第一套 · Conversation Two\n级别 六级 · 时长 1分45秒 · 类别 真题 · 32 句 · 4 题\n已交卷 4/4 · 卡点 9 · 待复习 1\n年份 2025年12月 · 套次 第一套 · 题型 长对话\n打开\n⋯"
+  },
+  {
+    "name": "C6-1 无 key 时隐藏「本课 AI 推荐」整块",
+    "pass": true,
+    "detail": {
+      "health": "missing",
+      "sectionHidden": true,
+      "sectionVisible": false,
+      "btnExists": false,
+      "filterHidden": true,
+      "aiBody": ""
+    }
+  },
+  {
+    "name": "C6-2 无 key 时隐藏「AI 推荐」筛选",
+    "pass": true,
+    "detail": {
+      "sectionHidden": true,
+      "sectionVisible": false,
+      "btnExists": false,
+      "filterHidden": true,
+      "aiBody": ""
+    }
+  },
+  {
+    "name": "C2-1 精听页出现「本轮已练」第三态",
+    "pass": true,
+    "detail": [
+      {
+        "text": "卡点 · 本轮已练",
+        "cls": "sentence-cet-mark sentence-cet-mark--done"
+      },
+      {
+        "text": "卡点 · 待练",
+        "cls": "sentence-cet-mark sentence-cet-mark--ready"
+      },
+      {
+        "text": "卡点 · 待确认",
+        "cls": "sentence-cet-mark sentence-cet-mark--pending"
+      }
+    ]
+  },
+  {
+    "name": "C2-2 同时保留待确认/待练",
+    "pass": true,
+    "detail": [
+      {
+        "text": "卡点 · 本轮已练",
+        "cls": "sentence-cet-mark sentence-cet-mark--done"
+      },
+      {
+        "text": "卡点 · 待练",
+        "cls": "sentence-cet-mark sentence-cet-mark--ready"
+      },
+      {
+        "text": "卡点 · 待确认",
+        "cls": "sentence-cet-mark sentence-cet-mark--pending"
+      }
+    ]
+  },
+  {
+    "name": "C2-3 三态颜色类齐全",
+    "pass": true,
+    "detail": [
+      {
+        "text": "卡点 · 本轮已练",
+        "cls": "sentence-cet-mark sentence-cet-mark--done"
+      },
+      {
+        "text": "卡点 · 待练",
+        "cls": "sentence-cet-mark sentence-cet-mark--ready"
+      },
+      {
+        "text": "卡点 · 待确认",
+        "cls": "sentence-cet-mark sentence-cet-mark--pending"
+      }
+    ]
+  },
+  {
+    "name": "C5-1 页面底色改为工作区浅灰绿",
+    "pass": true,
+    "detail": "rgb(246, 247, 244)"
+  },
+  {
+    "name": "C5-2 字体改为无衬线（不再是 Georgia）",
+    "pass": true,
+    "detail": {
+      "bodyBg": "rgb(246, 247, 244)",
+      "bodyFont": "Inter, \"Segoe UI\", \"Microsoft YaHei\", Arial, sans-serif",
+      "h1Font": "Inter, \"Segoe UI\", \"Microsoft YaHei\", Arial, sans-serif",
+      "sentenceFont": "Inter, \"Segoe UI\", \"Microsoft YaHei\", Arial, sans-serif",
+      "btnBg": "rgb(47, 111, 94)",
+      "eyebrow": "rgb(47, 111, 94)"
+    }
+  },
+  {
+    "name": "C5-3 主按钮改为工作区绿底",
+    "pass": true,
+    "detail": "rgb(47, 111, 94)"
+  },
+  {
+    "name": "C5-4 无 JS 错误",
+    "pass": true,
+    "detail": []
+  }
+]

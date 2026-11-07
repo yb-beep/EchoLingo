@@ -1,0 +1,16 @@
+{
+ "/": {
+  "same_text": true,
+  "same_controls": true,
+  "new_controls": 30,
+  "old_controls": 30,
+  "errors": []
+ },
+ "/workspace/1/intensive": {
+  "same_text": true,
+  "same_controls": true,
+  "new_controls": 142,
+  "old_controls": 142,
+  "errors": []
+ }
+}

@@ -56,6 +56,10 @@ FIXTURES = ROOT / "tests" / "fixtures" / "cet" / "source"
 SERVED = ROOT / "output" / "v2_assets" / "cet"
 
 # 材料登记表：新增固定样例材料在这里加一行
+#
+# C4：`examMeta` 只写**确定**的考试元数据，写进 tags（v2_lessons 没有年份/月份/
+# 套次/题型列，冻结约定 §3 规定只用现有列）。不确定的字段一律不写 —— 前端对
+# 「四项全无」的材料整行不显示，绝不用标题正则去猜。
 MATERIALS = {
     "cet6-202512-conv2": {
         "title": "2025年12月六级第一套 · Conversation Two",
@@ -64,6 +68,12 @@ MATERIALS = {
         "duration": 105.486349,
         "sourceType": "cetMaterial",
         "note": "2025年12月六级第一套听力 Conversation Two，真实真题音频",
+        # 文件名与题目备注都指向「2025年12月 · 第一套 · 长对话」，三处一致才写。
+        "examMeta": {
+            "yearMonth": "2025年12月",
+            "setNo": "第一套",
+            "questionType": "长对话",
+        },
     },
     "cet4-sample-hope-wish": {
         "title": "四级样例 · Hope & Wish（Let's Learn English 节选）",
@@ -72,8 +82,13 @@ MATERIALS = {
         "duration": 80.53,
         "sourceType": "cetMaterial",
         "note": "四级难度样例：hope/wish 语法讲解 + 秘鲁艺术节对话",
+        # 样例材料不是真题，没有年份/套次；题型也不确定 → examMeta 留空，不编。
+        "examMeta": {},
     },
 }
+
+# examMeta 的三个键 → 写进 tags 的值。顺序固定，便于前端按同一规则读回。
+_EXAM_META_TAG_KEYS = ("yearMonth", "setNo", "questionType")
 
 
 def _sentences(material_id: str) -> list[dict]:
@@ -247,6 +262,12 @@ def import_one(material_id: str, force: bool = False) -> str:
     tags = [meta["level"]]
     if meta.get("category"):
         tags.append(meta["category"])
+    # C4：确定的考试元数据（年/月、套次、题型）同样写进 tags，不新增列。
+    exam_meta = meta.get("examMeta") or {}
+    for key in _EXAM_META_TAG_KEYS:
+        value = str(exam_meta.get(key) or "").strip()
+        if value:
+            tags.append(value)
     db.set_v2_lesson_tags(lesson_id, tags)
     storage_id = f"v2-{lesson_id}"
 

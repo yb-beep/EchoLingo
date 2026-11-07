@@ -129,6 +129,9 @@
       text-align: left;
     }
     .mode-filter.active { border-color: var(--brand); background: var(--surface-soft); color: var(--brand-dark); font-weight: 750; }
+    /* hidden 必须真的隐藏：.mode-filter 的 display:flex 是作者样式，
+       优先级高于 UA 的 [hidden]{display:none}，只设 hidden 属性元素照样显示。 */
+    .mode-filter[hidden], .filter-section[hidden] { display: none !important; }
     .filter-section { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
     .filter-label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
     .ai-rec-note { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.6; }
@@ -582,6 +585,85 @@
     .word-block.full { grid-column: 1 / -1; }
     .word-label { display: block; margin-bottom: 3px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
     .empty-state { padding: 44px 20px; border: 1px dashed #bdc8bd; border-radius: 12px; color: var(--muted); text-align: center; }
+{% if cet_on %}
+    /* ── C5：CET 模式下精听页向工作区看齐 ────────────────────────
+       只覆盖主色、字体与按钮样式，不改任何结构与尺寸。
+       取值对齐 workspace.html 的 :root（--bg/--surface/--ink/--muted/--line/
+       --brand/--brand-dark）与字体栈 Inter, "Segoe UI", "Microsoft YaHei"。
+       通用模式（ELT_CET_MODE=0）整段不输出 → 米色衬线原样保留。 */
+    /* 主色变量整体换成 workspace.html :root 的取值：这样按钮、边框、hover、
+       选中态等所有引用变量的地方一起对齐，不用逐条覆盖。 */
+    :root {
+      --paper: #f6f7f4;
+      --surface: #ffffff;
+      --surface-soft: #eef2ed;
+      --ink: #202421;
+      --muted: #687069;
+      --line: #d9ded8;
+      --brand: #2f6f5e;
+      --brand-dark: #245548;
+      --accent: #2f6f5e;
+      --danger: #a33b2f;
+      --shadow: 0 10px 28px rgba(31, 44, 36, .08);
+    }
+    body {
+      background: #f6f7f4;
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+    /* 衬线标题/句子/词卡正文统一改为工作区的无衬线字体 */
+    h1,
+    .column-intro h2,
+    .card-nav-position,
+    .sentence-copy,
+    .word-token,
+    .word-card-title,
+    .word-card-phonetic,
+    .practice-sentence-copy,
+    .word-analysis h4,
+    .v1-module-head h3,
+    .sentence-number,
+    .filter-panel h2 {
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+    /* 主色：暖金 accent → 工作区绿 */
+    .eyebrow { color: var(--brand); }
+    .filter-panel,
+    .topbar { background: rgba(255, 255, 255, .94); }
+    .filter-panel { background: var(--surface); }
+    .tag-filter.active {
+      border-color: var(--brand);
+      background: #e8f1ec;
+      color: var(--brand-dark);
+    }
+    .focus-word-chip {
+      border-color: #c3d5c8;
+      background: #eef6f0;
+      color: var(--brand-dark);
+    }
+    .ai-rec-btn {
+      border-color: var(--brand);
+      background: var(--brand);
+      color: #fff;
+    }
+    .ai-rec-btn.subtle { background: transparent; color: var(--brand-dark); }
+    .ai-rec-word { border-color: #c3d5c8; background: #eef6f0; color: var(--brand-dark); }
+    /* 按钮统一到工作区口径：主按钮绿底白字、次要按钮白底绿边 */
+    .sentence-header-play,
+    .view-switch button.active,
+    .intensive-action {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+    }
+    .sentence-save-button.saved,
+    .saved-chip { background: #e4f0e8; color: var(--brand-dark); }
+    .planning-chip { border-color: #c3d5c8; background: #eef6f0; color: var(--brand-dark); }
+    .sentence-card.open { border-color: #b9cec0; box-shadow: 0 12px 28px rgba(47, 111, 94, .10); }
+    .sentence-card:hover { border-color: #c3d5c8; }
+    .word-card-title,
+    .word-analysis h4,
+    .ai-rec-pattern strong { color: var(--brand-dark); }
+{% endif %}
     @media (max-width: 820px) {
       .topbar { grid-template-columns: auto minmax(0, 1fr); }
       .study-progress { display: none; }
@@ -741,6 +823,9 @@
     const aiRecommendedWords = new Set();
     const aiRecommendedSentences = new Set();
     let lessonAiRecommendation = null;
+    // C6：AI 是否可用（后端 /health 的 api_keys.AI_API_KEY === 'configured'）。
+    // null = 还没探测完（先按可用渲染，探测回来再收起，避免闪一下又消失）。
+    let cetAiReady = null;
     const aiWordReasons = new Map();
     const aiPatternByKey = new Map();
     const vocabLog = {};
@@ -761,6 +846,10 @@
     // key 为精听句的 sentence.key（与 CET sentenceId 的尾号是同一套 segment index）。
     let cetMarksMaterial = null;
     const cetMarksBySentenceKey = new Map();
+    // C2：「本轮已练」判定集合 —— 已完成带练的 CET sentenceId（来自 cet_review_items）。
+    const cetCompletedSentenceIds = new Set();
+    // 同句多条标记时取最靠前的状态（数值越小越靠前）。
+    const CET_MARK_STATE_RANK = {pending: 0, ready: 1, done: 2};
     const CUSTOM_TAG_VALUE = '__custom__';
     const FOCUS_WORD_STOPWORDS = new Set([
       'a', 'an', 'the', 'and', 'or', 'but', 'if', 'then', 'than', 'to', 'of', 'in', 'on', 'at', 'for',
@@ -798,15 +887,27 @@
       return sessionId;
     }
 
+    // C2：与工作区 cet-listening.js 的 markState() 三态对齐
+    //   pending  未确认句子
+    //   ready    已确认、尚未开始/完成带练
+    //   done     本轮带练已完成（工作区判定 = practice.status === 'complete'）
+    //
+    // /api/cet/marks 只给 inPractice（带练是否被占用），拿不到 practice.status。
+    // 「本轮已练」的权威信号是 **cet_review_items**：finish_practice() 在把 practice
+    // 置为 complete 的同一事务里写入复习条目，所以「该句存在复习条目」⇔「带练已结束」。
+    // cetCompletedSentenceIds 由 loadCetMarks() 从只读接口 GET /api/cet/review-items 填充；
+    // 拿不到时（接口失败/未开启）退化为两态，不臆造第三态。
     function cetMarkState(mark) {
-      // 与 cet-listening.js 的 markState() 同口径：有 confirmedSentenceId 即「待练」(ready)，
-      // 否则「待确认」(pending)。done 需要带练完成态，/api/cet/marks 列表不返回 practice 状态，
-      // 这里不臆造第三态；颜色/文案沿用工作区 .cet-mark-badge 的 pending/ready 两档。
-      return mark && mark.confirmedSentenceId ? 'ready' : 'pending';
+      if (!mark) return 'pending';
+      const confirmed = mark.confirmedSentenceId;
+      if (!confirmed) return 'pending';
+      return cetCompletedSentenceIds.has(String(confirmed)) ? 'done' : 'ready';
     }
 
     function cetMarkLabel(state) {
-      return state === 'ready' ? '待练' : '待确认';
+      if (state === 'done') return '本轮已练';
+      if (state === 'ready') return '待练';
+      return '待确认';
     }
 
     function cetRangeOverlap(startA, endA, startB, endB) {
@@ -889,7 +990,11 @@
           cetMarksBySentenceKey.set(key, {state, count: 1});
         } else {
           existing.count += 1;
-          if (state === 'pending') existing.state = 'pending';
+          // 同句多条标记时取「最靠前」的状态（pending < ready < done）：
+          // 只要还有一处没确认，就不能显示成「本轮已练」。
+          if (CET_MARK_STATE_RANK[state] < CET_MARK_STATE_RANK[existing.state]) {
+            existing.state = state;
+          }
         }
       }
     }
@@ -907,10 +1012,31 @@
         if (!response.ok) return null;
         const data = await response.json();
         const marks = Array.isArray(data.items) ? data.items : (Array.isArray(data.marks) ? data.marks : []);
+        // C2：「本轮已练」的权威来源。finish_practice() 在把 practice 置为 complete 的
+        // 同一事务里写入 cet_review_items，所以「该句有复习条目」⇔「带练已结束」。
+        // 只读接口，失败时保持两态（不臆造第三态、不阻断精听主流程）。
+        await loadCetCompletedSentenceIds();
         return {material, marks};
       } catch (_) {
         // 卡点模块永远不能阻断精听主流程：失败就当作没有卡点。
         return null;
+      }
+    }
+
+    async function loadCetCompletedSentenceIds() {
+      cetCompletedSentenceIds.clear();
+      try {
+        const response = await fetch('/api/cet/review-items', {cache: 'no-store'});
+        if (!response.ok) return;
+        const data = await response.json();
+        const items = Array.isArray(data.items) ? data.items : [];
+        for (const item of items) {
+          const sentence = item && item.sentence ? item.sentence : null;
+          const sentenceId = (sentence && sentence.sentenceId) || item.sentenceId || '';
+          if (sentenceId) cetCompletedSentenceIds.add(String(sentenceId));
+        }
+      } catch (_) {
+        // 拿不到就退化为 pending/ready 两态。
       }
     }
 
@@ -2532,9 +2658,46 @@
       renderAiRecPanel();
     }
 
+    // ── C6：没配 key 时隐藏「本课 AI 推荐」整块 ────────────────
+    // 后端 /health 的 api_keys.AI_API_KEY 只有 configured / missing 两值，
+    // 不泄露任何密钥内容。探测失败时按「可用」处理（宁可不误藏已有推荐）。
+    async function probeCetAiAvailability() {
+      // 通用模式不需要探测：C6 只在 CET 模式生效，保持原版入口。
+      if (!CET_ON) return true;
+      let ready = true;
+      try {
+        const response = await fetch('/health', {cache: 'no-store'});
+        if (response.ok) {
+          const health = await response.json();
+          const status = health?.api_keys?.AI_API_KEY || health?.ai_key || '';
+          if (status) ready = status === 'configured';
+        }
+      } catch (_) {
+        ready = true;
+      }
+      cetAiReady = ready;
+      cetApplyAiAvailability();
+      return ready;
+    }
+
+    function cetApplyAiAvailability() {
+      // C6 只作用于 CET 模式：通用模式（ELT_CET_MODE=0）必须与基线行为一致，
+      // 不因「没配 key」而隐藏原版的 AI 推荐入口。
+      if (!CET_ON) return;
+      const section = document.getElementById('ai-rec-section');
+      if (section) section.hidden = cetAiReady === false;
+      const filterButton = document.querySelector('[data-filter="ai-recommended"]');
+      if (filterButton) filterButton.hidden = cetAiReady === false;
+      if (cetAiReady === false && activeMode === 'ai-recommended') activeMode = 'all';
+      renderAiRecPanel();
+    }
+
     function renderAiRecPanel() {
       const host = document.getElementById('ai-rec-body');
       if (!host) return;
+      // C6：没配 key 时整块「本课 AI 推荐」已在模板层隐藏（见 cetApplyAiAvailability），
+      // 这里再兜一层：不渲染生成按钮，避免出现「点了没结果」的死入口。
+      if (cetAiReady === false) { host.innerHTML = ''; return; }
       if (!lessonAiRecommendation) {
         host.innerHTML = `<p class="ai-rec-note">还没有这节课的推荐，AI 会通读全文后挑出重点词汇和值得套用的句式。</p>
           <button class="ai-rec-btn" id="ai-rec-generate-btn" type="button" onclick="generateLessonAiRecommendation(false)">✨ 生成 AI 推荐</button>`;
@@ -2806,9 +2969,13 @@
       renderSentenceList();
     });
 
-    loadIntensiveStudy().catch(error => {
-      document.getElementById('intensive-sentence-list').innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
-    });
+    // C6：先探测 AI 是否可用，再加载内容（隐藏死入口要用探测结果）。
+    probeCetAiAvailability()
+      .catch(() => { cetAiReady = true; })
+      .then(() => loadIntensiveStudy())
+      .catch(error => {
+        document.getElementById('intensive-sentence-list').innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+      });
   </script>
 </body>
 </html>

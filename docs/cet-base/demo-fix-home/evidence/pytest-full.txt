@@ -1,0 +1,11 @@
+# 全量回归（codex/demo-fix-home，最终代码，2026-11-07）
+cd /tmp/wt-demo-home
+ELT_CONFIG_DIR=$(mktemp -d) .venv/bin/python -m pytest -q \
+  --ignore=tests/test_cet_listening_ui.py --ignore=tests/test_cet_contract.py
+
+2 failed, 1069 passed, 104 skipped in 709.28s (0:11:49)
+FAILED tests/test_baidu_pan.py::test_download_file_verifies_artifact - Assert...
+FAILED tests/test_health_planning_enabled.py::test_health_reports_planning_enabled_when_module_present
+
+# 两条均为环境基线失败（bdpan CLI 未安装 / 公开库无 planning.py），
+# 在 demo/final = 5d4a1e0 上同样失败，与本分支无关。

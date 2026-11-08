@@ -76,6 +76,12 @@
 
   const STEP_KEYS = ['blind', 'review', 'drill'];
   const STEP_LABEL = { blind: '盲听做题', review: '对答案·找卡点', drill: '精练·复习' };
+  // 卡点三态的一句话解释（悬停显示，界面上不占位置）
+  const MARK_STATE_HINT = {
+    pending: '系统找出的候选句，等你确认',
+    ready: '已确认，还没练',
+    done: '这句练过了',
+  };
 
   // ── 工具 ────────────────────────────────────────────────
   const $ = (sel) => document.querySelector(sel);
@@ -722,7 +728,10 @@
       // K2：blind 步骤不泄露候选句原文，也不出现确认按钮。
       if (S.step !== 'blind') {
         const label = { pending: '待确认', ready: '待练', done: '本轮已练' }[st];
-        row.appendChild(el('span', `cet-mark-badge cet-mark-badge-${st}`, label));
+        const badge = el('span', `cet-mark-badge cet-mark-badge-${st}`, label);
+        // 一句话解释三个状态（用户反馈「待确认」看不懂）
+        badge.title = MARK_STATE_HINT[st];
+        row.appendChild(badge);
         if (sent) {
           const tag = el('span', 'cet-mark-preview-tag',
             `${st === 'pending' ? '候选句' : '确认句'} ${fmt(sent.startSeconds)}–${fmt(sent.endSeconds)}`);

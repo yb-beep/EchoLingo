@@ -460,11 +460,44 @@ body[data-cet-mode="on"]:has(#ws-step-panel) .subtitle-card {
 body[data-cet-mode="on"]:has(#ws-step-panel) #current-subtitle { min-height: 54px; }
 body[data-cet-mode="on"]:has(#ws-step-panel) .sentence-tools { min-height: 0; margin-top: 6px; }
 body[data-cet-mode="on"]:has(#ws-step-panel) .subtitle-card .cet-marks { margin-top: 8px; }
+
+/* 原文隐藏时当前句只剩一行提示，把这一块的空白收掉：
+   原来卡片固定 min-height:218px + #current-subtitle min-height:54px，
+   实际只有一句「原文已隐藏」，左下角留出近 370px 的空白（用户反馈）。
+   这里只隐藏真正空的子块，不影响有内容时的排版。 */
+body[data-cet-mode="on"]:has(#ws-step-panel).cet-hide-text .subtitle-card,
+body[data-cet-mode="on"]:has(#ws-step-panel).cet-hide-text .watch-column .subtitle-card {
+  /* 原文隐藏时内容只有一行提示，不再撑满剩余高度（原来 flex:1 1 auto
+     会让卡片吃掉整列剩余空间，变成一大块空白边框）。放在 1101 断点之后，
+     并用同等特异性的 .watch-column 前缀确保覆盖。 */
+  flex: 0 0 auto;
+  min-height: 0;
+  padding-top: 10px;
+  padding-bottom: 8px;
+}
+body[data-cet-mode="on"]:has(#ws-step-panel).cet-hide-text #current-subtitle {
+  min-height: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  /* 隐藏态下这一行只显示 ::after 的「原文已隐藏（听力模式）」，
+     原文字符用 color:transparent 占位但仍是 23px 行高；
+     保留行高即可，不再额外留白。 */
+  margin: 0;
+}
+body[data-cet-mode="on"]:has(#ws-step-panel).cet-hide-text .subtitle-label {
+  margin-bottom: 2px;
+}
+/* 隐藏态下这些块本来就为空（翻译 / 词卡 / 时间轴说明），不再占位 */
+body[data-cet-mode="on"]:has(#ws-step-panel).cet-hide-text #subtitle-translation:empty,
+body[data-cet-mode="on"]:has(#ws-step-panel).cet-hide-text .sentence-tools:has(#vocab-chips:empty) {
+  display: none !important;
+}
 @media (min-width: 1101px) {
   body[data-cet-mode="on"]:has(#ws-step-panel) .watch-column .subtitle-card {
     flex: 1 1 auto;
   }
 }
+
 
 /* ── W6：手机（≤768）步骤条横向滚动 / 工具栏网格 / 右栏下移 ── */
 @media (max-width: 768px) {

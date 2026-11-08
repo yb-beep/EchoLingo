@@ -1651,7 +1651,7 @@
     .subtitle-error-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; justify-content: flex-end; }
   </style>
 </head>
-<body>
+<body{% if cet_on %} class="tingtou-workspace"{% endif %}>
 <div class="workspace">
   <header class="top-bar">
     <a class="home-link" href="/" aria-label="返回首页" title="返回首页">
@@ -2049,6 +2049,7 @@ window.__CET_BOOT__ = {
 <script src="/static/voice-input.js?v=20260715-1"></script>
 {% endif %}
 <link rel="stylesheet" href="/static/cet-workspace.css?v=20261108-cur-sentence-1">
+<link rel="stylesheet" href="/static/tingtou-ui.css?v=3">
 {#- 返修2：cet-player.js 行为有变更（包2 快捷键），缓存串必须 bump，
     否则真实用户刷新后仍拿到旧 JS。 -#}
 <script src="/static/cet-player.js?v=20261107-drill-w" defer></script>

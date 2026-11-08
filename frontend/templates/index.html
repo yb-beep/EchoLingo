@@ -12,7 +12,7 @@
      裸 script 开标签之后的内容做语法检查，这里不能出现那个开标签字面量。
      服务端 /api/cet/mode 是最终权威，cet-mode.js 会对齐。 #}
   <script type="application/json" id="cet-boot">{{ cet_mode|tojson }}</script>
-  <script src="/static/cet-mode.js?v=20261108-tingtou-1"></script>
+  <script src="/static/cet-mode.js?v=20261108-tingtou-2"></script>
   <style>
     :root {
       --bg: #f6f7f4; --surface: #ffffff; --surface-alt: #eef2ed;
@@ -1539,13 +1539,14 @@
       .listening-choice-row button { flex: 1; }
     }
   </style>
+{% if cet_on %}<link rel="stylesheet" href="/static/tingtou-ui.css?v=3">{% endif %}
 </head>
-<body>
+<body{% if cet_on %} class="tingtou-home"{% endif %}>
 
 <!-- ── Header ── -->
 <div class="page-header">
   <div class="header-top">
-    <h1>🎧 <span id="site-title">{{ cet_copy.site_title }}</span></h1>
+    <h1>{% if not cet_on %}🎧 {% endif %}<span id="site-title">{{ cet_copy.site_title }}</span></h1>
     <span class="header-stat" id="header-stat"></span>
     {# 积分/登录/个人档案：CET 模式下收束（任务书 §3.3）。
        只隐藏入口，**不绕过鉴权、不改服务安全配置**；后端 auth 行为原样保留。 #}
@@ -1570,7 +1571,7 @@
     <button class="tab-btn{% if loop.first %} active{% endif %}" type="button" role="tab"
             id="tab-btn-{{ item.key }}" data-cet-nav="{{ item.key }}"
             aria-selected="{{ 'true' if loop.first else 'false' }}"
-            onclick="switchTab('{{ item.key }}')">{{ item.icon }} {{ item.label }}</button>
+            onclick="switchTab('{{ item.key }}')"><span class="nav-dot" aria-hidden="true"></span>{{ item.label }}</button>
     {% endfor %}
   </div>
   {% else %}
@@ -1581,6 +1582,26 @@
   </div>
   {% endif %}
 </div>
+{% if cet_on %}
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+<symbol id="house" viewBox="0 0 256 256"><path d="M219.31,108.68l-80-80a16,16,0,0,0-22.62,0l-80,80A15.87,15.87,0,0,0,32,120v96a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V160h32v56a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V120A15.87,15.87,0,0,0,219.31,108.68ZM208,208H160V152a8,8,0,0,0-8-8H104a8,8,0,0,0-8,8v56H48V120l80-80,80,80Z"/></symbol>
+<symbol id="headphones" viewBox="0 0 256 256"><path d="M201.89,54.66A103.43,103.43,0,0,0,128.79,24H128A104,104,0,0,0,24,128v56a24,24,0,0,0,24,24H64a24,24,0,0,0,24-24V144a24,24,0,0,0-24-24H40.36A88,88,0,0,1,128,40h.67a87.71,87.71,0,0,1,87,80H192a24,24,0,0,0-24,24v40a24,24,0,0,0,24,24h16a24,24,0,0,0,24-24V128A103.41,103.41,0,0,0,201.89,54.66ZM64,136a8,8,0,0,1,8,8v40a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V136Zm152,48a8,8,0,0,1-8,8H192a8,8,0,0,1-8-8V144a8,8,0,0,1,8-8h24Z"/></symbol>
+<symbol id="clock" viewBox="0 0 256 256"><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></symbol>
+<symbol id="user" viewBox="0 0 256 256"><path d="M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z"/></symbol>
+<symbol id="book" viewBox="0 0 256 256"><path d="M232,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H24a8,8,0,0,0-8,8V200a8,8,0,0,0,8,8H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h72a8,8,0,0,0,8-8V56A8,8,0,0,0,232,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z"/></symbol>
+<symbol id="arrow" viewBox="0 0 256 256"><path d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z"/></symbol>
+<symbol id="plus" viewBox="0 0 256 256"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></symbol>
+<symbol id="target" viewBox="0 0 256 256"><path d="M221.87,83.16A104.1,104.1,0,1,1,195.67,49l22.67-22.68a8,8,0,0,1,11.32,11.32l-96,96a8,8,0,0,1-11.32-11.32l27.72-27.72a40,40,0,1,0,17.87,31.09,8,8,0,1,1,16-.9,56,56,0,1,1-22.38-41.65L184.3,60.39a87.88,87.88,0,1,0,23.13,29.67,8,8,0,0,1,14.44-6.9Z"/></symbol>
+<symbol id="bookmark" viewBox="0 0 256 256"><path d="M184,32H72A16,16,0,0,0,56,48V224a8,8,0,0,0,12.24,6.78L128,193.43l59.77,37.35A8,8,0,0,0,200,224V48A16,16,0,0,0,184,32Zm0,177.57-51.77-32.35a8,8,0,0,0-8.48,0L72,209.57V48H184Z"/></symbol>
+<symbol id="gear" viewBox="0 0 256 256"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z"/></symbol>
+</svg>
+<nav class="mobile-nav" aria-label="手机主导航">
+  <button type="button" data-mobile-nav="home" onclick="tingtouMobileView('home')"><svg aria-hidden="true"><use href="#house"/></svg><span>学习</span></button>
+  <button type="button" data-mobile-nav="library" onclick="tingtouMobileView('library')"><svg aria-hidden="true"><use href="#headphones"/></svg><span>听力库</span></button>
+  <button type="button" data-mobile-nav="review" onclick="tingtouMobileView('review')"><svg aria-hidden="true"><use href="#clock"/></svg><span>复习</span></button>
+  <button type="button" data-mobile-nav="mine" onclick="tingtouMobileView('mine')"><svg aria-hidden="true"><use href="#user"/></svg><span>我的</span></button>
+</nav>
+{% endif %}
 {# 路由兜底提示：访问已收束的旧链接时说明「去了哪里」，不留空白页 #}
 <div id="cet-route-notice" class="cet-route-notice" role="status" aria-live="polite" hidden></div>
 
@@ -1591,6 +1612,7 @@
 <div class="container">
 
   {% if cet_on %}
+  <div class="mobile-home-intro"><span class="mobile-eyebrow">LISTENING STUDIO</span><h2>今天也听懂一点。</h2><p>从一段真实的听力开始，慢慢积累。</p></div>
   {# ══════════════════════════════════════════════════════════════
      CET 模式首页（任务书 §3.2 / §4-P1）
      级别是材料归属的唯一维度；不按标题猜级别；缺失一律「未标注」。
@@ -1637,6 +1659,13 @@
       <button type="button" class="primary cet-empty-action" onclick="cetFocusImport()">导入听力材料</button>
     </div>
   </section>
+
+  <div class="mobile-home-actions" aria-label="学习快捷入口">
+    <button type="button" onclick="tingtouMobileView('library')"><span class="mobile-action-icon"><svg aria-hidden="true"><use href="#book"/></svg></span><span><strong>听力材料</strong><small>查找或导入材料</small></span><svg class="mobile-arrow" aria-hidden="true"><use href="#arrow"/></svg></button>
+    <button type="button" onclick="tingtouMobileView('review')"><span class="mobile-action-icon orange"><svg aria-hidden="true"><use href="#clock"/></svg></span><span><strong>复习记录</strong><small>回看卡点与收藏</small></span><svg class="mobile-arrow" aria-hidden="true"><use href="#arrow"/></svg></button>
+  </div>
+  <section class="mobile-home-list"><div class="mobile-section-head"><h2>听力材料</h2><button type="button" onclick="tingtouMobileView('library')">查看全部</button></div><div id="mobile-home-materials"><p>正在读取材料…</p></div></section>
+  <div class="mobile-library-heading"><div><span class="mobile-eyebrow">YOUR LIBRARY</span><h2>听力库</h2><p>真题、练习与导入的材料，都在这里。</p></div><button type="button" onclick="cetFocusImport()"><svg aria-hidden="true"><use href="#plus"/></svg><span>导入</span></button></div>
 
   {# ── CET 本地导入（P2 界面入口）：收束的来源卡不在 DOM 里，因此不发起平台探测 ── #}
   <div class="gen-panel cet-import-panel" id="cet-import-panel">
@@ -2095,6 +2124,15 @@
 </div>
 </div>
 
+{% if cet_on %}
+<div class="tab-pane mobile-review-pane" id="tab-mobile-review"><div class="container">
+  <div class="mobile-page-heading"><span class="mobile-eyebrow">YOUR PROGRESS</span><h2>复习</h2><p>回到卡住的地方，再听一遍。</p></div>
+  <div class="mobile-review-switch" role="tablist" aria-label="复习内容"><button type="button" role="tab" aria-selected="true" aria-controls="mobile-review-marks" class="active" data-review-view="marks" onclick="tingtouReviewView('marks')">卡点复习</button><button type="button" role="tab" aria-selected="false" aria-controls="mobile-review-history" data-review-view="history" onclick="tingtouReviewView('history')">听过的内容</button></div>
+  <div id="mobile-review-marks"><div class="mobile-review-card"><h3>待复习卡点</h3><div id="mobile-review-due">正在读取复习记录…</div></div><div class="mobile-review-card"><h3>我的收藏</h3><p>回到原句和原声，复习收藏过的内容。</p><div class="mobile-review-actions"><button type="button" onclick="cetSetFavoritesPane('sentences')">句子收藏</button><button type="button" onclick="cetSetFavoritesPane('vocab')">词汇收藏</button></div></div></div>
+  <div id="mobile-review-history" hidden><div class="mobile-review-card"><h3>听过的内容</h3><div id="mobile-history-list">正在读取学习记录…</div></div></div>
+</div></div>
+{% endif %}
+
 <!-- ══════════════════════════════════════════════
      TAB: VOCAB
 ══════════════════════════════════════════════ -->
@@ -2389,6 +2427,7 @@
 ══════════════════════════════════════════════ -->
 <div class="tab-pane" id="tab-resources">
   <div class="container">
+    {% if cet_on %}<div class="mobile-mine-dashboard"><div class="mobile-page-heading"><span class="mobile-eyebrow">MY LEARNING</span><h2>我的</h2><p>每一点积累，都会留下痕迹。</p></div><div class="mobile-mine-summary"><span class="mobile-mine-badge"><svg aria-hidden="true"><use href="#target"/></svg></span><div><small>听力材料</small><strong id="mobile-mine-count">—</strong><small id="mobile-mine-note">正在读取学习记录…</small></div></div><div class="mobile-mine-menu"><button type="button" onclick="tingtouMobileView('review')"><span><strong>复习与收藏</strong><small>卡点、收藏词与句子</small></span><svg aria-hidden="true"><use href="#arrow"/></svg></button><button type="button" onclick="tingtouOpenSettings(true)"><span><strong>学习设置</strong><small>词表、资源与 AI 设置</small></span><svg aria-hidden="true"><use href="#arrow"/></svg></button></div></div><div class="mobile-settings-heading"><button type="button" onclick="tingtouOpenSettings(false)">返回我的</button><h2>学习设置</h2></div>{% endif %}
     <div class="gen-panel">
       <h3>🛠️ 资源上传与管理</h3>
       <p>自行上传词表和重点句式，定制你的个性化学习体验。</p>
@@ -2656,6 +2695,7 @@ function switchTab(name, opts) {
   } else if (name === 'vocab' || name === 'sentences') {
     if (!options.nav) navKey = 'favorites';
   }
+  if (document.body.classList.contains('tingtou-home') && window.matchMedia('(max-width: 700px)').matches && !options.mobile) { tingtouSyncNav((pane === 'vocab' || pane === 'sentences') ? 'review' : pane === 'resources' ? 'mine' : 'home'); }
   const paneEl = document.getElementById('tab-' + pane);
   if (!paneEl) {
     // 目标视图不存在（旧链接 / 已收束页面）：回首页，绝不停在空白页
@@ -8368,6 +8408,7 @@ async function cetLoadLibrary() {
     cetRenderLibrary();
     cetRenderSummary();
     cetRenderTodayReview();
+    tingtouRenderMobile();
     updateHeaderStat('lessons');
   } catch (error) {
     // 端点不存在（Lead 尚未注册）时降级到现有课程库接口，保证首页可用
@@ -8430,6 +8471,7 @@ async function cetLoadLibraryFallback() {
     cetRenderLibrary();
     cetRenderSummary();
     cetRenderTodayReview();
+    tingtouRenderMobile();
     updateHeaderStat('lessons');
     return true;
   } catch (_) {
@@ -8668,6 +8710,7 @@ function cetClearImportErrors() {
 }
 
 function cetFocusImport() {
+  if (window.matchMedia('(max-width: 700px)').matches && document.body.classList.contains('tingtou-home') && document.body.dataset.mobileView !== 'library') tingtouMobileView('library');
   const panel = document.getElementById('cet-import-panel');
   if (!panel) return;
   const form = document.getElementById('cet-import-form');
@@ -8909,6 +8952,7 @@ function cetInitLibraryUI() {
       const levelFilter = document.getElementById('cet-level-filter');
       if (levelFilter) levelFilter.value = _cetLevel;
       cetRenderLibrary();
+      tingtouRenderMobile();
     });
   });
   for (const id of ['cet-level-filter', 'cet-category-filter', 'course-mode-filter', 'course-status-filter', 'course-tag-filter']) {
@@ -8967,6 +9011,93 @@ function cetInitLibraryUI() {
   });
 }
 
+
+// Mobile views reuse the same material library, review data and settings as the desktop application.
+function tingtouSyncNav(view) {
+  document.body.dataset.mobileView = view;
+  document.querySelectorAll('[data-mobile-nav]').forEach(button => {
+    const selected = button.dataset.mobileNav === view;
+    button.classList.toggle('active', selected);
+    if (selected) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+  });
+}
+function tingtouMobileView(view, opts) {
+  if (!(opts && opts.keepHistory)) {
+    const next = {home: '', library: '#library', review: '#review', mine: '#resources'}[view];
+    if (next !== undefined && (location.hash !== next || location.search)) {
+      history.pushState(null, '', location.pathname + next);
+    }
+  }
+  tingtouSyncNav(view);
+  if (view === 'mine') tingtouOpenSettings(false);
+  if (view === 'review') {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+    document.getElementById('tab-mobile-review')?.classList.add('active');
+    tingtouRenderMobile();
+  } else {
+    switchTab(view === 'mine' ? 'resources' : 'lessons', {keepHash:true, mobile:true});
+  }
+  window.scrollTo({top:0, behavior:'auto'});
+}
+function tingtouOpenSettings(open) { document.body.classList.toggle('mobile-settings-open', open); window.scrollTo({top:0, behavior:'auto'}); }
+function tingtouReviewView(view) {
+  document.getElementById('mobile-review-marks').hidden = view !== 'marks';
+  document.getElementById('mobile-review-history').hidden = view !== 'history';
+  document.querySelectorAll('[data-review-view]').forEach(button => {
+    const active = button.dataset.reviewView === view;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+}
+function tingtouRenderMobile() {
+  const home = document.getElementById('mobile-home-materials');
+  if (!home) return;
+  const active = _cetLibrary.filter(item => !item.archived);
+  const items = active.filter(item => _cetLevel === 'all' || item.level === _cetLevel).slice(0, 3);
+  const count = document.getElementById('mobile-mine-count');
+  if (count) count.textContent = `${active.length} 份`;
+  const note = document.getElementById('mobile-mine-note');
+  if (note) note.textContent = `${active.filter(item => item.progress?.started).length} 份已开始学习`;
+  const material = item => `<a class="mobile-material" href="${esc(item.lessonUrl || '/workspace/' + item.lessonId)}"><span class="mobile-material-icon"><svg aria-hidden="true"><use href="#book"/></svg></span><span class="mobile-material-copy"><strong>${esc(cetItemTitle(item))}</strong><small>${esc(cetLevelLabel(item.level))} · ${esc(cetFmtDuration(item.durationSec))} · ${esc(cetCategoryLabel(item))}</small></span><svg class="mobile-arrow" aria-hidden="true"><use href="#arrow"/></svg></a>`;
+  home.innerHTML = items.length ? items.map(material).join('') : active.length ? '<p class="mobile-empty">当前级别暂无材料，可切换级别或导入材料。</p><button type="button" class="mobile-link-button" onclick="cetFocusImport()">导入听力材料</button>' : '<p class="mobile-empty">还没有听力材料，导入后就能开始学习。</p><button type="button" class="mobile-link-button" onclick="cetFocusImport()">导入听力材料</button>';
+  const due = document.getElementById('mobile-review-due');
+  const pending = cetPendingReviewMaterials();
+  if (!CET.feature('cet_listening_agent')) {
+    due.innerHTML = '<p class="mobile-empty">当前未启用卡点带练功能。</p>';
+  } else if (!_cetDrillSummary) {
+    due.innerHTML = '<p class="mobile-empty">复习记录暂时无法读取，请检查连接后重试。</p><button type="button" class="mobile-link-button" onclick="cetLoadLibrary()">重新加载</button>';
+  } else if (pending.length) {
+    due.innerHTML = pending.map(item => `<a class="mobile-review-row" href="/workspace/${item.lessonId}?review=1"><span><strong>${esc(cetSummaryLessonTitle(item.lessonId))}</strong><small>${item.count} 处待复习卡点</small></span><span>去复习 →</span></a>`).join('');
+  } else if (Number(_cetDrillSummary?.reviewDue?.marks || 0) > 0) {
+    due.innerHTML = '<p class="mobile-empty">有待复习的卡点，但暂时无法定位对应材料，请刷新后重试。</p><button type="button" class="mobile-link-button" onclick="cetLoadLibrary()">重新加载</button>';
+  } else {
+    due.innerHTML = '<p class="mobile-empty">暂无待复习卡点。完成带练后，卡点会出现在这里。</p>';
+  }
+  const history = document.getElementById('mobile-history-list');
+  const started = active.filter(item => item.progress?.started);
+  history.innerHTML = started.length ? started.map(material).join('') : '<p class="mobile-empty">还没有听过的材料，开始一次精听后就能在这里继续。</p><button type="button" class="mobile-link-button" onclick="tingtouMobileView(&#39;library&#39;)">去听力库</button>';
+}
+if (document.body.classList.contains('tingtou-home')) {
+  const view = location.hash === '#resources' ? 'mine' : ['#review','#favorites','#vocab','#sentences'].includes(location.hash) ? 'review' : location.hash === '#library' ? 'library' : 'home';
+  tingtouSyncNav(view);
+  window.matchMedia('(max-width: 700px)').addEventListener('change', event => {
+    if (!event.matches && document.getElementById('tab-mobile-review')?.classList.contains('active')) {
+      switchTab('favorites', {keepHash:true});
+    } else if (event.matches && location.hash === '#review') {
+      tingtouMobileView('review', {keepHistory:true});
+    } else if (event.matches && location.hash === '#library') {
+      tingtouMobileView('library', {keepHistory:true});
+    }
+  });
+  if (new URLSearchParams(location.search).get('settings') === 'ai') {
+    window.addEventListener('load', () => {
+      switchTab('resources', {keepHash:true});
+      if (window.matchMedia('(max-width: 700px)').matches) tingtouOpenSettings(true);
+      document.getElementById('ai-settings-section')?.scrollIntoView({block:'start'});
+    }, {once:true});
+  }
+}
 
 // ── Init ──────────────────────────────────────
 // 任务书 §3.3：收束的模块**不初始化**，因此不会发起后台请求。

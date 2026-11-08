@@ -1,0 +1,183 @@
+/* 听透：CET 模式的视觉层，交互和数据仍由原页面负责。 */
+body.tingtou-home, body.tingtou-workspace, body.tingtou-intensive {
+  --bg: #f1f5fc; --surface: #fff; --surface-alt: #edf3ff;
+  --ink: #15294b; --muted: #627695; --line: #e2eaf6;
+  --brand: #2869ed; --brand-dark: #1954ce; --brand-light: #e7efff;
+  --blue: #2869ed; --gold: #d78324;
+  --shadow: 0 10px 28px rgba(38, 79, 150, .07); --radius: 18px;
+  font-family: Inter, "Microsoft YaHei", "Segoe UI", sans-serif;
+  background: var(--bg); color: var(--ink);
+}
+.tingtou-home .page-header { background: rgba(255,255,255,.96); border-color: var(--line); }
+.tingtou-home .header-top, .tingtou-home .tab-bar { max-width: 1100px; margin: auto; }
+.tingtou-home .header-top { padding: 18px 24px; }
+.tingtou-home .header-top h1 { font-size: 24px; letter-spacing: .02em; }
+.tingtou-home .header-top h1::after { content: '每天一点，听懂更多。'; display: block; margin-top: 4px; color: var(--muted); font-size: 12px; font-weight: 400; letter-spacing: 0; }
+.tingtou-home .tab-bar { gap: 6px; border: 0; }
+.tingtou-home .tab-btn { min-height: 46px; border: 0; border-radius: 12px 12px 0 0; }
+.tingtou-home .tab-btn.active { background: #edf3ff; color: var(--brand); }
+.tingtou-home .nav-dot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border: 2px solid currentColor; border-radius: 50%; }
+.tingtou-home .container { max-width: 1100px; padding-top: 24px; }
+.tingtou-home .cet-hero { position: relative; padding: 30px; overflow: hidden; border: 0; background: linear-gradient(125deg, #2464e8, #3a83f5); color: #fff; box-shadow: 0 14px 32px rgba(42,102,223,.2); }
+.tingtou-home .cet-hero::after { content: ''; pointer-events: none; position: absolute; right: 5%; top: 20px; width: 132px; height: 132px; border: 18px solid rgba(255,255,255,.13); border-bottom-color: transparent; border-radius: 50%; transform: rotate(-22deg); }
+.tingtou-home .cet-hero-copy, .tingtou-home .cet-level-switch, .tingtou-home .cet-continue-card, .tingtou-home .cet-today-review, .tingtou-home .cet-empty-library { position: relative; z-index: 1; }
+.tingtou-home .cet-hero h2 { max-width: 75%; font-size: clamp(24px, 4vw, 34px); line-height: 1.25; }
+.tingtou-home .cet-hero-copy p { color: #e5efff; }
+.tingtou-home .cet-level-btn { border-color: transparent; background: rgba(255,255,255,.16); color: white; min-height: 40px; }
+.tingtou-home .cet-level-btn.active { background: white; color: #205ed8; border-color: white; }
+.tingtou-home .cet-continue-card { background: #fff; border: 0; border-radius: 14px; padding: 15px 18px; color: var(--ink); }
+.tingtou-home .cet-continue-label { background: #e9f0ff; color: #205ed8; }
+.tingtou-home .cet-today-review { color: var(--ink); background: #fff; border: 0; border-radius: 15px; }
+.tingtou-home .cet-empty-library { background: #fff; color: var(--ink); border-radius: 15px; }
+.tingtou-home .cet-empty-library p { color: var(--muted); }
+.tingtou-home .gen-panel, .tingtou-home .course-library-shell, .tingtou-home .workshop-masthead, .tingtou-home .sentence-library-masthead { border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: var(--shadow); }
+.tingtou-home .course-library-shell { padding-bottom: 8px; }
+.tingtou-home .course-library-head { align-items: start; flex-direction: column; padding: 22px; }
+.tingtou-home .course-library-head h2 { font-size: 21px; }
+.tingtou-home .course-library-toolbar { width: 100%; max-width: none; grid-template-columns: repeat(5, minmax(100px, 1fr)); }
+.tingtou-home .course-library-toolbar input { grid-column: span 2; }
+.tingtou-home .course-library-toolbar input, .tingtou-home .course-library-toolbar select, .tingtou-home input, .tingtou-home select { border-radius: 10px; min-height: 42px; }
+.tingtou-home .cet-material-card { border-radius: 15px; border-color: #e9eff9; background: #f9fbff; box-shadow: none; }
+.tingtou-home .cet-material-card:hover { border-color: #a8c4fa; }
+.tingtou-home .card-title { font-size: 15px; }
+.tingtou-home button.primary, .tingtou-workspace .cet-btn { border-radius: 11px; }
+.tingtou-workspace .top-bar { background: #fff; border-color: var(--line); }
+.tingtou-workspace .video-card, .tingtou-workspace .subtitle-card, .tingtou-workspace .timeline-card, .tingtou-workspace .review-card, .tingtou-workspace .chat-card, .tingtou-workspace .learning-controls, .tingtou-workspace .cet-study-bar { border-radius: 16px; box-shadow: var(--shadow); }
+.tingtou-workspace #youtube-player.local-audio { background: linear-gradient(120deg,#eaf2ff,#d8e8ff); border-color: #dbe8ff; border-radius: 12px; }
+.tingtou-workspace .learning-controls select, .tingtou-workspace button { border-radius: 10px; }
+.tingtou-workspace .cet-btn.active { background: #b9680d; border-color: #b9680d; }
+.tingtou-home :focus-visible, .tingtou-workspace :focus-visible { outline: 3px solid #82adff; outline-offset: 2px; }
+@media (max-width: 700px) {
+  .tingtou-home .header-top { padding: 14px 18px; }
+  .tingtou-home .tab-bar { padding: 0 12px; }
+  .tingtou-home .tab-btn { flex: 1; padding: 0 6px; font-size: 13px; }
+  .tingtou-home .container { padding: 16px 14px 32px; }
+  .tingtou-home .cet-hero { padding: 22px 18px; }
+  .tingtou-home .cet-hero::after { width: 75px; height: 75px; border-width: 11px; right: 14px; }
+  .tingtou-home .cet-hero h2 { max-width: 78%; }
+  .tingtou-home .course-library-head { padding: 18px; }
+  .tingtou-home .course-library-toolbar { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .tingtou-home .course-library-toolbar input { grid-column: 1 / -1; }
+}
+
+.tingtou-intensive { --surface-soft: #edf3ff; --accent: #ffac50; }
+.tingtou-intensive .topbar { background: #fff; border-color: var(--line); }
+.tingtou-intensive .sentence-card, .tingtou-intensive .sidebar, .tingtou-intensive .card-navigator { border-radius: 16px; border-color: var(--line); box-shadow: var(--shadow); }
+.tingtou-intensive button, .tingtou-intensive .button-link { border-radius: 10px; }
+.tingtou-intensive :focus-visible { outline: 3px solid #82adff; outline-offset: 2px; }
+/* The mobile shell keeps the original functional panes and gives each a clear place. */
+.mobile-nav,.mobile-home-intro,.mobile-home-actions,.mobile-home-list,.mobile-library-heading,.mobile-review-pane { display:none; }
+@media (max-width:700px) {
+ body.tingtou-home { padding-bottom:calc(78px + env(safe-area-inset-bottom)); background:#f3f6fc; }
+ .tingtou-home .page-header { position:relative; border:0; background:#fff; }
+ .tingtou-home .header-top { padding:18px 20px 15px; }
+ .tingtou-home .header-top h1 { font-size:23px; }
+ .tingtou-home .tab-bar { display:none; }
+ .tingtou-home .container { padding:20px 16px 28px; }
+ .tingtou-home .mobile-nav { position:fixed; z-index:100; bottom:0; left:0; right:0; padding:7px 8px calc(7px + env(safe-area-inset-bottom)); background:rgba(255,255,255,.98); border-top:1px solid #e7edf7; display:grid; grid-template-columns:repeat(4,1fr); box-shadow:0 -5px 20px rgba(30,60,110,.05); }
+ .tingtou-home .mobile-nav button { min-width:0; min-height:52px; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:3px; border:0; padding:2px; background:transparent; color:#72829d; font-size:12px; font-weight:600; }
+ .tingtou-home .mobile-nav button.active { color:#2869ed; }
+ .tingtou-home .mobile-nav svg { width:24px; height:24px; fill:currentColor; }
+ .tingtou-home .mobile-home-intro { display:block; margin:1px 2px 17px; }
+ .tingtou-home .mobile-eyebrow { color:#2869ed; font-size:10px; font-weight:800; letter-spacing:.15em; }
+ .tingtou-home .mobile-home-intro h2,.tingtou-home .mobile-page-heading h2,.tingtou-home .mobile-library-heading h2 { margin:5px 0 3px; font-size:24px; line-height:1.25; color:#172a49; }
+ .tingtou-home .mobile-home-intro p,.tingtou-home .mobile-page-heading p,.tingtou-home .mobile-library-heading p { margin:0; color:#72819a; font-size:13px; line-height:1.6; }
+ .tingtou-home .cet-hero { padding:23px 19px 18px; border-radius:20px; margin-bottom:16px; }
+ .tingtou-home .cet-hero-copy h2 { font-size:24px; }
+ .tingtou-home .cet-hero-copy p { margin-top:6px; font-size:13px; }
+ .tingtou-home .cet-level-switch { margin:17px 0 12px; gap:6px; }
+ .tingtou-home .cet-level-btn { min-height:38px; padding:7px 12px; font-size:12px; }
+ .tingtou-home .cet-continue-card { min-height:58px; padding:11px 13px; }
+ .tingtou-home .cet-continue-label { padding:5px 7px; }
+ .tingtou-home .cet-continue-title { font-size:13px; }
+ .tingtou-home .cet-today-review,.tingtou-home .cet-empty-library { display:none !important; }
+ .tingtou-home .mobile-home-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:0 0 22px; }
+ .tingtou-home .mobile-home-actions button { display:flex; align-items:center; text-align:left; gap:9px; min-width:0; min-height:78px; padding:11px; border:0; border-radius:16px; background:white; }
+ .tingtou-home .mobile-action-icon,.tingtou-home .mobile-material-icon { flex:0 0 38px; width:38px; height:38px; display:grid; place-items:center; color:#2869ed; background:#eaf1ff; border-radius:12px; }
+ .tingtou-home .mobile-action-icon.orange { color:#bc6e15; background:#fff2e3; }
+ .tingtou-home .mobile-action-icon svg,.tingtou-home .mobile-material-icon svg { width:22px; height:22px; fill:currentColor; }
+ .tingtou-home .mobile-home-actions strong,.tingtou-home .mobile-material strong { display:block; font-size:13px; color:#172a49; }
+ .tingtou-home .mobile-home-actions small,.tingtou-home .mobile-material small { display:block; margin-top:4px; font-size:11px; line-height:1.4; color:#74839b; }
+ .tingtou-home .mobile-arrow { width:17px; height:17px; flex:none; fill:currentColor; color:#7791bb; margin-left:auto; }
+ .tingtou-home .mobile-home-actions .mobile-arrow { display:none; }
+ .tingtou-home .mobile-home-list { display:block; }
+ .tingtou-home .mobile-section-head { display:flex; align-items:center; justify-content:space-between; margin:0 2px 10px; }
+ .tingtou-home .mobile-section-head h2 { margin:0; font-size:18px; }
+ .tingtou-home .mobile-section-head button { border:0; color:#2869ed; background:transparent; font-size:12px; }
+ .tingtou-home #mobile-home-materials,.tingtou-home #mobile-history-list { background:#fff; border-radius:16px; overflow:hidden; }
+ .tingtou-home .mobile-material { display:flex; align-items:center; gap:12px; min-width:0; padding:13px 14px; border-bottom:1px solid #eef2f8; text-decoration:none; }
+ .tingtou-home .mobile-material:last-child { border-bottom:0; }
+ .tingtou-home .mobile-material-copy { min-width:0; flex:1; }
+ .tingtou-home .mobile-material strong { overflow-wrap:anywhere; }
+ .tingtou-home .mobile-empty { margin:0; padding:12px 0; color:#72819a; font-size:13px; line-height:1.65; }
+ .tingtou-home #mobile-home-materials > .mobile-empty { padding:16px; }
+ .tingtou-home .mobile-link-button { margin:0 16px 16px; color:#2869ed; border:0; background:#edf3ff; }
+ .tingtou-home[data-mobile-view="home"] #cet-import-panel,.tingtou-home[data-mobile-view="home"] #recent-section,.tingtou-home[data-mobile-view="home"] .course-library-shell { display:none; }
+ .tingtou-home[data-mobile-view="library"] .mobile-home-intro,.tingtou-home[data-mobile-view="library"] .cet-hero,.tingtou-home[data-mobile-view="library"] .mobile-home-actions,.tingtou-home[data-mobile-view="library"] .mobile-home-list,.tingtou-home[data-mobile-view="library"] #recent-section { display:none; }
+ .tingtou-home[data-mobile-view="library"] .mobile-library-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px; }
+ .tingtou-home .mobile-library-heading button { display:flex; align-items:center; gap:4px; min-height:42px; padding:8px 12px; color:#2869ed; border:0; background:#e6efff; }
+ .tingtou-home .mobile-library-heading button svg { width:18px; height:18px; fill:currentColor; }
+ .tingtou-home .course-library-shell { margin-top:14px; }
+ .tingtou-home .course-library-head { gap:12px; }
+ .tingtou-home .course-library-head p { font-size:12px; }
+ .tingtou-home .course-library-toolbar { gap:8px; }
+ .tingtou-home .cet-material-card { margin:8px 12px; }
+ .tingtou-home .mobile-review-pane.active { display:block; }
+ .tingtou-home .mobile-page-heading { margin:0 2px 18px; }
+ .tingtou-home .mobile-review-switch { display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:4px; background:#e6edfa; border-radius:14px; margin-bottom:16px; }
+ .tingtou-home .mobile-review-switch button { border:0; min-height:42px; background:transparent; color:#657a9a; font-weight:600; }
+ .tingtou-home .mobile-review-switch button.active { color:#fff; background:#2869ed; border-radius:10px; }
+ .tingtou-home .mobile-review-card { background:#fff; border-radius:16px; padding:18px; margin-bottom:12px; }
+ .tingtou-home .mobile-review-card h3 { margin:0 0 6px; font-size:16px; }
+ .tingtou-home .mobile-review-card > p { margin:0; color:#72819a; font-size:13px; line-height:1.6; }
+ .tingtou-home .mobile-review-row { display:flex; align-items:center; justify-content:space-between; gap:10px; color:#2869ed; min-height:60px; text-decoration:none; border-top:1px solid #edf1f8; font-size:13px; }
+ .tingtou-home .mobile-review-row strong,.tingtou-home .mobile-review-row small { display:block; }
+ .tingtou-home .mobile-review-row strong { color:#172a49; }
+ .tingtou-home .mobile-review-row small { color:#71809a; margin-top:4px; }
+ .tingtou-home .mobile-review-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+ .tingtou-home .mobile-review-actions button { min-height:44px; border:0; background:#edf3ff; color:#2869ed; font-weight:700; }
+ .tingtou-home #tab-resources .container::before { content:'我的'; display:block; font-size:24px; font-weight:750; margin:0 0 16px 2px; }
+ .tingtou-home #tab-resources .gen-panel { padding:18px; }
+ .tingtou-home #tab-resources input,.tingtou-home #tab-resources select,.tingtou-home #tab-resources button { max-width:100%; }
+ .tingtou-workspace { padding-bottom:env(safe-area-inset-bottom); }
+ .tingtou-workspace .top-bar { padding-left:14px; padding-right:14px; }
+ .tingtou-workspace .main-grid { gap:10px; }
+ .tingtou-workspace .video-card,.tingtou-workspace .subtitle-card,.tingtou-workspace .learning-controls,.tingtou-workspace .cet-study-bar { border-radius:16px; }
+}
+.mobile-mine-dashboard,.mobile-settings-heading { display:none; }
+@media (max-width:700px) {
+ .tingtou-home #tab-resources .container::before { display:none; }
+ .tingtou-home .mobile-mine-dashboard { display:block; }
+ .tingtou-home .mobile-mine-summary { display:flex; align-items:center; gap:15px; padding:22px 18px; background:linear-gradient(125deg,#2768ed,#5893fa); border-radius:18px; color:white; }
+ .tingtou-home .mobile-mine-badge { width:55px; height:55px; display:grid; place-items:center; border-radius:17px; background:rgba(255,255,255,.2); }
+ .tingtou-home .mobile-mine-badge svg { width:31px; height:31px; fill:white; }
+ .tingtou-home .mobile-mine-summary small,.tingtou-home .mobile-mine-summary strong { display:block; }
+ .tingtou-home .mobile-mine-summary small { font-size:12px; color:#e3edff; }
+ .tingtou-home .mobile-mine-summary strong { font-size:26px; margin:3px 0; }
+ .tingtou-home .mobile-mine-menu { margin-top:16px; background:#fff; border-radius:17px; overflow:hidden; }
+ .tingtou-home .mobile-mine-menu button { display:flex; justify-content:space-between; align-items:center; width:100%; min-height:72px; text-align:left; border:0; border-bottom:1px solid #eef2f8; border-radius:0; padding:13px 17px; }
+ .tingtou-home .mobile-mine-menu strong,.tingtou-home .mobile-mine-menu small { display:block; }
+ .tingtou-home .mobile-mine-menu strong { font-size:15px; }
+ .tingtou-home .mobile-mine-menu small { color:#7a8aa2; font-size:12px; margin-top:5px; }
+ .tingtou-home .mobile-mine-menu svg { width:20px; height:20px; fill:#86a0c9; }
+ .tingtou-home #tab-resources .gen-panel { display:none; }
+ .tingtou-home.mobile-settings-open #tab-resources .gen-panel { display:block; }
+ .tingtou-home.mobile-settings-open .mobile-mine-dashboard { display:none; }
+ .tingtou-home.mobile-settings-open .mobile-settings-heading { display:flex; align-items:center; gap:15px; margin-bottom:16px; }
+ .tingtou-home .mobile-settings-heading button { border:0; color:#2869ed; background:#eaf1ff; }
+ .tingtou-home .mobile-settings-heading h2 { margin:0; font-size:21px; }
+}
+@media (max-width: 700px) {
+ .tingtou-workspace .ws-step-bar { overflow:visible; }
+ .tingtou-workspace .ws-step-list { min-width:0; width:100%; gap:2px; }
+ .tingtou-workspace .ws-step-item { flex:1; min-width:0; justify-content:center; gap:3px; padding:6px 2px; font-size:11px; }
+ .tingtou-workspace .ws-step-item + .ws-step-item::before { display:none; }
+ .tingtou-workspace .ws-step-no { font-size:12px; }
+}
+@media (max-width: 560px) {
+ .tingtou-intensive .mode-filters { flex-wrap:wrap; overflow:visible; }
+ .tingtou-intensive .mode-filter { min-height:40px; }
+ .tingtou-intensive #ai-rec-section, .tingtou-intensive .filter-section:has(#tag-filter-list) { display:block; }
+ .tingtou-intensive .ai-rec-btn, .tingtou-intensive .ai-rec-settings { min-height:44px; }
+}
+.tingtou-intensive .ai-rec-settings { display:inline-flex; align-items:center; margin-top:8px; padding:9px 12px; border-radius:10px; color:#1754cf; background:#eaf1ff; text-decoration:none; font-weight:700; font-size:13px; }

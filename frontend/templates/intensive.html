@@ -703,11 +703,8 @@
         white-space: nowrap;
         font-size: 12px;
       }
-      /* 搜索框保留（常用），但压成一行；AI 推荐区块与标签筛选在手机上收起
-         （标签筛选在手机上很少用，且会把筛选区撑到 200px 以上）。 */
-      #ai-rec-section { display: none !important; }
+      /* Keep the recommendation and tag controls available on mobile. */
       .filter-section { margin-top: 10px; padding-top: 10px; }
-      .filter-section:has(#tag-filter-list) { display: none; }
       #sentence-search { min-height: 34px; padding: 6px 10px; }
       .column-intro { align-items: start; flex-direction: column; }
       .column-actions { width: 100%; justify-content: flex-start; }
@@ -721,8 +718,9 @@
       .practice-input-row { grid-template-columns: 1fr; }
     }
   </style>
+{% if cet_on %}<link rel="stylesheet" href="/static/tingtou-ui.css?v=3">{% endif %}
 </head>
-<body>
+<body{% if cet_on %} class="tingtou-intensive"{% endif %}>
   <header class="topbar">
     <a class="back-link" href="/workspace/{{ lesson_id }}">← 返回听力材料</a>
     <div class="title-block">
@@ -2689,7 +2687,7 @@
       renderAiRecPanel();
     }
 
-    // ── C6：没配 key 时隐藏「本课 AI 推荐」整块 ────────────────
+    // Report availability without hiding recommendations that were already saved.
     // 后端 /health 的 api_keys.AI_API_KEY 只有 configured / missing 两值，
     // 不泄露任何密钥内容。探测失败时按「可用」处理（宁可不误藏已有推荐）。
     async function probeCetAiAvailability() {
@@ -2712,24 +2710,19 @@
     }
 
     function cetApplyAiAvailability() {
-      // C6 只作用于 CET 模式：通用模式（ELT_CET_MODE=0）必须与基线行为一致，
-      // 不因「没配 key」而隐藏原版的 AI 推荐入口。
+      // Generic mode keeps its original behaviour.
       if (!CET_ON) return;
-      const section = document.getElementById('ai-rec-section');
-      if (section) section.hidden = cetAiReady === false;
-      const filterButton = document.querySelector('[data-filter="ai-recommended"]');
-      if (filterButton) filterButton.hidden = cetAiReady === false;
-      if (cetAiReady === false && activeMode === 'ai-recommended') activeMode = 'all';
       renderAiRecPanel();
     }
 
     function renderAiRecPanel() {
       const host = document.getElementById('ai-rec-body');
       if (!host) return;
-      // C6：没配 key 时整块「本课 AI 推荐」已在模板层隐藏（见 cetApplyAiAvailability），
-      // 这里再兜一层：不渲染生成按钮，避免出现「点了没结果」的死入口。
-      if (cetAiReady === false) { host.innerHTML = ''; return; }
       if (!lessonAiRecommendation) {
+        if (cetAiReady === false) {
+          host.innerHTML = `<p class="ai-rec-note">配置 AI 服务后，可以生成本课的重点词汇和句式推荐。</p><a class="ai-rec-settings" href="/?settings=ai#resources">前往 AI 设置</a>`;
+          return;
+        }
         host.innerHTML = `<p class="ai-rec-note">还没有这节课的推荐，AI 会通读全文后挑出重点词汇和值得套用的句式。</p>
           <button class="ai-rec-btn" id="ai-rec-generate-btn" type="button" onclick="generateLessonAiRecommendation(false)">✨ 生成 AI 推荐</button>`;
         return;
@@ -2743,7 +2736,7 @@
       host.innerHTML = `
         ${words ? `<div class="ai-rec-words">${words}</div>` : ''}
         ${patterns ? `<div class="ai-rec-patterns">${patterns}</div>` : ''}
-        <button class="ai-rec-btn subtle" id="ai-rec-generate-btn" type="button" onclick="generateLessonAiRecommendation(true)">↻ 重新生成</button>`;
+        ${cetAiReady === false ? '<p class="ai-rec-note">已显示保存的推荐；重新生成前请先配置 AI 服务。</p><a class="ai-rec-settings" href="/?settings=ai#resources">前往 AI 设置</a>' : '<button class="ai-rec-btn subtle" id="ai-rec-generate-btn" type="button" onclick="generateLessonAiRecommendation(true)">↻ 重新生成</button>'}`;
     }
 
     async function generateLessonAiRecommendation(regenerate) {
@@ -3000,7 +2993,7 @@
       renderSentenceList();
     });
 
-    // C6：先探测 AI 是否可用，再加载内容（隐藏死入口要用探测结果）。
+    // Check configuration before loading the recommendation panel.
     probeCetAiAvailability()
       .catch(() => { cetAiReady = true; })
       .then(() => loadIntensiveStudy())

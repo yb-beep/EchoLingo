@@ -124,6 +124,8 @@
     '': 'lessons',
     'lessons': 'lessons',
     'favorites': 'favorites',
+    'library': 'library',
+    'review': 'review',
     'vocab': 'vocab',
     'sentences': 'sentences',
     'resources': 'resources',
@@ -174,6 +176,14 @@
 
   function _applyRoute(hashName) {
     var view = VIEW_BY_HASH[hashName];
+    if (view === 'library' || view === 'review') {
+      if (window.matchMedia('(max-width: 700px)').matches && typeof window.tingtouMobileView === 'function') {
+        window.tingtouMobileView(view, {keepHistory: true});
+      } else if (typeof window.switchTab === 'function') {
+        window.switchTab(view === 'review' ? 'favorites' : 'lessons', {keepHash: true});
+      }
+      return;
+    }
     if (view === undefined) {
       // 未知 / 已收束的 hash：回首页 + 说明，绝不停在空白页
       var label = RETIRED_HASH_HINT[hashName];

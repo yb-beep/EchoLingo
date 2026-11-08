@@ -679,7 +679,36 @@
       .topbar { padding: 10px 12px; gap: 10px; }
       .back-link { padding: 7px 9px; font-size: 12px; }
       .layout { width: min(100% - 20px, 1220px); margin-top: 14px; }
-      .mode-filters { grid-template-columns: 1fr; }
+      /* L3：手机上左栏筛选原来竖着占满第一屏（5 个按钮各占一行 + 搜索框），
+         要滚很久才看到句子。改成一行横向滑动的标签，说明文字收紧。 */
+      .filter-panel { padding: 12px 14px; }
+      .filter-panel h2 { font-size: 15px; margin-bottom: 2px; }
+      .filter-note { display: none; }
+      .mode-filters {
+        grid-template-columns: none;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 6px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        margin: 8px 0 4px;
+        padding-bottom: 2px;
+      }
+      .mode-filters::-webkit-scrollbar { display: none; }
+      .mode-filter {
+        flex: 0 0 auto;
+        min-height: 32px;
+        padding: 6px 12px;
+        white-space: nowrap;
+        font-size: 12px;
+      }
+      /* 搜索框保留（常用），但压成一行；AI 推荐区块与标签筛选在手机上收起
+         （标签筛选在手机上很少用，且会把筛选区撑到 200px 以上）。 */
+      #ai-rec-section { display: none !important; }
+      .filter-section { margin-top: 10px; padding-top: 10px; }
+      .filter-section:has(#tag-filter-list) { display: none; }
+      #sentence-search { min-height: 34px; padding: 6px 10px; }
       .column-intro { align-items: start; flex-direction: column; }
       .column-actions { width: 100%; justify-content: flex-start; }
       .sentence-head { grid-template-columns: 36px minmax(0, 1fr); padding: 13px 12px; }
@@ -706,7 +735,9 @@
   <main id="intensive-app" class="layout" data-lesson-id="{{ lesson_id }}"{% if cet_marks_on %} data-cet-marks-on="1"{% endif %}>
     <aside class="filter-panel" aria-label="精读筛选">
       <h2>学习视图</h2>
-      <p class="filter-note">整篇逐句浏览；收藏与标签继续写回当前 v2 课程。</p>
+      {#- L4：原句「收藏与标签继续写回当前 v2 课程」是内部术语，用户看不懂。
+          CET 模式改成用户视角的说法；通用模式保留原文。 -#}
+      <p class="filter-note">{% if cet_on %}整篇逐句浏览；收藏和标签会同步到「我的收藏」。{% else %}整篇逐句浏览；收藏与标签继续写回当前 v2 课程。{% endif %}</p>
       <div class="mode-filters">
         <button class="mode-filter active" type="button" data-filter="all">全部 <span id="count-all">0</span></button>
         <button class="mode-filter" type="button" data-filter="vocabulary">重点词汇 <span id="count-vocabulary">0</span></button>

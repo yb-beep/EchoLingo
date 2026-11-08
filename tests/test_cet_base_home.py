@@ -116,8 +116,12 @@ def test_t02_title_search_uses_material_fields_only():
 
 def test_t02_recent_learning_only_counts_real_progress():
     block = INDEX_TEXT.split("function cetRenderRecent()", 1)[1].split("function cetUpdateContinue", 1)[0]
+    # 只统计真实进度（不变）
     assert "item.progress?.started" in block
-    assert "还没有学习记录" in block
+    # L1：没有学习记录时整块隐藏，不再显示「还没有学习记录」占位大空白
+    # （上方「继续学习」已承担入口作用）
+    assert "recent-section" in block, "cetRenderRecent 没有控制「最近学习」区块显隐"
+    assert "section.hidden = started.length === 0" in block, "无记录时没有隐藏整块"
 
 
 def test_t02_unspecified_material_offers_manual_classification():
@@ -247,7 +251,10 @@ def test_t14_base_css_handles_narrow_viewports():
     assert "@media (max-width: 420px)" in css
     # 主要操作在窄窗口变成单列/整行，不被遮挡
     assert ".cet-import-grid { grid-template-columns: 1fr; }" in css
-    assert ".cet-level-btn { flex: 1 1 100%; }" in css
+    # L2：手机上级别按钮改成一行横排 + 横向滑动（原来每个占一整行，吃掉半屏）
+    assert ".cet-level-switch" in css and "flex-wrap: nowrap" in css, "级别按钮没有改成一行横排"
+    assert "overflow-x: auto" in css, "级别按钮没有横向滑动"
+    assert ".cet-level-btn { flex: 1 1 100%; }" not in css, "仍在强制级别按钮占满整行"
 
 
 def test_t14_no_fixed_width_overflow_risk():

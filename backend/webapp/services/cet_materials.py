@@ -266,17 +266,32 @@ def _progress(lesson: dict[str, Any]) -> dict[str, Any]:
 
 
 def _sentence_count(lesson: dict[str, Any]) -> int:
-    """句子数。
+    """句子数 —— **与工作区「当前句 x / y」同源**。
 
-    `list_v2_lessons()` 会带 `subtitle_count` 子查询；`get_v2_lesson()` 不带，
-    所以单份材料查询要回落到实际计数，否则「有 4 句」会显示成 0 句。
+    P1-5：首页原来用「字幕段数」（`v2_subtitle_segments` 行数，32），
+    工作区用的是句级时间轴（`build_translation_units`，35），同一份材料
+    两处显示不同数字。这里统一走句级时间轴，两处数学上必然相等。
+
+    为什么不再用 `subtitle_count` 子查询：它数的是**字幕段**不是**句子**，
+    一段字幕可能被切成多句（实测四级样例 32 段 → 35 句）。
     """
-    if "subtitle_count" in lesson and lesson.get("subtitle_count") is not None:
-        return int(lesson["subtitle_count"])
+    lesson_id = int(lesson["id"])
     try:
-        return len(db.get_v2_subtitle_segments(int(lesson["id"])))
+        segments = db.get_v2_subtitle_segments(lesson_id)
     except Exception:  # noqa: BLE001
         return 0
+    if not segments:
+        return 0
+    try:
+        from webapp.services.v2_translation import build_translation_units
+
+        units = build_translation_units(segments)
+        if units:
+            return len(units)
+    except Exception:  # noqa: BLE001
+        pass
+    # 句级切分不可用时退回段数（至少不是 0，不会把「有原文」显示成「无」）
+    return len(segments)
 
 
 def _reading_block_count(lesson: dict[str, Any]) -> int:

@@ -460,14 +460,29 @@
   .cet-route-notice { padding: 10px 12px; }
   .cet-library-summary { padding: 0 14px; }
   .cet-library-summary:not(:empty) { padding-top: 8px; }
-  .cet-level-switch { gap: 6px; }
-  .cet-level-btn { flex: 1 1 calc(50% - 6px); padding: 6px 10px; }
+  /* L2：手机上级别按钮不再每个占一整行（原来 420 以下 flex:1 1 100%，
+     4 个按钮吃掉半屏）。改成一行横排，放不下时横向滑动。 */
+  .cet-level-switch {
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .cet-level-switch::-webkit-scrollbar { display: none; }
+  .cet-level-btn {
+    flex: 0 0 auto;
+    padding: 6px 14px;
+    white-space: nowrap;
+  }
   .cet-today-review { padding: 14px 12px; }
   .cet-today-review-groups { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 420px) {
-  .cet-level-btn { flex: 1 1 100%; }
+  /* L2：级别按钮保持一行横排（见上），此处不再强制整行。 */
+  .cet-level-btn { padding: 5px 12px; font-size: 12px; }
   .cet-continue-card { flex-wrap: wrap; gap: 8px; }
   .cet-continue-title { flex-basis: 100%; order: 3; }
   .cet-card-actions { grid-template-columns: 1fr auto; }
@@ -475,3 +490,12 @@
 }
 
 /* 通用模式（ELT_CET_MODE=0）下这些节点不存在，样式自然不生效。 */
+
+/* ── L1：最近学习区块 ─────────────────────────────────────── */
+/* 无记录时整块由 JS 加 hidden 隐藏（不留大空白）；有记录时卡片横向排列，
+   不挤在左三分之一。 */
+#tab-lessons .recent-section[hidden] { display: none !important; }
+#tab-lessons .recent-section .lesson-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+#tab-lessons .recent-section .lesson-card { min-height: 0; }

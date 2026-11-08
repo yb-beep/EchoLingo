@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ cet_copy.site_title }}</title>
   {# 四六级专用底座：CET 增量样式（复用 --brand/--ink/--line 等既有变量，不重做视觉） #}
-  <link rel="stylesheet" href="/static/cet-base.css?v=20261107-drill-h">
+  <link rel="stylesheet" href="/static/cet-base.css?v=20261108-layout-1">
   {# 首屏注入集中配置，避免「先渲染通用再收束」的闪烁。
      用 application/json 数据块而不是可执行内联脚本注入：既有测试取页面里第一个
      裸 script 开标签之后的内容做语法检查，这里不能出现那个开标签字面量。
@@ -2026,7 +2026,7 @@
   </div>
   {% endif %}
 
-  <section class="recent-section" aria-labelledby="recent-course-title">
+  <section class="recent-section" id="recent-section" aria-labelledby="recent-course-title" hidden>
     <div class="section-header">
       <h2 id="recent-course-title">最近学习</h2>
       <span class="section-count" id="recent-course-count"></span>
@@ -8206,9 +8206,11 @@ function cetRenderRecent() {
     .slice(0, 4);
   const countEl = document.getElementById('recent-course-count');
   if (countEl) countEl.textContent = started.length ? `${started.length} 份` : '';
-  grid.innerHTML = started.length
-    ? started.map(cetBuildCard).join('')
-    : '<div class="empty-state"><p>还没有学习记录。打开一份材料就会出现在这里。</p></div>';
+  // L1：没有学习记录时整块不显示（上方「继续学习」已经承担入口作用，
+  // 这里再放一块大空白 + 一行小字只是浪费首屏）。
+  const section = document.getElementById('recent-section');
+  if (section) section.hidden = started.length === 0;
+  grid.innerHTML = started.length ? started.map(cetBuildCard).join('') : '';
   const active = _cetLibrary.filter(item => !item.archived);
   // 优先「有学习记录」的材料；没有学习记录时给出第一份材料作为入口（不虚构进度）
   const latest = active.find(item => item.progress?.started) || active[0] || null;

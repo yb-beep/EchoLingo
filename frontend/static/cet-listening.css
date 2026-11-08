@@ -624,6 +624,14 @@ body.cet-hide-text #reading-passage {
 }
 .cet-step-primary { min-height: 32px; }
 .cet-step-review-btn { white-space: nowrap; }
+.cet-mark-btn {
+  min-height: 44px;
+  padding: 9px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cet-mark-btn[hidden] { display: none; }
 
 /* 卡点行「⋯」菜单：前一句/后一句/改一下/删除收进去 */
 .cet-mark-menu {
@@ -889,6 +897,11 @@ body.cet-hide-text #reading-passage {
 
 /* 窄屏（375px 验收）不横向溢出 */
 @media (max-width: 720px) {
+  body[data-cet-mode="on"] .learning-controls[data-ws-controls="cet"] .cet-mark-btn {
+    order: -1;
+    flex: 1 1 100%;
+    width: 100%;
+  }
   .cet-step-actions { align-items: flex-start; }
   .cet-step-actions .cet-hint { flex-basis: 100%; }
   .cet-step-primary { width: 100%; }

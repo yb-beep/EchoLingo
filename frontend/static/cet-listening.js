@@ -663,6 +663,27 @@
     renderStepActions();
   }
 
+  /**
+   * 把卡点「⋯」菜单定位到按钮旁边（position:fixed，不受 .watch-column 裁剪）。
+   * 下方空间不够就向上弹；左右贴边时收回视口内。
+   */
+  function positionMarkMenu(summary, list) {
+    const btn = summary.getBoundingClientRect();
+    const box = list.getBoundingClientRect();
+    const gap = 6;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const spaceBelow = vh - btn.bottom;
+    const openUp = spaceBelow < box.height + gap && btn.top > spaceBelow;
+    let top = openUp ? btn.top - box.height - gap : btn.bottom + gap;
+    top = Math.max(8, Math.min(top, vh - box.height - 8));
+    let left = btn.right - box.width;
+    left = Math.max(8, Math.min(left, vw - box.width - 8));
+    list.style.top = `${Math.round(top)}px`;
+    list.style.left = `${Math.round(left)}px`;
+    list.style.right = 'auto';
+  }
+
   function buildMarkMenu(m, st) {
     const det = el('details', 'cet-mark-menu');
     const summary = el('summary', 'cet-mark-menu-btn', '⋯');
@@ -670,6 +691,16 @@
     summary.setAttribute('aria-label', '更多操作');
     det.appendChild(summary);
     const list = el('div', 'cet-mark-menu-list');
+    // 打开时先渲染再定位（hidden 状态下量不到真实尺寸）
+    det.addEventListener('toggle', () => {
+      if (det.open) {
+        window.requestAnimationFrame(() => positionMarkMenu(summary, list));
+      } else {
+        list.style.top = '';
+        list.style.left = '';
+        list.style.right = '';
+      }
+    });
     const add = (label, fn, disabled, title) => {
       const btn = el('button', 'cet-mark-menu-item', label);
       if (disabled) {
@@ -1068,6 +1099,20 @@
       list.id = 'cet-question-list';
       body.appendChild(list);
       renderQuestions();
+      // 题目列表末尾也放一个「交卷」：手机上题目很长，做完最后一题时
+      // 工具栏的交卷按钮已经滚到屏幕外（实测 375 宽时 top=-558px），
+      // 用户会找不到交卷入口。这里放一个等价入口，两个按钮共用同一处理函数。
+      if (!S.attempt) {
+        const footRow = el('div', 'cet-question-foot');
+        const footSubmit = el('button', 'cet-btn cet-question-submit', '交卷');
+        footSubmit.id = 'cet-submit-foot';
+        footSubmit.onclick = onStepPrimary;
+        footRow.appendChild(footSubmit);
+        const answered = Object.keys(S.answers || {}).length;
+        footRow.appendChild(el('span', 'cet-question-foot-note',
+          answered ? `已作答 ${answered} / ${S.questions.length} 题` : '还没作答，选完再交卷'));
+        body.appendChild(footRow);
+      }
       if (S.attempt) {
         const link = el('button', 'cet-btn-sm cet-inline-link', '查看交卷结果 →');
         link.onclick = () => setStep('review');
@@ -1078,6 +1123,15 @@
       count.id = 'cet-blind-mark-count';
       body.appendChild(count);
     }
+  }
+
+  // 题目列表末尾的「已作答 x / y 题」提示：选一项就更新，用户能看到还差几题
+  function updateQuestionFootNote() {
+    const note = document.querySelector('.cet-question-foot-note');
+    if (!note) return;
+    const answered = Object.keys(S.answers || {}).length;
+    const total = (S.questions || []).length;
+    note.textContent = answered ? `已作答 ${answered} / ${total} 题` : '还没作答，选完再交卷';
   }
 
   function renderQuestions() {
@@ -1103,6 +1157,7 @@
           S.answers[q.questionId] = i;
           opts.querySelectorAll('.cet-opt').forEach((x) => x.classList.remove('sel'));
           b.classList.add('sel');
+          updateQuestionFootNote();
         };
         opts.appendChild(b);
       });

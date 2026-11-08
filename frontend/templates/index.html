@@ -641,24 +641,26 @@
       line-height: 1;
     }
     .course-menu-trigger:hover { color: var(--ink); border-color: var(--brand); }
+    /* 弹层用 position:fixed 而不是 absolute：
+       材料卡 / 课程卡有 overflow:hidden（为了圆角裁切），absolute 弹层会被卡片
+       裁掉；而且卡片在页面底部时 top:39px 会直接跑到视口外，用户点「⋯」什么都看不到。
+       fixed 不受卡片裁剪，位置由 JS 按视口空间决定向上还是向下弹。 */
     .course-menu-popover {
-      position: absolute;
-      z-index: 20;
-      top: 39px;
-      right: 0;
+      position: fixed;
+      z-index: 1200;
+      top: 0;
+      left: 0;
       display: grid;
       min-width: 112px;
+      max-height: 60vh;
+      overflow-y: auto;
       padding: 5px;
       border: 1px solid var(--line);
       border-radius: 9px;
       background: var(--surface);
-      box-shadow: var(--shadow);
+      box-shadow: 0 12px 32px rgba(31, 44, 36, .18);
     }
-    .recent-course-card .course-menu-popover {
-      top: auto;
-      bottom: 39px;
-    }
-    .course-menu-popover[hidden] { display: none; }
+    .course-menu-popover[hidden] { display: none !important; }
     .course-menu-popover button {
       min-height: 32px;
       padding: 6px 9px;
@@ -1691,14 +1693,14 @@
             <div>
               <h3 class="course-source-title">配套原文（可选）</h3>
               <div class="course-source-note" id="cet-subtitle-formats">
-                SRT / VTT / 句子 JSON 带时间轴可逐句定位；纯文本只作原文，不伪造时间戳
+                SRT / VTT / 句子 JSON 带时间轴可逐句定位；纯文本与 PDF 只作原文，不伪造时间戳
               </div>
             </div>
             <span class="source-badge" id="cet-subtitle-badge">未选择</span>
           </div>
           <div class="reading-upload-row">
             <input id="cet-subtitle-input" class="reading-file-input" type="file" hidden
-                   accept=".srt,.vtt,.json,.txt,text/plain,application/json"
+                   accept=".srt,.vtt,.json,.txt,.pdf,text/plain,application/json,application/pdf"
                    onchange="cetOnSubtitlePicked()">
             <button class="reading-upload-btn" type="button"
                     onclick="document.getElementById('cet-subtitle-input').click()">选择字幕 / 文本文件</button>
@@ -4406,9 +4408,8 @@ document.getElementById('tab-lessons').addEventListener('click', async event => 
   if (menuTrigger) {
     const popover = menuTrigger.closest('.course-menu')?.querySelector('.course-menu-popover');
     if (popover) {
-      const willOpen = popover.hidden;
-      closeAllCourseMenus();
-      popover.hidden = !willOpen;
+      if (popover.hidden) openCourseMenu(menuTrigger, popover);
+      else closeAllCourseMenus();
     }
     return;
   }
@@ -4429,7 +4430,38 @@ document.getElementById('tab-lessons').addEventListener('click', async event => 
 });
 
 function closeAllCourseMenus() {
-  document.querySelectorAll('.course-menu-popover').forEach(popover => { popover.hidden = true; });
+  document.querySelectorAll('.course-menu-popover').forEach(popover => {
+    popover.hidden = true;
+    popover.style.top = '';
+    popover.style.left = '';
+    popover.style.right = '';
+  });
+}
+
+/**
+ * 打开「⋯」菜单并把它定位到按钮旁边（position:fixed，不受卡片 overflow 裁剪）。
+ * 空间不够时自动向上弹；左右贴边时收回视口内。
+ */
+function openCourseMenu(trigger, popover) {
+  closeAllCourseMenus();
+  popover.hidden = false;
+  // 先量一次尺寸（hidden 刚去掉，此时能拿到真实高度）
+  const btn = trigger.getBoundingClientRect();
+  const box = popover.getBoundingClientRect();
+  const gap = 6;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const spaceBelow = vh - btn.bottom;
+  const spaceAbove = btn.top;
+  const openUp = spaceBelow < box.height + gap && spaceAbove > spaceBelow;
+  let top = openUp ? btn.top - box.height - gap : btn.bottom + gap;
+  top = Math.max(8, Math.min(top, vh - box.height - 8));
+  // 右对齐到按钮右侧，但不越过视口
+  let left = btn.right - box.width;
+  left = Math.max(8, Math.min(left, vw - box.width - 8));
+  popover.style.top = `${Math.round(top)}px`;
+  popover.style.left = `${Math.round(left)}px`;
+  popover.style.right = 'auto';
 }
 
 document.addEventListener('click', event => {
@@ -8499,7 +8531,7 @@ function cetImportFormatNote() {
 }
 
 // 判断「用户选的这个附件是不是带时间轴的字幕」。
-// 只有纯文本 .txt 是允许与自动切句共存的（走文本对齐）；
+// 只有纯文本 .txt 与 PDF 是允许与自动切句共存的（走文本对齐）；
 // SRT / VTT / 句子 JSON 都必须禁用自动切句（后端也会硬拒）。
 function cetSubtitleIsTimed(file) {
   if (!file) return false;
@@ -8528,7 +8560,7 @@ function cetSyncAutoSplitOption() {
   if (hasTimedSubtitle) {
     disabled = true;
     reason = '已选择带时间轴的字幕（SRT / VTT / 句子 JSON），不能再启用自动切句：'
-      + '本地转写会覆盖你上传的字幕时间轴。想自动切句请只传音频，或改传纯文本原文（.txt）。';
+      + '本地转写会覆盖你上传的字幕时间轴。想自动切句请只传音频，或改传纯文本原文（.txt / .pdf）。';
   } else if (!capability) {
     disabled = true;
     reason = '正在检查本机自动切句能力…';
@@ -8540,7 +8572,7 @@ function cetSyncAutoSplitOption() {
     // 可用但模型未下载：允许勾选，但如实提示首次会下载
     reason = capability.hint;
   } else {
-    reason = '仅音频或纯文本原文可用：会用本机模型生成逐句时间轴，导入后稍等片刻即可逐句精听。';
+    reason = '仅音频或纯文本原文（.txt / .pdf）可用：会用本机模型生成逐句时间轴，导入后稍等片刻即可逐句精听。';
   }
 
   input.disabled = disabled;
@@ -8910,9 +8942,8 @@ function cetInitLibraryUI() {
     if (menuTrigger) {
       const popover = menuTrigger.closest('.course-menu')?.querySelector('.course-menu-popover');
       if (popover) {
-        const willOpen = popover.hidden;
-        closeAllCourseMenus();
-        popover.hidden = !willOpen;
+        if (popover.hidden) openCourseMenu(menuTrigger, popover);
+        else closeAllCourseMenus();
       }
       return;
     }

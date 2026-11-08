@@ -189,7 +189,23 @@ async def validate_import(
             "audioDurationSec": audio_duration, "warnings": warnings,
         }
 
-    raw = (await subtitle.read()).decode("utf-8-sig", errors="replace")
+    subtitle_bytes = await subtitle.read()
+    subtitle_name = subtitle.filename or "subtitle.srt"
+    # PDF 是二进制：先抽文本层，再当纯文本原文处理（与 import_local_material 同一规则）
+    if subtitle_name.lower().endswith(".pdf"):
+        try:
+            raw = await run_in_threadpool(cet_import.extract_pdf_plain_text, subtitle_bytes)
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "ok": False, "timed": False, "sentenceCount": 0,
+                "errors": [{
+                    "index": 0, "line": 0, "reason": "pdf_extract_failed",
+                    "message": f"PDF 原文提取失败：{exc}",
+                }],
+                "audioDurationSec": audio_duration, "warnings": warnings,
+            }
+    else:
+        raw = subtitle_bytes.decode("utf-8-sig", errors="replace")
     if not raw.strip():
         return {
             "ok": False, "timed": False, "sentenceCount": 0,

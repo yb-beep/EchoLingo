@@ -33,7 +33,7 @@ import db
 # 任务书要求「界面照你给的真实清单显示，不要承诺没测过的格式」——
 # 这份清单的每一项都在 tests/test_cet_base_import.py 里实测过。
 SUPPORTED_AUDIO_EXTS = (".mp3", ".m4a", ".wav", ".ogg", ".flac", ".aac")
-SUPPORTED_SUBTITLE_EXTS = (".srt", ".vtt", ".json", ".txt")
+SUPPORTED_SUBTITLE_EXTS = (".srt", ".vtt", ".json", ".txt", ".pdf")
 
 # 无时间轴材料的明确状态值。
 # 为什么不用 `pending`：前端 `subtitle_status === 'pending'` 表示「字幕生成中」，
@@ -671,12 +671,26 @@ def validate_entries(
 # ── 格式识别 ────────────────────────────────────────────────
 
 
+def extract_pdf_plain_text(content: bytes) -> str:
+    """把 PDF 提取成纯文本（复用阅读导入的既有实现，含 Docling → 文本层 → OCR 回退）。
+
+    PDF 里只有原文、没有时间轴，所以走「纯文本 + 自动切句」这条路径：
+    用户原文句子不变，时间轴由本地模型对齐（见本文件「本地自动切句」一节）。
+    """
+    from webapp.services import reading_import
+
+    return reading_import.extract_text_from_pdf_bytes(content)
+
+
 def detect_subtitle_format(filename: str, raw_text: str) -> str:
     """判定字幕格式：`srt` / `vtt` / `json` / `text`。
 
     先看扩展名，再嗅探内容（用户常把 SRT 存成 .txt）。
+    PDF 一律按 `text` 处理：PDF 没有时间轴，只能作为原文供自动切句对齐。
     """
     suffix = Path(str(filename or "")).suffix.lower()
+    if suffix == ".pdf":
+        return "text"
     head = str(raw_text or "").lstrip()[:2000]
     if suffix == ".json" or head.startswith("{") or head.startswith("["):
         return "json"
@@ -1048,12 +1062,13 @@ def supported_formats() -> dict[str, Any]:
         "audio": list(SUPPORTED_AUDIO_EXTS),
         "subtitle": list(SUPPORTED_SUBTITLE_EXTS),
         "subtitleTimed": [".srt", ".vtt", ".json"],
-        "plainText": [".txt"],
+        "plainText": [".txt", ".pdf"],
         "notes": {
             ".srt": "推荐格式：带时间轴，可逐句定位",
             ".vtt": "WebVTT，带时间轴，可逐句定位",
             ".json": "仓库句子 JSON（sentences 数组，含 start/end），可逐句定位",
             ".txt": "纯文本原文，只作听力稿，不生成逐句时间轴",
+            ".pdf": "PDF 原文（提取文本层），只作听力稿；勾选自动切句可生成时间轴",
         },
         # P3-1：界面据此决定「自动切句」选项是否可勾、以及灰掉的原因文案。
         # 每次请求都重新探测（探测本身是毫秒级的目录 stat，不加载模型），
@@ -2022,8 +2037,21 @@ def import_local_material(
     }
     prepared: dict[str, Any] | None = None
     if subtitle_bytes is not None:
-        raw_subtitle = subtitle_bytes.decode("utf-8-sig", errors="replace")
-        if not raw_subtitle.strip():
+        # PDF 是二进制，不能按 utf-8 解码；先抽文本层，再当纯文本原文处理。
+        if Path(str(subtitle_filename or "")).suffix.lower() == ".pdf":
+            try:
+                raw_subtitle = extract_pdf_plain_text(subtitle_bytes)
+            except Exception as exc:  # noqa: BLE001
+                raw_subtitle = ""
+                subtitle_info["errors"] = [{
+                    "index": 0, "line": 0, "reason": "pdf_extract_failed",
+                    "message": f"PDF 原文提取失败：{exc}",
+                }]
+        else:
+            raw_subtitle = subtitle_bytes.decode("utf-8-sig", errors="replace")
+        if subtitle_info["errors"]:
+            pass  # PDF 提取已失败，跳过后续解析（错误已记录）
+        elif not raw_subtitle.strip():
             subtitle_info["errors"] = [{
                 "index": 0, "line": 0, "reason": "empty_file",
                 "message": "字幕/文本文件是空的",

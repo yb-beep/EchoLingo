@@ -661,12 +661,17 @@ body.cet-hide-text #reading-passage {
   border-color: var(--brand, #2f6f5e);
   color: var(--brand, #2f6f5e);
 }
+/* 菜单用 position:fixed：.watch-column 是 overflow-y:auto，absolute 弹层
+   会被这一列裁掉；卡片在列底部时还会直接跑到视口外，用户点「⋯」看不到内容。
+   位置由 JS（openMarkMenu）按视口空间决定向上还是向下弹。 */
 .cet-mark-menu-list {
-  position: absolute;
-  right: 0;
-  top: 30px;
-  z-index: 20;
+  position: fixed;
+  z-index: 1200;
+  top: 0;
+  left: 0;
   min-width: 112px;
+  max-height: 60vh;
+  overflow-y: auto;
   padding: 4px;
   border: 1px solid var(--line, #d9ded8);
   border-radius: 8px;
@@ -910,4 +915,20 @@ body.cet-hide-text #reading-passage {
   .cet-score-card { padding: 9px; }
   .cet-mark-menu-list { right: auto; left: 0; }
   .cet-timeline-popover { min-width: 160px; max-width: calc(100vw - 40px); }
+}
+
+/* 题目列表末尾的交卷入口（手机端工具栏按钮会被滚出视口，这里补一个等价入口） */
+.cet-question-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line, #d9ded8);
+  flex-wrap: wrap;
+}
+.cet-question-foot .cet-question-submit { min-width: 120px; }
+.cet-question-foot-note {
+  color: var(--muted, #687069);
+  font-size: 12px;
 }

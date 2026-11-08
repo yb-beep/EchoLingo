@@ -2048,7 +2048,7 @@ window.__CET_BOOT__ = {
 {% if cet_features.ai_chat_general %}
 <script src="/static/voice-input.js?v=20260715-1"></script>
 {% endif %}
-<link rel="stylesheet" href="/static/cet-workspace.css?v=20261107-drill-w">
+<link rel="stylesheet" href="/static/cet-workspace.css?v=20261107-drill-w-demo-fix-ws-2">
 {#- 返修2：cet-player.js 行为有变更（包2 快捷键），缓存串必须 bump，
     否则真实用户刷新后仍拿到旧 JS。 -#}
 <script src="/static/cet-player.js?v=20261107-drill-w" defer></script>
@@ -3123,14 +3123,16 @@ function updateStatusBadge(status) {
   // CET 模式：徽标只陈述「事实」，不预设「正在生成」。
   // 有原文时直接说就绪；无原文说「无原文」；只有通用模式（阅读课 TTS 等）才用生成语义。
   const hasTranscript = Array.isArray(segments) && segments.length > 0;
+  // segments 是原始字幕段；sentenceUnits 才是播放与「当前句」共用的逐句时间轴。
+  const sentenceCount = sentenceUnits.length || segments.length;
   const cetLabels = {
     reading: '阅读模式',
-    ready: hasTranscript ? `原文就绪 · ${segments.length} 句` : '原文就绪',
+    ready: hasTranscript ? `原文就绪 · ${sentenceCount} 句` : '原文就绪',
     pending: hasTranscript ? '原文已就绪' : '原文加载中',
     failed: hasTranscript ? '原文可用（生成记录失败）' : '原文生成失败',
     // unavailable = 导入时就确定没有时间轴（仅音频材料）。独立终态：
     // 不轮询、不弹错，也不能说成「生成中」。
-    unavailable: hasTranscript ? `原文就绪 · ${segments.length} 句` : '暂无逐句定位',
+    unavailable: hasTranscript ? `原文就绪 · ${sentenceCount} 句` : '暂无逐句定位',
   };
   const genericLabels = {
     reading: '阅读模式', ready: '字幕就绪', pending: '字幕生成中',

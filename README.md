@@ -1,3 +1,7 @@
+> **本仓库是「听透 · 四六级听力」参赛作品，基于本上游项目二次开发。**
+> 作品说明、可运行步骤与开源声明请看 **[README.cet.md](README.cet.md)**。
+> 下面的 README 是上游 EchoLingo 的原文，未作改动，仅供了解底座能力。
+
 # EchoLingo
 
 Turn English videos, audio, and articles you genuinely care about into personal lessons for listening, close reading, practice, and review.

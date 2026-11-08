@@ -39,6 +39,8 @@
     answers: {},
     attempt: null,
     marks: [],
+    completedMarkIds: [],
+    advanceTimer: null,
     practice: null,
     sessionId: null,
     listening: false,     // 兼容旧字段：等价于 S.step === 'blind'
@@ -355,6 +357,10 @@
 
     // 卡点修复 A-1：保留用户偏好读取；新三步流程不再提供旧工具栏开关。
     S.autoplayOnMark = loadAutoplayPref();
+    const markBtn = el('button', 'cet-btn cet-mark-btn', '🚩 没听清（M）');
+    markBtn.type = 'button';
+    markBtn.onclick = markCurrentPosition;
+    (host.querySelector('.ws-control-row--primary') || host).appendChild(markBtn);
 
     // 标记列表容器：仍放在字幕卡下方（K2/K4 的卡点行）。
     const card = $('.subtitle-card');
@@ -391,8 +397,7 @@
       return '进入精练 →';
     }
     if (S.step === 'drill') {
-      if (S.practice && S.practice.status !== 'complete') return '保存本轮';
-      return '返回看原文';
+      return '';
     }
     return '';
   }
@@ -426,8 +431,7 @@
       return;
     }
     if (S.step === 'drill') {
-      if (S.practice && S.practice.status !== 'complete') finishPractice();
-      else setStep('review');
+      setStep('review');
     }
   }
 
@@ -438,7 +442,7 @@
     primary.id = 'cet-step-primary';
     primary.disabled = stepPrimaryDisabled();
     primary.onclick = onStepPrimary;
-    wrap.appendChild(primary);
+    if (S.step !== 'drill') wrap.appendChild(primary);
 
     const reviewBtn = el('button', 'cet-btn-sm cet-step-review-btn', '今日复习');
     reviewBtn.id = 'cet-review-btn';
@@ -479,12 +483,15 @@
     syncTranscriptVisibility();
     save();
     emitStepChange(!!options.force);
+    syncReviewStepBar();
     if (step === 'drill' && previous !== 'drill' && !options.skipAutoplay) {
       autoPlayDrillOnce();
     }
   }
 
   function renderStepUI() {
+    const markBtn = $('.cet-mark-btn');
+    if (markBtn) markBtn.hidden = S.step !== 'blind';
     renderBlindPanel();
     renderReviewPanel();
     renderDrillPanel();
@@ -504,6 +511,19 @@
     if (!force && S.lastStepEvent === key) return;
     S.lastStepEvent = key;
     document.dispatchEvent(new CustomEvent('cet:step-change', { detail }));
+  }
+
+  function syncReviewStepBar() {
+    // 今日复习仍使用 review 面板，但步骤条保持在「③ 精练·复习」。
+    const bar = $('#ws-step-bar');
+    if (!bar || !S.reviewSessionActive) return;
+    bar.dataset.step = 'drill';
+    bar.querySelectorAll('[data-ws-step]').forEach((item) => {
+      const active = item.dataset.wsStep === 'drill';
+      item.classList.toggle('active', active);
+      if (active) item.setAttribute('aria-current', 'step');
+      else item.removeAttribute('aria-current');
+    });
   }
 
   // 兼容旧测试/调用：旧语义 on=true 进入盲听，on=false 退出到对答案（不是回到普通页面）。
@@ -546,10 +566,14 @@
     if (onButton && !isCetButton) return;
     if (e.repeat) return;                  // 忽略长按连发
 
+    e.preventDefault();
+    markCurrentPosition();
+  }
+
+  function markCurrentPosition() {
+    if (S.step !== 'blind') return;
     const m = media();
     if (!m) return;
-
-    e.preventDefault();
     // 防连发：300ms 内只认一次
     const now = Date.now();
     if (now - S.lastMarkAt < 300) return;
@@ -598,7 +622,7 @@
         previewMark(mark, mark.suggestedSentenceId, { autoplay: true });
       }
       if (isNew) {
-        flashHint(`已在 ${fmt(mark.pressedAtSec)} 标记（回看 ${CFG.lookbackSec}s / ${speed}x）`);
+        flashHint(`已标记 ${fmtClock(mark.pressedAtSec)}`, false, 1000);
       } else {
         // 去重命中：明确告诉用户没有新增，避免「按了没反应 / 按了出两条」的困惑
         flashHint(`与 ${fmt(mark.pressedAtSec)} 的标记是同一处（1.5s 内重复），未新增`);
@@ -608,7 +632,7 @@
     }
   }
 
-  function flashHint(text, isError) {
+  function flashHint(text, isError, duration) {
     const hint = $('#cet-hint');
     if (!hint) return;
     hint.textContent = text;
@@ -617,7 +641,7 @@
     flashHint._t = setTimeout(() => {
       hint.textContent = stepHintText();
       hint.classList.remove('error');
-    }, 2600);
+    }, duration || 2600);
   }
 
   // ── 标记渲染（三态：待确认 / 待练 / 本轮已练）──────────
@@ -625,7 +649,7 @@
     // F08：「改一下」把已确认的标记退回待确认态，允许重新预览与覆盖。
     if (m.__amending) return 'pending';
     if (m.confirmedSentenceId) {
-      return S.practice && S.practice.markId === m.markId && S.practice.status === 'complete'
+      return S.completedMarkIds.includes(m.markId) || (S.practice && S.practice.markId === m.markId && S.practice.status === 'complete')
         ? 'done' : 'ready';
     }
     return 'pending';
@@ -733,7 +757,12 @@
             `${st === 'pending' ? '候选句' : '确认句'} ${fmt(sent.startSeconds)}–${fmt(sent.endSeconds)}`);
           tag.title = st === 'pending' ? '按回溯窗口吸附出来的候选句，还没确认' : '已确认的句子';
           row.appendChild(tag);
-          row.appendChild(el('span', 'cet-mark-sentence', sent.text));
+          const reviewEntries = reviewState && reviewState.entries || [];
+          const currentReview = reviewEntries.find((entry) => entry.status === 'current')
+            || reviewEntries.find((entry) => entry.status === 'pending');
+          const reviewing = S.reviewSessionActive && currentReview && currentReview.item
+            && currentReview.item.sentence && currentReview.item.sentence.sentenceId === shownId;
+          row.appendChild(el('span', 'cet-mark-sentence', reviewing ? '复习中' : sent.text));
         } else {
           row.appendChild(el('span', 'cet-mark-sentence cet-mark-sentence-none', '（无可用候选句）'));
         }
@@ -1242,9 +1271,11 @@
       setStep('drill');
       return;
     }
-    const ready = S.marks.find((m) => m.confirmedSentenceId);
+    const ready = S.marks.find((m) => m.confirmedSentenceId && markState(m) !== 'done');
     if (!ready) {
-      flashHint('先在「看原文」阶段确认一个卡点句子，再进入精练', true);
+      flashHint(S.marks.some((m) => m.confirmedSentenceId)
+        ? '已确认的卡点都练完了，可进入今日复习'
+        : '先在「看原文」阶段确认一个卡点句子，再进入精练', true);
       return;
     }
     await startPractice(ready);
@@ -1264,7 +1295,9 @@
       bindPlaybackEvents();
       save();          // F03：不存下来，刷新后就找不回带练
       setStep('drill', { force: true });
-      flashHint('已进入精练');
+      autoPlayDrillOnce();
+      const confirmed = S.marks.filter((mark) => mark.confirmedSentenceId);
+      flashHint(`第 ${confirmed.findIndex((mark) => mark.markId === m.markId) + 1} / ${confirmed.length} 句`);
     } catch (err) {
       if (err.code === 'ATTEMPT_REQUIRED') {
         // K1 无题材料：静默补空 attempt 后重试一次，不把 backend 细节抛给用户。
@@ -1341,7 +1374,9 @@
       const box = el('div', 'cet-offline-explain');
       box.setAttribute('data-cet-offline', '1');
       if (data.translation) box.appendChild(el('div', 'cet-offline-translation', String(data.translation)));
-      const words = Array.isArray(data.words) ? data.words : [];
+      const simpleWords = new Set(['i', 'we', 'you', 'he', 'she', 'it', 'they', 'me', 'us', 'him', 'her', 'them', 'my', 'our', 'your', 'his', 'its', 'their', 'a', 'an', 'the', 'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'do', 'does', 'did', 'have', 'has', 'had', 'and', 'or', 'but', 'of', 'to', 'in', 'on', 'at', 'for', 'with', 'from', 'by', 'as', 'this', 'that', 'these', 'those']);
+      const words = (Array.isArray(data.words) ? data.words : []).filter((item) =>
+        !simpleWords.has(String(typeof item === 'string' ? item : item.word || '').toLowerCase())).slice(0, 8);
       if (words.length) {
         const gl = el('div', 'cet-offline-words');
         words.forEach((item) => {
@@ -1507,10 +1542,16 @@
 
     const sentence = practiceSentence();
     const card = el('div', 'cet-drill-card');
-    card.appendChild(el('div', 'cet-drill-kicker', '正在练的句子'));
+    const confirmed = S.marks.filter((m) => m.confirmedSentenceId);
+    const currentIndex = confirmed.findIndex((m) => m.markId === S.practice.markId);
+    card.appendChild(el('div', 'cet-drill-kicker', `正在练的句子 · 第 ${currentIndex + 1} / ${confirmed.length} 句`));
     const sentenceEl = el('div', 'cet-drill-sentence');
     sentenceEl.id = 'cet-drill-sentence';
-    renderClickableSentence(sentenceEl, sentence);
+    if (S.practice.currentStep && S.practice.currentStep.action === 'transfer') {
+      sentenceEl.textContent = '原文已遮住，请先完成换句检验。';
+    } else {
+      renderClickableSentence(sentenceEl, sentence);
+    }
     card.appendChild(sentenceEl);
     const play = el('button', 'cet-btn-sm cet-drill-play', '▶ 播放');
     play.id = 'cet-drill-play';
@@ -1542,7 +1583,9 @@
     body.appendChild(out);
     renderCurrentStepInto(out);
 
-    const saveBtn = el('button', 'cet-btn', '保存本轮');
+    const hasNext = S.marks.some((m) => m.confirmedSentenceId
+      && m.markId !== S.practice.markId && markState(m) !== 'done');
+    const saveBtn = el('button', 'cet-btn', hasNext ? '完成本句，继续下一句' : '保存本轮');
     saveBtn.id = 'cet-save-practice';
     saveBtn.onclick = finishPractice;
     body.appendChild(saveBtn);
@@ -1616,6 +1659,7 @@
     chunk: '短语分段',
     explain: '解释句意',
     transfer: '换句检验',
+    finish: '本句完成',
   };
 
   // B01：单调状态合并。返回 null 表示回包比当前状态旧，应丢弃。
@@ -1749,6 +1793,7 @@
         syncTranscriptVisibility();
       }
       save();
+      if (action === 'finish') queueNextPractice();
     } catch (err) {
       clearTimeout(timer);
       if (waitingNote.parentNode) waitingNote.remove();
@@ -2144,6 +2189,7 @@
       }
       setTransferOptionsEnabled(false);
       save();
+      queueNextPractice();
       return true;
     } catch (err) {
       if (out) {
@@ -2218,6 +2264,8 @@
   function hideTextForTransfer() {
     // 三步流程统一走 __ws.setTranscriptHidden；旧 applyTextVisibility 仅保留兼容导出。
     setTranscriptHiddenCompat(true);
+    const sentenceEl = $('#cet-drill-sentence');
+    if (sentenceEl) sentenceEl.textContent = '原文已遮住，请先完成换句检验。';
     restoreOriginalSpeed();          // 恢复 1.0x 原速
     const out = $('#cet-practice-out');
     if (out) {
@@ -2241,8 +2289,21 @@
     }, 3000);
   }
 
+  function queueNextPractice() {
+    if (!S.practice || !S.marks.some((m) => m.confirmedSentenceId
+      && m.markId !== S.practice.markId && markState(m) !== 'done')) return;
+    clearTimeout(S.advanceTimer);
+    const practiceId = S.practice.practiceId;
+    S.advanceTimer = setTimeout(() => {
+      if (S.practice && S.practice.practiceId === practiceId && S.practice.status !== 'complete') {
+        finishPractice();
+      }
+    }, 1200);
+  }
+
   async function finishPractice(opts) {
     if (!S.practice) return;
+    clearTimeout(S.advanceTimer);
     const options = opts || {};
     try {
       const r = await api('POST', `/practices/${S.practice.practiceId}/finish`, {
@@ -2259,6 +2320,14 @@
 
       const done = S.practice.status === 'complete';
       if (done) {
+        if (!S.completedMarkIds.includes(S.practice.markId)) S.completedMarkIds.push(S.practice.markId);
+        const next = S.marks.find((m) => m.confirmedSentenceId && markState(m) !== 'done');
+        save();
+        if (next) {
+          stopSentencePlayback();
+          await startPractice(next);
+          return;
+        }
         // K9：保存成功后只问一次是否收藏到「我的收藏」。
         const practiceId = S.practice.practiceId;
         if (S.favoriteAskedPracticeId !== practiceId) {
@@ -2550,6 +2619,7 @@
       const r = await api('POST', `/reviews/${reviewState.id}/actions`, payload);
       reviewState = { ...reviewState, ...r };
       renderReviewPanel();
+      renderMarks();
       renderStepActions();
       save();
       if (reviewState.status === 'complete') {
@@ -2577,6 +2647,7 @@
         step: S.step,
         attemptId: S.attempt && S.attempt.attemptId,
         practiceId: S.practice && S.practice.practiceId,
+        completedMarkIds: S.completedMarkIds,
         reviewId: reviewState && (reviewState.reviewId || reviewState.id),
         reviewReturnStep: S.reviewReturnStep || null,
         favoriteAskedPracticeId: S.favoriteAskedPracticeId || null,
@@ -2600,6 +2671,7 @@
     // 从后端按会话恢复标记（这是「保存并重开」的关键）
     if (!S.materialId) return {};
     const saved = loadSaved();
+    S.completedMarkIds = Array.isArray(saved.completedMarkIds) ? saved.completedMarkIds : [];
     S.favoriteAskedPracticeId = saved.favoriteAskedPracticeId || null;
     try {
       const r = await api('GET', `/marks?materialId=${encodeURIComponent(S.materialId)}`

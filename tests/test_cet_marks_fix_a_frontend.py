@@ -378,8 +378,14 @@ def test_a6_timeline_click_lands_on_tick(js: str):
 
 
 def test_no_regression_mark_key_is_still_m(js: str):
-    """M 键仍是标记键（返修 2.1 契约）。"""
-    assert "if (e.code !== 'KeyM') return;" in js, "标记键被改动"
+    """标记已取消键盘绑定（2026-11-08 用户决定），只保留工具栏按钮。
+
+    反转原断言：M 键长期有问题（焦点在按钮/输入框时被吞、与浏览器扩展冲突），
+    用户要求去掉。现在锁定的是「不再绑 KeyM」+「按钮 onclick 仍是唯一入口」。
+    """
+    assert "if (e.code !== 'KeyM') return;" not in js, "M 键绑定又被加回来了"
+    assert "onKeyDown" not in js, "仍在注册 keydown 监听"
+    assert "markBtn.onclick = markCurrentPosition" in js, "工具栏标记按钮的入口被改动"
 
 
 def test_no_regression_space_still_not_taken(js: str):

@@ -125,16 +125,16 @@
     saveAutoplayPref(S.autoplayOnMark);
     const box = $('#cet-autoplay-mark');
     if (box) box.checked = S.autoplayOnMark;
-    // 关键：勾完开关后焦点会留在复选框上，而 isTypingTarget() 把 input 一律当成
-    // 输入目标 → 之后按 M 全被吞掉（实测：勾完开关按 M 不产生标记）。
-    // 和 setListening() 里 blur 按钮是同一个道理：点完控件就把焦点移走。
+    // 勾完开关后把焦点移走：焦点留在复选框上时，后续键盘操作（含底座
+    // Space / R / L）都会被当成输入框输入而失效。标记键已取消键盘绑定，
+    // 但这条 blur 对底座快捷键仍然必要。
     if (opts && opts.blur && document.activeElement && document.activeElement.blur) {
       document.activeElement.blur();
     }
     if (!(opts && opts.silent)) {
       flashHint(S.autoplayOnMark
-        ? '已开启「标记后自动回听」：按 M 会跳到候选句播放'
-        : '已关闭「标记后自动回听」：按 M 只记标记，不打断当前播放位置');
+        ? '已开启「标记后自动回听」：点「没听清」会跳到候选句播放'
+        : '已关闭「标记后自动回听」：点「没听清」只记标记，不打断当前播放位置');
     }
   }
 
@@ -329,10 +329,9 @@
   }
 
   function registerHotkeyHelp() {
-    const fn = wsFn('registerHotkeyHelp');
-    if (fn) {
-      try { fn({ key: 'M', label: '标记没听清' }); } catch (err) { console.warn('[cet] registerHotkeyHelp 调用失败', err); }
-    }
+    // 标记已取消键盘绑定（用户决定只用鼠标点按钮），因此不再向快捷键面板
+    // 注册 M；帮助面板只显示底座自己的 Space / ← → / R / L。
+    // 函数保留是为了不动 W 侧的 §2 接口调用点。
   }
 
   // ── 三步面板与工具栏（K1/K12）──────────────────────────
@@ -357,7 +356,7 @@
 
     // 卡点修复 A-1：保留用户偏好读取；新三步流程不再提供旧工具栏开关。
     S.autoplayOnMark = loadAutoplayPref();
-    const markBtn = el('button', 'cet-btn cet-mark-btn', '🚩 没听清（M）');
+    const markBtn = el('button', 'cet-btn cet-mark-btn', '🚩 没听清');
     markBtn.type = 'button';
     markBtn.onclick = markCurrentPosition;
     (host.querySelector('.ws-control-row--primary') || host).appendChild(markBtn);
@@ -458,8 +457,8 @@
   function stepHintText() {
     if (S.step === 'blind') {
       return S.questions.length
-        ? '先盲听；按 M 标记没听清的位置，做完题后交卷。'
-        : '先盲听；按 M 标记没听清的位置，然后点「显示原文，确认卡点」。';
+        ? '先盲听；听到没听清的地方就点「🚩 没听清」，做完题后交卷。'
+        : '先盲听；听到没听清的地方就点「🚩 没听清」，然后点「显示原文，确认卡点」。';
     }
     if (S.step === 'review') {
       if (S.reviewSessionActive) return '先盲听这一处，点「显示原文」后再核对。';
@@ -535,40 +534,12 @@
     setStep('review');
   }
 
-  // ── M 键标记（返修 2.1：原为空格）──────────────────────────
-  function isTypingTarget(t) {
-    if (!t) return false;
-    const tag = (t.tagName || '').toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
-    if (t.isContentEditable) return true;
-    // 弹窗/对话框里的按键不抢
-    if (t.closest && t.closest('[role="dialog"], .modal, .subtitle-error-modal')) return true;
-    return false;
-  }
-
-  function onKeyDown(e) {
-    // 返修 2.1：卡点标记键从 Space 改为 **M**。
-    //
-    // 为什么改：Space 在听力训练里是最高频的「暂停/继续」，底座 cet-player.js
-    // 也把它当播放开关。两边都想要 Space 时，无论谁让出都会出问题 ——
-    // 实测（队友挂载但未进练习模式）Space 彻底失效：底座认为队友接管了、
-    // 队友 onKeyDown 又因 !S.listening 直接 return，两边都没处理。
-    // 现在 Space 归底座独占（暂停/播放），标记用 M（Mnemonic: Mark）。
-    if (e.code !== 'KeyM') return;
-    // K11：M 只在 blind 步骤（含无题材料的盲听阶段）生效；review/drill 不抢。
-    if (S.step !== 'blind') return;
-    if (isTypingTarget(e.target)) return;
-    // 按钮聚焦时按键是「激活」，不抢 —— 但练习模式下用户可能刚点过按钮，
-    // 此时按钮仍在聚焦状态。已在 setListening 里 blur，这里再兜一层：
-    // 只要不是 cet 自己的按钮，就不抢。
-    const onButton = (e.target.tagName || '').toLowerCase() === 'button';
-    const isCetButton = onButton && e.target.closest && e.target.closest('.cet-btn, .cet-btn-sm');
-    if (onButton && !isCetButton) return;
-    if (e.repeat) return;                  // 忽略长按连发
-
-    e.preventDefault();
-    markCurrentPosition();
-  }
+  // ── 标记入口：只用鼠标点「🚩 没听清」，不再绑 M 键 ─────────────
+  // 2026-11-08 用户决定：M 键长期有问题（焦点在按钮/输入框上时被吞、
+  // 和浏览器/输入法扩展冲突、演示时观众看不到按键），干脆取消键盘绑定，
+  // 只保留工具栏那个大按钮。markCurrentPosition() 仍是唯一标记入口，
+  // 按钮 onclick 直接调它，能力与之前完全一致。
+  // Space / ← → / R / L 仍归底座 cet-player.js，不受影响。
 
   function markCurrentPosition() {
     if (S.step !== 'blind') return;
@@ -616,7 +587,7 @@
       if (blindCount) blindCount.textContent = `已标记 ${S.marks.length} 处卡点`;
       // 卡点修复 A-1：**默认不再自动回听**。
       // 原代码无条件 previewMark(..., {autoplay:true})，会把播放位置 seek 回候选句起点：
-      // 实测按 M 时 3.74s，120ms 后变成 0.058s，连按 3 次全落在同一句。
+      // 实测连续标记时 3.74s，120ms 后变成 0.058s，连按 3 次全落在同一句。
       // 能力保留 —— 开关打开时行为与原来完全一致。
       if (S.autoplayOnMark) {
         previewMark(mark, mark.suggestedSentenceId, { autoplay: true });
@@ -742,7 +713,7 @@
       const st = markState(m);
       const row = el('div', `cet-mark cet-mark-${st}`);
       const when = el('span', 'cet-mark-time', `标记于 ${fmtClock(m.pressedAtSec)}`);
-      when.title = '按 M 那一刻的播放位置（不是候选句位置）';
+      when.title = '点「没听清」那一刻的播放位置（不是候选句位置）';
       row.appendChild(when);
 
       const shownId = st === 'pending' ? previewSentenceId(m) : m.confirmedSentenceId;
@@ -1023,7 +994,7 @@
     if (!dur) return;
     track.setAttribute('data-cet-duration-sec', String(Number(dur.toFixed(3))));
     if (!S.marks.length) {
-      track.appendChild(el('div', 'cet-timeline-empty', '暂无卡点标记（播放时按 M 标记）'));
+      track.appendChild(el('div', 'cet-timeline-empty', '暂无卡点标记（播放时点「🚩 没听清」标记）'));
       return;
     }
 
@@ -1081,8 +1052,8 @@
     }
     body.innerHTML = '';
     body.appendChild(el('div', 'cet-step-lead', S.questions.length
-      ? '先盲听；按 M 标记没听清的位置。做完题后点下方「交卷」。'
-      : '先盲听；按 M 标记没听清的位置。准备好后点下方「显示原文，确认卡点」。'));
+      ? '先盲听；听到没听清的地方就点「🚩 没听清」。做完题后点下方「交卷」。'
+      : '先盲听；听到没听清的地方就点「🚩 没听清」。准备好后点下方「显示原文，确认卡点」。'));
     if (S.questions.length) {
       const list = el('div', 'cet-question-list');
       list.id = 'cet-question-list';
@@ -2748,8 +2719,8 @@
       //   - 模板那层管「模块是否加载」（功能开关 / 有没有接入）
       //   - 这里管「这份材料能不能用」（有没有逐句时间轴）
       // 无时间轴材料（sentenceCount=0，如只导了音频）原来照样挂出
-      // 「开始卡点练习 / 今日复习」，点进去按 M 才报「该材料没有可用句子时间轴」——
-      // 实测：toolbar=true、能进入 listening 模式、按 M 才失败，就是假入口。
+      // 「开始卡点练习 / 今日复习」，点进去标记时才报「该材料没有可用句子时间轴」——
+      // 实测：toolbar=true、能进入 listening 模式、标记才失败，就是假入口。
       // 现在直接不 mount，用户看到的仍是原页面（不多出点了没反应的按钮）。
       if (!S.sentences.length) {
         console.info(
@@ -2826,7 +2797,7 @@
     }, 200);
   }
 
-  document.addEventListener('keydown', onKeyDown, true);
+  // 标记不再绑键盘（用户决定），故不再注册 keydown 监听。
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);

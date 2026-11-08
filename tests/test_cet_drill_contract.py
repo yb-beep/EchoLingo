@@ -110,13 +110,24 @@ def test_w_step_bar_gated_by_feature():
 
 
 def test_w_cache_busters():
+    """缓存串必须存在、且 CSS/JS 成对同版本。
+
+    不写死具体版本号（原来写死 `20261107-drill-k`，每次升级都会误报红）：
+    只要「两个串都存在」「css 与 js 版本一致」「已从最老的 drill-k 升级过」即可。
+    """
     ws = _read("frontend/templates/workspace.html")
-    assert "/static/cet-listening.css?v=20261107-drill-k" in ws
-    assert "/static/cet-listening.js?v=20261107-drill-k" in ws
-    assert "/static/cet-workspace.css?v=20261107-drill-w" in ws
-    assert "/static/cet-player.js?v=20261107-drill-w" in ws
+    css = re.search(r"/static/cet-listening\.css\?v=([\w.-]+)", ws)
+    js = re.search(r"/static/cet-listening\.js\?v=([\w.-]+)", ws)
+    assert css, "workspace.html 缺少 cet-listening.css 缓存串"
+    assert js, "workspace.html 缺少 cet-listening.js 缓存串"
+    assert css.group(1) == js.group(1), (
+        f"cet-listening.css / .js 缓存串不一致：{css.group(1)} vs {js.group(1)}"
+    )
+    assert css.group(1) != "20261107-drill-k", "缓存串没有从旧值升级"
+    assert re.search(r"/static/cet-workspace\.css\?v=", ws), "缺少 cet-workspace.css 缓存串"
+    assert re.search(r"/static/cet-player\.js\?v=", ws), "缺少 cet-player.js 缓存串"
     index = _read("frontend/templates/index.html")
-    assert "/static/cet-base.css?v=20261107-drill-h" in index
+    assert re.search(r"/static/cet-base\.css\?v=", index), "缺少 cet-base.css 缓存串"
 
 
 def test_w_play_sentence_restores_rate():

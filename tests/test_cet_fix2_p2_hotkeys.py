@@ -328,19 +328,13 @@ def test_p2_2_base_keeps_space_even_when_agent_on(page):
 
 
 @pytest.mark.skipif(not _up(AGENT_ON_BASE), reason="未设置 CET_AGENT_ON_BASE_URL（队友模块开启态服务）")
-def test_p2_2_agent_marks_with_m_key_not_space(page):
-    """返修2.1：队友的卡点标记键从 Space 改为 M。
+def test_p2_2_agent_marks_with_mouse_not_keyboard(page):
+    """2026-11-08 用户决定：标记只用工具栏按钮，不再绑键盘。
 
-    验证：进入卡点练习模式后，按 Space 是播放/暂停（不打标记），
-    按 M 才创建标记。
+    验证：Space 仍是播放/暂停（归底座，不打标记）；
+    点「🚩 没听清」按钮才创建标记；按 M 不再创建标记。
     """
     _open(page, AGENT_ON_BASE, expect_agent=True)
-
-    # 进入卡点练习模式
-    toggle = page.locator("#cet-toggle-mode")
-    assert toggle.count() == 1, "找不到队友的「开始卡点练习」按钮"
-    toggle.click()
-    page.wait_for_timeout(1500)
 
     mark_posts = []
     page.on("request", lambda r: mark_posts.append(r.url)
@@ -353,15 +347,22 @@ def test_p2_2_agent_marks_with_m_key_not_space(page):
     # 按 Space：应只暂停，不建标记
     page.keyboard.press("Space")
     page.wait_for_timeout(1200)
-    assert not mark_posts, f"按 Space 仍创建了卡点标记（应改用 M）：{mark_posts}"
+    assert not mark_posts, f"按 Space 仍创建了卡点标记：{mark_posts}"
     assert _audio(page, "a.paused") is True, "按 Space 没有暂停（Space 应归底座）"
 
-    # 恢复播放，按 M：应创建标记
+    # 按 M：不应创建标记（键盘绑定已取消）
+    page.keyboard.press("KeyM")
+    page.wait_for_timeout(1500)
+    assert not mark_posts, f"按 M 仍创建了卡点标记（键盘绑定应已取消）：{mark_posts}"
+
+    # 恢复播放，点「🚩 没听清」按钮：应创建标记
     page.evaluate("() => { const a=document.querySelector('audio'); a.play(); }")
     page.wait_for_timeout(1200)
-    page.keyboard.press("KeyM")
+    mark_btn = page.locator(".cet-mark-btn")
+    assert mark_btn.count() == 1, "找不到工具栏「🚩 没听清」按钮"
+    mark_btn.click()
     page.wait_for_timeout(2000)
-    assert mark_posts, "按 M 没有创建卡点标记"
+    assert mark_posts, "点「没听清」按钮没有创建卡点标记"
 
 # ── P2-3：「⌨ 快捷键」提示 ───────────────────────────────────
 

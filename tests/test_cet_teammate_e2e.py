@@ -316,15 +316,15 @@ def test_delete_mark_rejected_when_in_practice(client: TestClient):
     assert resp.json()["detail"]["code"] == "MARK_IN_PRACTICE"
 
 
-# ── 前端键位契约：Space 归底座、M 归队友 ────────────────────────
+# ── 前端键位契约：Space 归底座、标记只用鼠标 ────────────────────
 def test_teammate_marks_with_m_key_not_space():
-    """返修 2.1：队友的标记键是 M，不是 Space。
+    """2026-11-08 用户决定：标记不再绑键盘，只用工具栏「🚩 没听清」按钮。
 
-    Space 归底座做播放/暂停（用户要求）；两边抢同一个键会导致空格失效
-    （实测：队友挂载但未进练习模式时，两边都不处理 Space）。
+    M 键长期有问题（焦点在按钮/输入框上时被吞、与浏览器/输入法扩展冲突），
+    因此取消键盘绑定。Space 仍归底座做播放/暂停，两边不抢同一个键。
     """
     js = (ROOT / "frontend" / "static" / "cet-listening.js").read_text(encoding="utf-8")
-    assert "if (e.code !== 'KeyM') return;" in js, "队友的标记键不是 M"
+    assert "if (e.code !== 'KeyM') return;" not in js, "M 键绑定又被加回来了"
     assert "if (e.code !== 'Space') return;" not in js, "队友仍在抢 Space 键"
     # 底座的归属判定不再受队友影响
     player = (ROOT / "frontend" / "static" / "cet-player.js").read_text(encoding="utf-8")

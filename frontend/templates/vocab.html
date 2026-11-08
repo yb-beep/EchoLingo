@@ -791,10 +791,18 @@
   }
 
   // ── Wordlist Filter Buttons ────────────────────────────
+  // 四六级专用模式：词表筛选只保留四级/六级（+我的收藏/生词本）。
+  // 其它内置词表（GRE / 雅思 / 考研 / 托福 / 牛津3K / COCA5K）底层数据不动，
+  // 只是不在本产品界面上出现（用户要求：只要四六级的词汇）。
+  const CET_WORDLIST_KEYS = ['builtin_cet4', 'builtin_cet6', 'my_vocab'];
+  const CET_ON = {{ cet_on | tojson }};
+
   function renderWordlistFilters(wordlists) {
     const group = document.getElementById('wordlist-filter-group');
     if (!group) return;
-    const items = wordlists.filter(wl => wl.type !== 'exclude');
+    const items = wordlists
+      .filter(wl => wl.type !== 'exclude')
+      .filter(wl => !CET_ON || CET_WORDLIST_KEYS.includes(String(wl.key || '')));
     if (!items.length) return;
     group.hidden = false;
     items.forEach(wl => {

@@ -2758,10 +2758,26 @@ function wlConfigKey(cfg) {
   return String(cfg?.key || cfg?.id || '');
 }
 
+// CET 模式（四六级专用）只允许四六级词表 + 我的收藏出现在「词表启用与优先级」里。
+// 其它内置词表（GRE / 雅思 / 考研 / 托福 / 牛津3K / COCA5K）仍保留在词表库里、
+// 底层数据与用户配置不动，只是不作为本产品的可选项（用户要求：只要四六级的词汇）。
+const CET_WORDLIST_SELECTABLE_KEYS = ['builtin_cet4', 'builtin_cet6', 'my_vocab'];
+
+function cetWordlistSelectable(key) {
+  if (!(window.CET && CET.enabled && CET.enabled())) return true;
+  return CET_WORDLIST_SELECTABLE_KEYS.includes(String(key || ''));
+}
+
 function wlIsSelectable(cfg) {
   const key = wlConfigKey(cfg);
-  return cfg.type === 'domain' && (key.startsWith('user_') || key.startsWith('builtin_') || key === 'my_vocab');
+  if (!wlIsSelectable._raw(cfg)) return false;
+  return cetWordlistSelectable(key);
 }
+// 原始判定（不看 CET 收束），供上面复用，避免重复写条件
+wlIsSelectable._raw = (cfg) => {
+  const key = wlConfigKey(cfg);
+  return cfg.type === 'domain' && (key.startsWith('user_') || key.startsWith('builtin_') || key === 'my_vocab');
+};
 
 function wlHashColor(key) {
   let hash = 0;

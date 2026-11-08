@@ -1,0 +1,79 @@
+# 全量回归原文（乙包 codex/demo-fix-ws @ 204c83c，2026-11-08 复核重跑）
+# 环境：Windows 11 / venv python / ELT_CONFIG_DIR 指向隔离空目录
+# 命令：ELT_CONFIG_DIR=<tmp> .venv/Scripts/python.exe -m pytest -q \
+#       --ignore=tests/test_cet_listening_ui.py --ignore=tests/test_cet_contract.py
+# 说明：pytest 退出时清理临时目录被本机 shell 的批量删除保护拦下（与用例无关），已裁掉该段。
+
+......................................................................F. [  6%]
+........................................................................ [ 12%]
+........................................................................ [ 18%]
+........................................................................ [ 24%]
+............................................................ssssssssssss [ 30%]
+ssssssssssssssssssssssssssssssss...............ssssssssssss............. [ 36%]
+........................................................................ [ 42%]
+..........................................sssssssssssssssssssssss....... [ 49%]
+..................................................s.............sssssss. [ 55%]
+....................sss.......ssssssssssssss............................ [ 61%]
+.sss..ss..sss....ssssssss....s........................ss..........F..... [ 67%]
+........................................................................ [ 73%]
+........................................................................ [ 79%]
+........................................................................ [ 85%]
+........................s............................................... [ 91%]
+........................................................................ [ 98%]
+.......................                                                  [100%]
+================================== FAILURES ===================================
+____________________ test_download_file_verifies_artifact _____________________
+
+tmp_path = WindowsPath('D:/Temp/pytest-of-35798/pytest-24/test_download_file_verifies_ar0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000014191DE2790>
+
+    def test_download_file_verifies_artifact(tmp_path, monkeypatch):
+        """bdpan 3.8.x 下载失败也可能退出 0，须以产物存在且非空校验。"""
+        monkeypatch.setattr(baidu_pan, "_run_cli", lambda *a, **k: "")
+        with pytest.raises(baidu_pan.BaiduPanError, match="下载失败"):
+>           baidu_pan.download_file("/x/a.doc", tmp_path / "a.doc")
+
+tests\test_baidu_pan.py:422: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+remote_path = '/x/a.doc'
+local_path = WindowsPath('D:/Temp/pytest-of-35798/pytest-24/test_download_file_verifies_ar0/a.doc')
+
+    def download_file(remote_path: str, local_path: Path, *, timeout: int = 7200) -> None:
+        """可取消下载；工作线程中同时把本地文件大小写回近似进度。"""
+        binary = _bin()
+        if not binary:
+>           raise BaiduPanError("bdpan 未安装")
+E           webapp.services.baidu_pan.BaiduPanError: bdpan 未安装
+
+backend\webapp\services\baidu_pan.py:328: BaiduPanError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = WindowsPath('D:/Temp/pytest-of-35798/pytest-24/test_download_file_verifies_ar0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000014191DE2790>
+
+    def test_download_file_verifies_artifact(tmp_path, monkeypatch):
+        """bdpan 3.8.x 下载失败也可能退出 0，须以产物存在且非空校验。"""
+        monkeypatch.setattr(baidu_pan, "_run_cli", lambda *a, **k: "")
+>       with pytest.raises(baidu_pan.BaiduPanError, match="下载失败"):
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: '下载失败'
+E         Actual message: 'bdpan 未安装'
+
+tests\test_baidu_pan.py:421: AssertionError
+__________ test_health_reports_planning_enabled_when_module_present ___________
+
+tmp_path = WindowsPath('D:/Temp/pytest-of-35798/pytest-24/test_health_reports_planning_e0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000014194CD5F50>
+
+    def test_health_reports_planning_enabled_when_module_present(tmp_path, monkeypatch):
+        client = TestClient(_build_app(tmp_path, monkeypatch))
+>       assert client.get("/health").json()["planning_enabled"] is True
+E       assert False is True
+
+tests\test_health_planning_enabled.py:31: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_baidu_pan.py::test_download_file_verifies_artifact - Assert...
+FAILED tests/test_health_planning_enabled.py::test_health_reports_planning_enabled_when_module_present
+2 failed, 1049 passed, 124 skipped in 713.24s (0:11:53)

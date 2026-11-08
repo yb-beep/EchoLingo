@@ -143,13 +143,13 @@
 
 /* 题目 */
 /* L5：右栏题目原来一屏放不下 4 题（要单独滚动）。收紧行距与选项间距。 */
-.cet-q { margin-bottom: 8px; }
+.cet-q { margin-bottom: 6px; }
 .cet-q-stem {
-  font-size: 12px;
-  line-height: 1.4;
-  margin-bottom: 4px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  margin-bottom: 3px;
 }
-.cet-q-opts { display: flex; flex-direction: column; gap: 3px; }
+.cet-q-opts { display: flex; flex-direction: column; gap: 2px; }
 
 /* L5：workspace.html 的全局 `button { min-height: 34px }` 会把每个选项撑到
    34px（4 个选项 136px），4 题就放不进一屏。这里显式压回内容高度。 */
@@ -160,9 +160,9 @@
   border: 1px solid var(--line, #d9ded8);
   border-radius: 7px;
   background: #fff;
-  font-size: 12px;
+  font-size: 11.5px;
   cursor: pointer;
-  line-height: 1.35;
+  line-height: 1.3;
 }
 .cet-opt:hover { border-color: var(--brand, #2f6f5e); }
 .cet-opt.sel {
@@ -1005,3 +1005,16 @@ body.cet-hide-text #reading-passage {
   color: #fff !important;
 }
 .cet-drill-play:disabled { cursor: progress; }
+
+/* L5：1440×900 这种尺寸下 4 题仍差 ~60px。不再压字号（题干已是两行，
+   再小伤可读性），改为让题目区自己滚动并在底部留渐隐提示，避免「卡在半截」。 */
+#cet-blind-body .cet-question-list {
+  max-height: none;
+}
+@media (max-height: 920px) {
+  #cet-blind-body .cet-question-list {
+    overflow-y: auto;
+    padding-right: 2px;
+    scrollbar-width: thin;
+  }
+}

@@ -1640,9 +1640,10 @@
   <div class="gen-panel cet-import-panel" id="cet-import-panel">
     <div class="gen-panel-header">
       <h2>＋ 导入听力材料</h2>
-      <button type="button" class="text-link-btn" id="cet-import-toggle" onclick="cetToggleImport()">收起 ▲</button>
+      {#- C3：导入面板默认收起，材料列表不被挤到第二屏；空库时由 cetSyncImportPanel() 自动展开。 -#}
+      <button type="button" class="text-link-btn" id="cet-import-toggle" onclick="cetToggleImport()">展开 ▼</button>
     </div>
-    <div id="cet-import-form">
+    <div id="cet-import-form" class="hidden">
       <div class="course-builder">
         <section class="course-source-card">
           <div class="course-source-head">
@@ -7945,6 +7946,8 @@ let _cetSummary = null;
 // 卡点融合 · 包 H：GET /api/cet/summary（材料卡摘要 + 今日复习数量）。
 let _cetDrillSummary = null;
 let _cetImportBusy = false;
+// C3：用户是否手动展开/收起过导入面板（一旦手动操作，自动收起/展开不再覆盖）。
+let _cetImportUserToggled = false;
 
 function cetLevelLabel(level) {
   return ({cet4: '四级', cet6: '六级'})[level] || CET.copy('unspecified_level', '待分类');
@@ -7977,7 +7980,25 @@ function cetAvailability(item) {
   return {key: 'ready', label: '可逐句精听'};
 }
 
-// 年份/月份/套次/题型：本轮没有对应数据列，一律显示「未标注」，不猜（Lead 定案 Q2）
+// 年份/月份/套次/题型：v2_lessons 没有对应列，元数据由导入脚本写进 tags
+// （scripts/cet/import_materials.py 的 examMeta）。这里只读 tags，不猜标题。
+// C4：四项全都没有时整行不显示（不再固定渲染「未标注」）。
+const CET_EXAM_META_PATTERNS = [
+  {key: 'yearMonth', label: '年份', re: /^\d{4}年\d{1,2}月$/},
+  {key: 'setNo', label: '套次', re: /^第[一二三四五六七八九十\d]+套$/},
+  {key: 'questionType', label: '题型', re: /^(长对话|短对话|短文|讲座|新闻|听写|对话)$/},
+];
+
+function cetExamMeta(item) {
+  const tags = Array.isArray(item?.tags) ? item.tags.map(tag => String(tag).trim()) : [];
+  const found = {};
+  for (const {key, re} of CET_EXAM_META_PATTERNS) {
+    const hit = tags.find(tag => re.test(tag));
+    if (hit) found[key] = hit;
+  }
+  return found;
+}
+
 function cetMetaLine(item) {
   const parts = [
     `级别 ${cetLevelLabel(item.level)}`,
@@ -7989,6 +8010,21 @@ function cetMetaLine(item) {
   return parts.join(' · ');
 }
 
+// C4：有确定元数据就显示真实值；四项全无返回空串 → 卡片上整行不渲染。
+function cetExamMetaNote(item) {
+  const meta = cetExamMeta(item);
+  const labels = {yearMonth: '年份', setNo: '套次', questionType: '题型'};
+  const parts = [];
+  for (const key of ['yearMonth', 'setNo', 'questionType']) {
+    if (meta[key]) parts.push(`${labels[key]} ${meta[key]}`);
+  }
+  if (!parts.length) return '';
+  return parts.join(' · ');
+}
+
+// 四项都没有时的说明文案。不再作为卡片正文占位行（C4 要求全空不显示），
+// 改为挂在级别/时长那一行的 title 上：鼠标悬停能知道「为什么没有」，
+// 静态文案仍由这一处单点维护（不按标题猜年份/套次/题型）。
 function cetUndatedNote() {
   return '年份 / 月份 / 套次 / 题型：未标注';
 }
@@ -8060,9 +8096,13 @@ function cetBuildCard(item) {
         <span class="cet-availability cet-availability-${availability.key}">${esc(availability.label)}</span>
       </div>
       <div class="card-title" title="${esc(cetItemTitle(item))}">${esc(cetItemTitle(item))}</div>
-      <div class="card-stats"><span class="stat-chip">${esc(cetMetaLine(item))}</span></div>
+      <div class="card-stats" title="${esc(cetExamMetaNote(item) || cetUndatedNote())}"><span class="stat-chip">${esc(cetMetaLine(item))}</span></div>
       ${cetMaterialSummaryHtml(item)}
-      <div class="cet-undated">${esc(cetUndatedNote())}</div>
+      ${(() => {
+        // C4：有真实考试元数据才显示这一行；四项全空时整行不渲染（说明文案在上一行的 title 里）。
+        const note = cetExamMetaNote(item);
+        return note ? `<div class="cet-undated">${esc(note)}</div>` : '';
+      })()}
       ${progress > 0 ? `<div class="recent-progress" title="学习进度 ${progress}%"><span style="width:${progress}%"></span></div>` : ''}
     </div>
     <div class="recent-card-actions cet-card-actions">${cetCardActions(item)}</div>
@@ -8174,6 +8214,8 @@ function cetRenderSummary() {
   const emptyBox = document.getElementById('cet-empty-library');
   const active = _cetLibrary.filter(item => !item.archived);
   if (emptyBox) emptyBox.hidden = active.length > 0;
+  // C3：导入面板默认收起；只有材料库为空时才自动展开（空库时导入是唯一动作）。
+  cetSyncImportPanel(active.length === 0);
   if (!el) return;
   if (!active.length) { el.textContent = ''; return; }
   // 服务端概览优先；拿不到时按已加载材料现算（同一口径，不编造）
@@ -8579,7 +8621,11 @@ function cetFocusImport() {
   const panel = document.getElementById('cet-import-panel');
   if (!panel) return;
   const form = document.getElementById('cet-import-form');
+  const toggle = document.getElementById('cet-import-toggle');
+  // C3：首屏「导入听力材料」按钮是显式展开动作，等同于用户手动展开。
+  _cetImportUserToggled = true;
   if (form) form.classList.remove('hidden');
+  if (toggle) toggle.textContent = '收起 ▲';
   panel.scrollIntoView({behavior: 'smooth', block: 'start'});
   document.getElementById('cet-audio-input')?.focus?.();
   document.getElementById('cet-import-btn')?.focus?.();
@@ -8589,8 +8635,21 @@ function cetToggleImport() {
   const form = document.getElementById('cet-import-form');
   const toggle = document.getElementById('cet-import-toggle');
   if (!form || !toggle) return;
+  _cetImportUserToggled = true;
   const collapsed = form.classList.toggle('hidden');
   toggle.textContent = collapsed ? '展开 ▼' : '收起 ▲';
+}
+
+// C3：导入面板默认收起，材料库为空时才自动展开。
+// `_cetImportUserToggled` 记住用户手动展开/收起的选择：库加载完成后
+// 不再覆盖用户操作（否则用户刚展开就被自动收起）。
+function cetSyncImportPanel(shouldExpand) {
+  const form = document.getElementById('cet-import-form');
+  const toggle = document.getElementById('cet-import-toggle');
+  if (!form || !toggle) return;
+  if (_cetImportUserToggled) return;
+  form.classList.toggle('hidden', !shouldExpand);
+  toggle.textContent = shouldExpand ? '收起 ▲' : '展开 ▼';
 }
 
 function cetImportFormData() {

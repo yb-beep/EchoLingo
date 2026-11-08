@@ -115,11 +115,9 @@ def _call(action: str, sentence: str, feedback: str, candidate: dict[str, Any] |
             timeout=timeout,
         )
         content = (response.choices[0].message.content or "").strip()
-        if not content:
-            raise CETAIError("AI_EMPTY_RESPONSE", "模型返回空内容，请重试或使用本地帮助。")
-        result = json.loads(content)
-        if not isinstance(result, dict):
-            raise ValueError("object required")
+        # C1 加固：真实 key 下模型常把 JSON 包在 ``` 围栏或多带一句说明，
+        # 统一用 _extract_json_object 取对象（空内容仍按原错误码报）。
+        result = _extract_json_object(content)
         return result, ai_config.AI_MODEL
     except CETAIError:
         raise
@@ -142,6 +140,84 @@ def _validate_phrase(phrase: Any, sentence: str) -> str:
     return text
 
 
+def _extract_json_object(content: str) -> dict[str, Any]:
+    """从模型输出里取出 JSON 对象（C1 加固）。
+
+    真实 key 下模型经常把 JSON 包在 ```json 围栏里，或前后多一句客套话。
+    原来直接 json.loads 会抛 JSONDecodeError → 整条讲解 502，演示时非常脆。
+    这里只做「取出第一个平衡的 {...}」，不改变任何校验口径。
+    """
+    text = str(content or "").strip()
+    if not text:
+        raise CETAIError("AI_EMPTY_RESPONSE", "模型返回空内容，请重试或使用本地帮助。")
+    # 去掉 markdown 代码围栏
+    if text.startswith("```"):
+        lines = [line for line in text.splitlines() if not line.strip().startswith("```")]
+        text = "\n".join(lines).strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+    # 退一步：截取第一个平衡的花括号块（忽略字符串内的括号）
+    start = text.find("{")
+    if start < 0:
+        raise CETAIError("AI_INVALID_OUTPUT", "模型未返回有效 JSON。", 502)
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    block = json.loads(text[start:index + 1])
+                except json.JSONDecodeError as exc:
+                    raise CETAIError("AI_INVALID_OUTPUT", "模型未返回有效 JSON。", 502) from exc
+                if not isinstance(block, dict):
+                    raise CETAIError("AI_INVALID_OUTPUT", "模型未返回 JSON 对象。", 502)
+                return block
+    raise CETAIError("AI_INVALID_OUTPUT", "模型未返回有效 JSON。", 502)
+
+
+def _lenient_phrases(phrases: Any, sentence: str) -> list[str]:
+    """讲解里的「重点短语」按**宽松**口径处理（C1 加固）。
+
+    模型给出的短语常常大小写/标点与原句不完全一致（`Quiet room.` vs `quiet room`）。
+    原来一个不合格短语就会让整条讲解 502；现在只丢掉对不上的那一条，
+    讲解正文照常返回 —— 短语只是辅助信息，不该成为失败点。
+    """
+    if not isinstance(phrases, list):
+        return []
+    lowered = sentence.lower()
+    kept: list[str] = []
+    for item in phrases[:3]:
+        text = str(item or "").strip().strip(".,;:!?\"'")
+        if not text or _word_count(text) > 8:
+            continue
+        if text in sentence:
+            kept.append(text)
+        elif text.lower() in lowered:
+            # 用原句里的真实写法回填，避免前端高亮匹配不到
+            position = lowered.index(text.lower())
+            kept.append(sentence[position:position + len(text)])
+    return kept
+
+
 def generate(
     action: str,
     sentence: dict[str, Any],
@@ -155,10 +231,10 @@ def generate(
         return raw, model
     if action == "explain":
         explanation = str(raw.get("explanation") or "").strip()
-        phrases = raw.get("keyPhrases") or []
-        if not explanation or len(explanation) > 2000 or _IPA_RE.search(explanation) or not isinstance(phrases, list):
+        # 中文讲解里出现音标符号属于格式无效（既有契约，测试锁定），保持拒绝。
+        if not explanation or len(explanation) > 2000 or _IPA_RE.search(explanation):
             raise CETAIError("AI_INVALID_OUTPUT", "模型解释格式无效。")
-        key_phrases = [_validate_phrase(item, source_text) for item in phrases[:3]]
+        key_phrases = _lenient_phrases(raw.get("keyPhrases"), source_text)
         return {"explanation": explanation, "keyPhrases": key_phrases, "source": "ai"}, model
     if action == "chunk":
         chunks = raw.get("chunks")

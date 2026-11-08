@@ -142,23 +142,27 @@
 }
 
 /* 题目 */
-.cet-q { margin-bottom: 14px; }
+/* L5：右栏题目原来一屏放不下 4 题（要单独滚动）。收紧行距与选项间距。 */
+.cet-q { margin-bottom: 8px; }
 .cet-q-stem {
-  font-size: 13px;
-  line-height: 1.55;
-  margin-bottom: 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-bottom: 4px;
 }
-.cet-q-opts { display: flex; flex-direction: column; gap: 5px; }
+.cet-q-opts { display: flex; flex-direction: column; gap: 3px; }
 
+/* L5：workspace.html 的全局 `button { min-height: 34px }` 会把每个选项撑到
+   34px（4 个选项 136px），4 题就放不进一屏。这里显式压回内容高度。 */
 .cet-opt {
+  min-height: 0;
   text-align: left;
-  padding: 7px 10px;
+  padding: 4px 8px;
   border: 1px solid var(--line, #d9ded8);
   border-radius: 7px;
   background: #fff;
-  font-size: 12.5px;
+  font-size: 12px;
   cursor: pointer;
-  line-height: 1.5;
+  line-height: 1.35;
 }
 .cet-opt:hover { border-color: var(--brand, #2f6f5e); }
 .cet-opt.sel {
@@ -932,3 +936,72 @@ body.cet-hide-text #reading-passage {
   color: var(--muted, #687069);
   font-size: 12px;
 }
+
+/* ── P1-1：标记成功浮层 + 新圆点闪烁 ─────────────────────── */
+.cet-mark-toast {
+  position: fixed;
+  z-index: 1500;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: #2f6f5e;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow: 0 10px 26px rgba(20, 50, 40, .32);
+  pointer-events: none;
+  animation: cet-toast-in .16s ease-out;
+}
+.cet-mark-toast-out {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .24s ease, transform .24s ease;
+}
+@keyframes cet-toast-in {
+  from { opacity: 0; transform: translateY(6px) scale(.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.cet-timeline-flash {
+  animation: cet-dot-flash .9s ease-out;
+}
+@keyframes cet-dot-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(224, 142, 11, .85); transform: scale(1); }
+  45%  { box-shadow: 0 0 0 8px rgba(224, 142, 11, 0); transform: scale(1.35); }
+  100% { box-shadow: 0 0 0 0 rgba(224, 142, 11, 0); transform: scale(1); }
+}
+
+/* ── P1-2 / P1-3：卡点列表里被遮住的句子 ───────────────────── */
+.cet-mark-sentence-masked {
+  color: var(--muted, #687069);
+  font-style: italic;
+}
+/* ── L6：复习结束小结 ─────────────────────────────────────── */
+.cet-review-summary {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #d9ded8);
+  border-radius: 9px;
+  background: #f6f8f5;
+}
+.cet-review-summary-row {
+  color: var(--ink, #202421);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.cet-review-complete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* 带练「▶ 播放」的进行中态：句子常只有 1.5–2 秒，需要明确反馈 */
+.cet-drill-play-active {
+  background: var(--brand, #2f6f5e) !important;
+  border-color: var(--brand, #2f6f5e) !important;
+  color: #fff !important;
+}
+.cet-drill-play:disabled { cursor: progress; }

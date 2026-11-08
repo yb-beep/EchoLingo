@@ -467,7 +467,11 @@
         : '先盲听；听到没听清的地方就点「🚩 没听清」，然后点「显示原文，确认卡点」。';
     }
     if (S.step === 'review') {
-      if (S.reviewSessionActive) return '先盲听这一处，点「显示原文」后再核对。';
+      if (S.reviewSessionActive) {
+        // P1-4：复习会话结束后提示要跟着变，不能还停在「先听这一处」。
+        if (reviewState && reviewState.status === 'complete') return '本次复习已完成，可以回首页看「今日复习」进度。';
+        return '先盲听这一处，点「显示原文」后再核对。';
+      }
       return S.questions.length ? '交卷后查看成绩与原声证据；确认卡点后进入精练。' : '在卡点列表确认真正卡住的句子。';
     }
     if (S.step === 'drill') return '带练中：原句、慢放、分块都由统一播放器播放。';
@@ -600,6 +604,10 @@
       }
       if (isNew) {
         flashHint(`已标记 ${fmtClock(mark.pressedAtSec)}`, false, 1000);
+        // P1-1：工具栏那行灰色小字太小，观众注意不到。在标记按钮旁弹一个
+        // 醒目浮层（约 1.5 秒），并让新出现的时间轴圆点闪一下。
+        showMarkToast(`🚩 已标记 ${fmtClock(mark.pressedAtSec)}`);
+        flashNewestMarkDot();
       } else {
         // 去重命中：明确告诉用户没有新增，避免「按了没反应 / 按了出两条」的困惑
         flashHint(`与 ${fmt(mark.pressedAtSec)} 的标记是同一处（1.5s 内重复），未新增`);
@@ -607,6 +615,48 @@
     } catch (err) {
       flashHint(`标记失败：${err.message}（可重试）`, true);
     }
+  }
+
+  /**
+   * P1-1：标记成功的醒目浮层。挂在标记按钮旁边，1.5 秒后淡出。
+   * 不抢焦点、不挡操作（pointer-events:none）。
+   */
+  function showMarkToast(text) {
+    const anchor = $('.cet-mark-btn') || $('#ws-step-actions') || document.body;
+    if (!anchor) return;
+    const old = document.getElementById('cet-mark-toast');
+    if (old) old.remove();
+    const toast = el('div', 'cet-mark-toast', text);
+    toast.id = 'cet-mark-toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    document.body.appendChild(toast);
+    const rect = anchor.getBoundingClientRect();
+    // 浮在按钮下方；贴边时收回视口内
+    let left = rect.left + rect.width / 2;
+    let top = rect.bottom + 10;
+    toast.style.left = '0px';
+    toast.style.top = '0px';
+    const box = toast.getBoundingClientRect();
+    left = Math.max(8, Math.min(left - box.width / 2, window.innerWidth - box.width - 8));
+    if (top + box.height > window.innerHeight - 8) top = rect.top - box.height - 10;
+    toast.style.left = `${Math.round(left)}px`;
+    toast.style.top = `${Math.round(Math.max(8, top))}px`;
+    window.setTimeout(() => {
+      toast.classList.add('cet-mark-toast-out');
+      window.setTimeout(() => toast.remove(), 260);
+    }, 1500);
+  }
+
+  /** P1-1：让最新出现的那个时间轴圆点闪一下，观众能看到「标记落在这里」。 */
+  function flashNewestMarkDot() {
+    window.setTimeout(() => {
+      const dots = [...document.querySelectorAll('[data-cet-mark]')];
+      if (!dots.length) return;
+      const last = dots[dots.length - 1];
+      last.classList.add('cet-timeline-flash');
+      window.setTimeout(() => last.classList.remove('cet-timeline-flash'), 900);
+    }, 60);
   }
 
   function flashHint(text, isError, duration) {
@@ -622,6 +672,19 @@
   }
 
   // ── 标记渲染（三态：待确认 / 待练 / 本轮已练）──────────
+  /** P1-2：当前是否在换句检验中（换句步骤且原文被遮）。 */
+  function isTransferInProgress() {
+    if (!S.practice || S.practice.status === 'complete') return false;
+    const step = S.practice.currentStep || {};
+    return step.action === 'transfer' || Boolean(step.data && step.data.noCandidate);
+  }
+
+  /** 当前带练句的 sentenceId（用于判断卡点列表里哪一行正在被检验）。 */
+  function practiceSentenceId() {
+    if (!S.practice) return '';
+    return (S.practice.sentence && S.practice.sentence.sentenceId) || S.practice.sentenceId || '';
+  }
+
   function markState(m) {
     // F08：「改一下」把已确认的标记退回待确认态，允许重新预览与覆盖。
     if (m.__amending) return 'pending';
@@ -768,12 +831,29 @@
             `${st === 'pending' ? '候选句' : '确认句'} ${fmt(sent.startSeconds)}–${fmt(sent.endSeconds)}`);
           tag.title = st === 'pending' ? '按回溯窗口吸附出来的候选句，还没确认' : '已确认的句子';
           row.appendChild(tag);
+          // P1-2 / P1-3：遮住卡点列表里不该露原文的句子。
+          //   reviewing  —— 复习会话里**当前这一处**（原来只遮当前，队列里的下一句露着）
+          //   queued     —— 复习会话里**排队待复习**的所有条目（P1-3）
+          //   inTransfer —— 换句检验进行中，这句正在被检验（P1-2）
           const reviewEntries = reviewState && reviewState.entries || [];
           const currentReview = reviewEntries.find((entry) => entry.status === 'current')
             || reviewEntries.find((entry) => entry.status === 'pending');
           const reviewing = S.reviewSessionActive && currentReview && currentReview.item
             && currentReview.item.sentence && currentReview.item.sentence.sentenceId === shownId;
-          row.appendChild(el('span', 'cet-mark-sentence', reviewing ? '复习中' : sent.text));
+          const queued = S.reviewSessionActive && !reviewing && reviewEntries.some((entry) => {
+            if (entry.status === 'done' || entry.status === 'skipped') return false;
+            const item = entry.item || {};
+            const sid = (item.sentence && item.sentence.sentenceId) || item.sentenceId;
+            return String(sid || '') === String(shownId || '');
+          });
+          const inTransfer = isTransferInProgress() && String(shownId || '') === String(practiceSentenceId());
+          let sentenceLabel = sent.text;
+          if (reviewing) sentenceLabel = '复习中 · 原文已遮住';
+          else if (queued) sentenceLabel = '待复习 · 原文已遮住';
+          else if (inTransfer) sentenceLabel = '检验中 · 原文已遮住';
+          const sentenceEl = el('span', 'cet-mark-sentence', sentenceLabel);
+          if (reviewing || queued || inTransfer) sentenceEl.classList.add('cet-mark-sentence-masked');
+          row.appendChild(sentenceEl);
         } else {
           row.appendChild(el('span', 'cet-mark-sentence cet-mark-sentence-none', '（无可用候选句）'));
         }
@@ -1131,7 +1211,13 @@
     if (!note) return;
     const answered = Object.keys(S.answers || {}).length;
     const total = (S.questions || []).length;
-    note.textContent = answered ? `已作答 ${answered} / ${total} 题` : '还没作答，选完再交卷';
+    if (!answered) {
+      note.textContent = '还没作答，选完再交卷';
+      return;
+    }
+    const left = Math.max(0, total - answered);
+    // L5：右栏一屏放不下 4 题时，至少让用户知道还差几题（不用自己数）
+    note.textContent = left ? `已作答 ${answered} / ${total} 题，还差 ${left} 题` : `已作答 ${answered} / ${total} 题`;
   }
 
   function renderQuestions() {
@@ -1590,7 +1676,25 @@
     card.appendChild(sentenceEl);
     const play = el('button', 'cet-btn-sm cet-drill-play', '▶ 播放');
     play.id = 'cet-drill-play';
-    play.onclick = () => playCurrentPracticeSentence();
+    // 句子往往只有 1.5–2 秒，点下去「闪一下就没了」看起来像没反应。
+    // 播放期间按钮显示「播放中…」并在结束后恢复，给用户明确的动作反馈。
+    play.onclick = async () => {
+      if (play.disabled) return;
+      play.disabled = true;
+      const label = play.textContent;
+      play.textContent = '播放中…';
+      play.classList.add('cet-drill-play-active');
+      try {
+        const result = await playCurrentPracticeSentence();
+        if (result !== 'ended' && result !== 'interrupted') {
+          flashHint('播放未开始，请刷新页面后重试', true);
+        }
+      } finally {
+        play.disabled = false;
+        play.textContent = label;
+        play.classList.remove('cet-drill-play-active');
+      }
+    };
     card.appendChild(play);
     body.appendChild(card);
 
@@ -2554,10 +2658,32 @@
       `${phase} · 剩余约 ${mins} 分钟${cur ? ` · 第 ${(cur.position || 0) + 1} 处 / 共 ${entries.length} 处` : ''}`));
 
     if (reviewState.status === 'complete' || !cur) {
+      // L6：复习结束不再只留一行字。给一个小结（复习了几处、几处一次听懂），
+      // 再给「返回学习」与「回到首页」两个出口。
       body.appendChild(el('div', 'cet-review-complete', '本次复习已完成。'));
-      const back = el('button', 'cet-btn-sm cet-inline-link', '返回学习');
+      const entries = reviewState.entries || [];
+      const total = entries.length;
+      const doneCount = entries.filter((e) => e.status === 'done').length;
+      const skippedCount = entries.filter((e) => e.status === 'skipped').length;
+      const heardFirstTry = entries.filter((e) => {
+        if (e.status !== 'done') return false;
+        const item = e.item || {};
+        return item.latestFeedback === 'heard';
+      }).length;
+      const summary = el('div', 'cet-review-summary');
+      summary.appendChild(el('div', 'cet-review-summary-row', `共复习 ${total} 处`));
+      if (doneCount) summary.appendChild(el('div', 'cet-review-summary-row', `完成 ${doneCount} 处`));
+      if (heardFirstTry) summary.appendChild(el('div', 'cet-review-summary-row', `其中 ${heardFirstTry} 处自评「听懂了」`));
+      if (skippedCount) summary.appendChild(el('div', 'cet-review-summary-row', `跳过 ${skippedCount} 处`));
+      body.appendChild(summary);
+      const actions = el('div', 'cet-review-complete-actions');
+      const back = el('button', 'cet-btn-sm', '返回学习');
       back.onclick = exitReviewSession;
-      body.appendChild(back);
+      actions.appendChild(back);
+      const home = el('button', 'cet-btn-sm cet-inline-link', '回到首页 →');
+      home.onclick = () => { window.location.assign('/'); };
+      actions.appendChild(home);
+      body.appendChild(actions);
       return;
     }
 

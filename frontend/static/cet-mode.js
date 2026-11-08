@@ -39,9 +39,9 @@
     { key: 'resources', label: '设置', hash: 'resources', icon: '⚙️' }
   ];
   var DEFAULT_COPY = {
-    site_title: '四六级听力训练',
+    site_title: '听透 · 四六级听力',
     home_heading: '四六级听力材料',
-    home_subtitle: '选择四级或六级，导入本地听力材料，逐句精听。',
+    home_subtitle: '找到卡住你的那一句。选择四级或六级，逐句精听。',
     library_heading: '听力材料',
     workspace_title: '听力工作区',
     transcript_label: '原文',

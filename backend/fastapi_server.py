@@ -177,7 +177,7 @@ def create_app() -> FastAPI:
             pass
 
     app = FastAPI(
-        title="四六级听力训练",
+        title="听透 · 四六级听力",
         version=os.environ.get("ELT_VERSION", "0.1.0"),
         docs_url="/api/docs",
         redoc_url="/api/redoc",

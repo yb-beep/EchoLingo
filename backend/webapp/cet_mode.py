@@ -164,11 +164,13 @@ _NAV_GENERIC = [
 
 # 页面标题/文案：全站一致（任务书 §3.2 要求不能只改首页主标题）
 _COPY_CET = {
-    "site_title": "四六级听力训练",
+    "site_title": "听透 · 四六级听力",
     "home_heading": "四六级听力材料",
-    "home_subtitle": "选择四级或六级，导入本地听力材料，逐句精听。",
+    "home_subtitle": "找到卡住你的那一句。选择四级或六级，逐句精听。",
     "library_heading": "听力材料",
     "workspace_title": "听力工作区",
+    # 产品短名：工作区/精听页的浏览器标签用「听力工作区 - 听透」这种形式
+    "brand_short": "听透",
     "transcript_label": "原文",
     "favorites_heading": "我的收藏",
     "vocab_heading": "词汇收藏",

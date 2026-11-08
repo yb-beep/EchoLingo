@@ -164,7 +164,7 @@ _NAV_GENERIC = [
 
 # 页面标题/文案：全站一致（任务书 §3.2 要求不能只改首页主标题）
 _COPY_CET = {
-    "site_title": "EchoLingo · 四六级听力",
+    "site_title": "四六级听力训练",
     "home_heading": "四六级听力材料",
     "home_subtitle": "选择四级或六级，导入本地听力材料，逐句精听。",
     "library_heading": "听力材料",
@@ -198,7 +198,7 @@ _COPY_CET = {
 }
 
 _COPY_GENERIC = {
-    "site_title": "EchoLingo · 英语精学工作台",
+    "site_title": "英语精学工作台",
     "home_heading": "课程",
     "home_subtitle": "输入素材，生成课程。",
     "library_heading": "全部课程",
